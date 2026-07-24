@@ -24,8 +24,12 @@ for multiple accounts (0004).
 4. CLI calls the userinfo endpoint to detect the account **email**, then stores
    the token at `~/.config/gdrive-cli/accounts/<email>.json`.
 
-Access tokens are refreshed automatically using the stored refresh token; if
-refresh fails, the user must re-authenticate that account.
+Access tokens are refreshed automatically using the stored refresh token.
+Error mapping (codes from 0007):
+- No token file / no client credentials for the account → `AUTH_REQUIRED`.
+- A token exists but refresh fails (revoked / expired refresh token) →
+  `AUTH_EXPIRED`. The user must re-run `gdrive auth` for that account.
+- Named account/alias not authenticated → `ACCOUNT_NOT_FOUND`.
 
 ### Requested scopes
 

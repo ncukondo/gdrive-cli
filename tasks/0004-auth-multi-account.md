@@ -32,9 +32,10 @@ authenticated googleapis client. Implements `decisions/0004` and `0005`.
 ## TDD plan
 
 1. **Red** (inject fs + fake OAuth/token/userinfo): token round-trips per email;
-   email detection sets filename; refresh on expiry; account resolution
-   priority; missing account → `ACCOUNT_NOT_FOUND`; none → `AUTH_REQUIRED`;
-   `--format json` never prompts (returns `AUTH_REQUIRED`).
+   email detection sets filename; successful refresh on expiry; **failed
+   refresh → `AUTH_EXPIRED`**; account resolution priority; missing account →
+   `ACCOUNT_NOT_FOUND`; no token/client → `AUTH_REQUIRED`; `--format json`
+   never prompts (returns `AUTH_REQUIRED`). (Error mapping per `decisions/0005`.)
 2. **Green** — implement flow + resolution.
 3. **Refactor** — split flow (I/O) from pure resolution.
 

@@ -16,7 +16,8 @@ Parallel: yes (group C) — alongside 0009
 
 - `src/lib/sheets-api.ts` (Sheets v4 wrapper + CSV/JSON/table codecs),
   `src/commands/sheets/*` (`index.ts`, `tabs.ts`, `read.ts`, `write.ts`,
-  `append.ts`, `clear.ts`, `create.ts`), reusing the content reader from 0009.
+  `append.ts`, `clear.ts`, `create.ts`). Value input reuses `src/lib/input.ts`
+  (from task 0002).
 
 ## TDD plan
 

@@ -11,8 +11,11 @@ A buildable, testable TypeScript/Bun project skeleton with the tech stack from
 
 ## Context
 
-- Relevant decisions: `decisions/0002-tech-stack.md`, `decisions/0001-development-process.md`
-- Mirror gcal-cli's `package.json`, `tsconfig.json`, `vitest.config.ts` layout.
+- Relevant decisions: `decisions/0002-tech-stack.md` (deps/versions, scripts,
+  exact tsconfig/vitest settings), `decisions/0013-architecture.md` (src tree +
+  `registerCommands` contract), `decisions/0001-development-process.md`.
+- Copy `tsconfig.json` and `vitest.config.ts` from `../gcal-cli` verbatim
+  (see 0002). `commands/index.ts` exports `registerCommands(program)` per 0013.
 
 ## Scope
 

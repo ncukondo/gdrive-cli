@@ -6,18 +6,24 @@ Parallel: yes (group A) — alongside 0003
 
 ## Goal
 
-`lib/output.ts` renders success/error in text, JSON, and quiet modes, and a
-top-level error handler maps `ErrorCode` → exit code, per `decisions/0007`.
+The IO core: `lib/output.ts` renders success/error in text, JSON, and quiet
+modes; `lib/input.ts` reads a literal / `@file` / `-` (stdin) argument;
+`lib/fs.ts` defines the injectable `FsAdapter`; a top-level error handler maps
+`ErrorCode` → exit code. Per `decisions/0007`, `0012`, `0013`.
 
 ## Context
 
-- Relevant decisions: `decisions/0007-output-and-errors.md`
-- Adapt from gcal-cli's `src/lib/output.ts`.
+- Relevant decisions: `decisions/0007-output-and-errors.md`,
+  `decisions/0012-testing-strategy.md`, `decisions/0013-architecture.md`
+- Adapt from gcal-cli's `src/lib/output.ts` (at `../gcal-cli`).
 
 ## Scope
 
-- `src/lib/output.ts`, `src/types/index.ts` (ErrorCode union, envelope types),
-  a small `AppError { code, message }` class and `errorToExit(code)`.
+- `src/lib/output.ts` — text/json/quiet renderers + error envelope.
+- `src/lib/input.ts` — literal / `@file` / `-` reader (stdin injected for tests).
+- `src/lib/fs.ts` — `FsAdapter` interface + `node:fs` implementation (0012).
+- `src/types/index.ts` — `ErrorCode` union, envelope types, `AppError { code,
+  message }`, `errorToExit(code)`.
 
 ## Out of scope
 
@@ -28,12 +34,15 @@ top-level error handler maps `ErrorCode` → exit code, per `decisions/0007`.
 1. **Red** — `output.test.ts`: success text vs `{success:true,data}`; error
    text to stderr vs `{success:false,error:{code,message}}`; quiet suppresses
    decoration; `errorToExit` maps each ErrorCode to 1/2/3.
-2. **Green** — implement renderers + mapper.
+   `input.test.ts`: literal passthrough; `@file` read via fake fs; `-` reads
+   injected stdin; missing file → `IO_ERROR`.
+2. **Green** — implement renderers + reader + mapper.
 3. **Refactor** — shared serializer.
 
 ## Acceptance criteria
 
 - [ ] Text, JSON, quiet renderers behave per 0007
+- [ ] `lib/input.ts` handles literal / `@file` / `-`; errors are `IO_ERROR`
 - [ ] Every `ErrorCode` maps to the correct exit code
 - [ ] JSON mode ignores `--quiet`
 - [ ] `bun run test`, `bun run typecheck` pass

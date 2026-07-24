@@ -1,7 +1,7 @@
 # Task 0012: Distribution, installer & `upgrade`
 
 Status: todo
-Depends on: 0007, 0008, 0009, 0010
+Depends on: 0007, 0008, 0009, 0010, 0014
 Parallel: no
 
 ## Goal

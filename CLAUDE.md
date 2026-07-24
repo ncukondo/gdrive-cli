@@ -7,7 +7,23 @@ multi-account switching. Sibling of `gcal-cli`, designed for AI-agent use.
 
 - Read `decisions/README.md` for the design (source of truth for *why*).
 - Read `tasks/README.md` for the current plan; pick a task, follow its TDD plan.
+- Architecture map: `decisions/0013`. Testing conventions: `decisions/0012`.
 - User-facing behavior lives in `docs/` and `README.md`.
+
+## Reference implementations (on disk)
+
+Two sibling repos live next to this one and are required reading for tasks that
+say "adapt from …":
+
+- **`../gcal-cli`** — tech stack, `tsconfig.json`/`vitest.config.ts`, and the
+  patterns to adapt for `lib/{output,config,auth,api}.ts` (tasks 0002/0003/0004/
+  0006). Its `spec/` mirrors what our `decisions/` cover.
+- **`../yaml-form-cli`** — the dev *process* this repo follows, plus
+  `src/upgrade.ts` + `install.sh`/`install.ps1` to adapt for task 0012.
+
+If a checkout lacks them, clone from their GitHub URLs (see
+`decisions/README.md`). Our `decisions/` fully specify behavior; the siblings
+are an accelerator, not a hard dependency.
 
 ## Tech Stack (see `decisions/0002`)
 

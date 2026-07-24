@@ -14,6 +14,13 @@ Rules (see [`decisions/0001`](../decisions/0001-development-process.md)):
   decision change, record a new decision first.
 - Docs (`docs/`, `README.md`) updates implied by a task are part of its DoD.
 
+Before starting, read `decisions/0013-architecture.md` (source-tree map +
+command-registration contract) and `decisions/0012-testing-strategy.md`
+(fs/client injection + E2E policy). Rows below are grouped by parallel group,
+**not strict task number** — always start from the top row and honor
+`Depends on`. Sibling reference repos live at `../gcal-cli` and
+`../yaml-form-cli` (see `decisions/README.md`).
+
 ## Current plan
 
 | Task | Depends on | Parallel group | Status |
@@ -46,4 +53,16 @@ Rules (see [`decisions/0001`](../decisions/0001-development-process.md)):
   `lib/api.ts` edits.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
-0007 (list/read is the first useful surface), then fan out B/C.
+0007 (list/read is the first useful surface), then fan out group B (0008) and
+group C (0009 / 0010 / 0014). Finish with 0005 / 0011 (account/init), then
+0012 (distribution) and 0013 (docs).
+
+### Shared integration points (coordinate across worktrees)
+
+- `src/commands/index.ts` — every command task appends one import + one
+  `registerXxx(program)` call (append-only; see `decisions/0013`).
+- `tests/helpers/` — shared fakes (fs, Drive/Docs/Sheets clients, OAuth). The
+  first task needing a fake creates it here; later tasks import it
+  (`decisions/0012`).
+- `src/lib/api.ts` — created by 0006, extended by 0014 (permission methods) and
+  used by 0007/0008. Coordinate edits; keep additions method-scoped.

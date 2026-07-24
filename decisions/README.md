@@ -24,11 +24,21 @@ instead of restating them.
 | [0009](0009-docs-commands.md) | Google Docs read / edit commands |
 | [0010](0010-sheets-commands.md) | Google Sheets read / edit commands |
 | [0011](0011-sharing-commands.md) | Sharing & permissions (`share list/add/remove/link`) |
+| [0012](0012-testing-strategy.md) | Testing: types, fs/client injection, E2E policy |
+| [0013](0013-architecture.md) | Source-tree map & command-registration contract |
 
-## Related projects
+## Related projects (reference implementations)
 
-- [`gcal-cli`](https://github.com/ncukondo/gcal-cli) — sibling Google Calendar
-  CLI; gdrive-cli mirrors its tech stack, output conventions, and auth UX.
-- [`yaml-form-cli`](https://github.com/ncukondo/yaml-form-cli) — source of the
-  development *process* (decisions + tasks + TDD + worktree) and the
-  distribution/`upgrade` model.
+Both live **on disk as siblings of this repo** and are required reading for the
+tasks that say "adapt from …". If a checkout lacks them, clone from the URLs;
+the decisions here fully specify behavior, so the siblings are an accelerator,
+not a hard dependency.
+
+- [`gcal-cli`](https://github.com/ncukondo/gcal-cli) — at `../gcal-cli`. Sibling
+  Google Calendar CLI; gdrive-cli mirrors its tech stack, output conventions,
+  and auth UX. Adapt `src/lib/{output,config,auth,api}.ts` and its
+  `tsconfig.json` / `vitest.config.ts`.
+- [`yaml-form-cli`](https://github.com/ncukondo/yaml-form-cli) — at
+  `../yaml-form-cli`. Source of the development *process* (decisions + tasks +
+  TDD + worktree) and the distribution model; adapt `src/upgrade.ts`,
+  `install.sh`, `install.ps1`.
