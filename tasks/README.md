@@ -29,7 +29,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0002 Output & error core](archive/0002-output-and-errors.md) | 0001 | A | done |
 | [0003 Config (TOML) & discovery](archive/0003-config.md) | 0001 | A | done |
 | [0004 OAuth + multi-account auth](archive/0004-auth-multi-account.md) | 0002, 0003 | — | done |
-| [0005 Account commands](0005-account-commands.md) | 0004 | — | todo |
+| [0005 Account commands](archive/0005-account-commands.md) | 0004 | — | done |
 | [0006 Drive API wrapper & path resolution](archive/0006-drive-api.md) | 0004 | — | done |
 | [0007 Drive read commands (ls/search/info/download)](archive/0007-drive-read.md) | 0006 | B | done |
 | [0008 Drive write commands (upload/mkdir/mv/cp/rm)](archive/0008-drive-write.md) | 0006 | B | done |
