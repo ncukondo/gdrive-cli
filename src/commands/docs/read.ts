@@ -1,17 +1,14 @@
 import { Command } from "commander";
-import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
+import type { CommandResult, OutputFormat } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
+import { parseChoice } from "../../lib/args.ts";
 import { renderDocument, type DocsRenderFormat, type DocumentRaw } from "../../lib/docs-api.ts";
 
 const VALID_AS: DocsRenderFormat[] = ["markdown", "text"];
 
 /** Validates `--as`, defaulting to `markdown` (decision 0009). */
 export function parseRenderAs(value: string | undefined): DocsRenderFormat {
-  if (value === undefined) return "markdown";
-  if (!VALID_AS.includes(value as DocsRenderFormat)) {
-    throw new AppError("INVALID_ARGS", `Invalid --as "${value}". Use: ${VALID_AS.join(", ")}.`);
-  }
-  return value as DocsRenderFormat;
+  return value === undefined ? "markdown" : parseChoice(VALID_AS, value, "--as");
 }
 
 export interface DocsReadDeps {

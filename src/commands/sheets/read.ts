@@ -1,6 +1,7 @@
 import { Command } from "commander";
-import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
+import type { CommandResult, OutputFormat } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
+import { parseChoice } from "../../lib/args.ts";
 import {
   formatCsv,
   formatValuesTable,
@@ -14,11 +15,7 @@ const VALID_AS: ValuesEncoding[] = ["table", "csv", "json"];
 
 /** Validates `--as`, defaulting to `table` (decision 0010). */
 export function parseValuesAs(value: string | undefined): ValuesEncoding {
-  if (value === undefined) return "table";
-  if (!VALID_AS.includes(value as ValuesEncoding)) {
-    throw new AppError("INVALID_ARGS", `Invalid --as "${value}". Use: ${VALID_AS.join(", ")}.`);
-  }
-  return value as ValuesEncoding;
+  return value === undefined ? "table" : parseChoice(VALID_AS, value, "--as");
 }
 
 function encodeValues(values: string[][], as: ValuesEncoding): string {

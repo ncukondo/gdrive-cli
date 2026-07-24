@@ -7,6 +7,7 @@ import {
   type OutputFormat,
 } from "../types/index.ts";
 import { renderSuccess } from "../lib/output.ts";
+import { parseChoice } from "../lib/args.ts";
 import type { ListOptions, OrderKey } from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
 
@@ -14,25 +15,11 @@ const VALID_TYPES: FileType[] = ["folder", "doc", "sheet", "slides", "file"];
 const VALID_ORDERS: OrderKey[] = ["name", "modified", "created"];
 
 export function parseType(value: string | undefined): FileType | undefined {
-  if (value === undefined) return undefined;
-  if (!VALID_TYPES.includes(value as FileType)) {
-    throw new AppError(
-      "INVALID_ARGS",
-      `Invalid --type "${value}". Use: ${VALID_TYPES.join(", ")}.`,
-    );
-  }
-  return value as FileType;
+  return value === undefined ? undefined : parseChoice(VALID_TYPES, value, "--type");
 }
 
 export function parseOrder(value: string | undefined): OrderKey | undefined {
-  if (value === undefined) return undefined;
-  if (!VALID_ORDERS.includes(value as OrderKey)) {
-    throw new AppError(
-      "INVALID_ARGS",
-      `Invalid --order "${value}". Use: ${VALID_ORDERS.join(", ")}.`,
-    );
-  }
-  return value as OrderKey;
+  return value === undefined ? undefined : parseChoice(VALID_ORDERS, value, "--order");
 }
 
 export function parseLimit(value: string | undefined): number | undefined {

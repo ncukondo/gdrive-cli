@@ -7,6 +7,7 @@ import {
   type ShareRole,
 } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
+import { parseChoice } from "../../lib/args.ts";
 import { inferGrantee, type PermissionCreateInput } from "../../lib/api.ts";
 
 const VALID_ROLES: ShareRole[] = ["reader", "commenter", "writer"];
@@ -17,13 +18,7 @@ export function parseRole(value: string | undefined): ShareRole {
   if (value === "owner") {
     throw new AppError("INVALID_ARGS", "Ownership transfer (--role owner) is not supported.");
   }
-  if (!VALID_ROLES.includes(value as ShareRole)) {
-    throw new AppError(
-      "INVALID_ARGS",
-      `Invalid --role "${value}". Use: ${VALID_ROLES.join(", ")}.`,
-    );
-  }
-  return value as ShareRole;
+  return parseChoice(VALID_ROLES, value, "--role");
 }
 
 export interface ShareAddDeps {

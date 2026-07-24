@@ -7,8 +7,11 @@ import {
   type OutputFormat,
 } from "../types/index.ts";
 import { renderSuccess } from "../lib/output.ts";
+import { parseChoice } from "../lib/args.ts";
 
 export type ExportAs = "pdf" | "docx" | "xlsx" | "csv" | "md" | "txt";
+
+const VALID_EXPORT_AS: ExportAs[] = ["pdf", "docx", "xlsx", "csv", "md", "txt"];
 
 const EXPORT_MIME: Record<ExportAs, string> = {
   pdf: "application/pdf",
@@ -27,14 +30,7 @@ const DEFAULT_EXPORT: Partial<Record<FileType, string>> = {
 };
 
 export function parseExportAs(value: string | undefined): ExportAs | undefined {
-  if (value === undefined) return undefined;
-  if (!(value in EXPORT_MIME)) {
-    throw new AppError(
-      "INVALID_ARGS",
-      `Invalid --export-as "${value}". Use: ${Object.keys(EXPORT_MIME).join(", ")}.`,
-    );
-  }
-  return value as ExportAs;
+  return value === undefined ? undefined : parseChoice(VALID_EXPORT_AS, value, "--export-as");
 }
 
 function byteLengthOf(content: unknown): number | null {

@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
+import { parseChoice } from "../../lib/args.ts";
 import {
   parseValues,
   resolveRangeWith,
@@ -13,14 +14,7 @@ const VALID_MODES: InputMode[] = ["raw", "user"];
 
 /** Validates `--input-mode`, defaulting to `raw` (decision 0010). */
 export function parseInputMode(value: string | undefined): InputMode {
-  if (value === undefined) return "raw";
-  if (!VALID_MODES.includes(value as InputMode)) {
-    throw new AppError(
-      "INVALID_ARGS",
-      `Invalid --input-mode "${value}". Use: ${VALID_MODES.join(", ")}.`,
-    );
-  }
-  return value as InputMode;
+  return value === undefined ? "raw" : parseChoice(VALID_MODES, value, "--input-mode");
 }
 
 /** Reads `--values` through the @file/stdin reader and parses CSV or JSON. */
