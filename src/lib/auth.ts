@@ -1,5 +1,6 @@
 import http from "node:http";
 import { google } from "googleapis";
+import { z } from "zod";
 import { AppError } from "../types/index.ts";
 import type { FsAdapter } from "./fs.ts";
 
@@ -13,14 +14,16 @@ export interface ClientCredentials {
 }
 
 /** Per-account token record stored at `accounts/<email>.json` (decision 0005). */
-export interface TokenData {
-  email: string;
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expiry_date: number;
-  scopes: string[];
-}
+export const TokenDataSchema = z.object({
+  email: z.string(),
+  access_token: z.string(),
+  refresh_token: z.string(),
+  token_type: z.string(),
+  expiry_date: z.number(),
+  scopes: z.array(z.string()),
+});
+
+export type TokenData = z.infer<typeof TokenDataSchema>;
 
 /** OAuth scopes requested at login (decision 0005). */
 export const OAUTH_SCOPES = [
@@ -143,7 +146,21 @@ export function loadTokens(
 ): TokenData | null {
   const path = getTokenPath(email);
   if (!fs.existsSync(path)) return null;
-  return JSON.parse(fs.readFileSync(path)) as TokenData;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(path));
+  } catch {
+    raw = undefined;
+  }
+  const parsed = TokenDataSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new AppError(
+      "AUTH_REQUIRED",
+      `Stored credentials for ${email} are unreadable. Re-run \`gdrive auth\`.`,
+    );
+  }
+  return parsed.data;
 }
 
 export function saveTokens(fs: FsAdapter, tokens: TokenData): void {

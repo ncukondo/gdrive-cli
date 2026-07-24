@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { AppError } from "./types/index.ts";
 
 /**
@@ -13,15 +14,18 @@ export const PACKAGE_NAME = "@ncukondo/gdrive-cli";
 export const LATEST_RELEASE_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 export const CHECKSUM_ASSET = "SHA256SUMS";
 
-export interface ReleaseAsset {
-  name: string;
-  browser_download_url: string;
-}
+const ReleaseAssetSchema = z.object({
+  name: z.string(),
+  browser_download_url: z.string(),
+});
 
-export interface ReleaseInfo {
-  tag_name: string;
-  assets: ReleaseAsset[];
-}
+const ReleaseInfoSchema = z.object({
+  tag_name: z.string(),
+  assets: z.array(ReleaseAssetSchema).default([]),
+});
+
+export type ReleaseAsset = z.infer<typeof ReleaseAssetSchema>;
+export type ReleaseInfo = z.infer<typeof ReleaseInfoSchema>;
 
 export interface UpgradeEnv {
   currentVersion: string;
@@ -86,21 +90,22 @@ export function parseSha256Sums(text: string): Map<string, string> {
 }
 
 async function fetchLatestRelease(env: UpgradeEnv): Promise<ReleaseInfo> {
-  let release: ReleaseInfo;
+  let raw: unknown;
   try {
-    release = (await env.fetchJson(LATEST_RELEASE_URL)) as ReleaseInfo;
+    raw = await env.fetchJson(LATEST_RELEASE_URL);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new AppError("API_ERROR", `Could not fetch the latest release: ${message}`);
   }
-  if (typeof release?.tag_name !== "string") {
+  const release = ReleaseInfoSchema.safeParse(raw);
+  if (!release.success) {
     throw new AppError("API_ERROR", "Could not fetch the latest release: malformed response.");
   }
-  return release;
+  return release.data;
 }
 
 function findAsset(release: ReleaseInfo, name: string): ReleaseAsset {
-  const asset = (release.assets ?? []).find((a) => a.name === name);
+  const asset = release.assets.find((a) => a.name === name);
   if (!asset) {
     throw new AppError("API_ERROR", `Release ${release.tag_name} is missing ${name}.`);
   }

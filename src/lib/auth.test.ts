@@ -128,6 +128,26 @@ describe("token storage", () => {
     expect(loadTokens(createFakeFs(), "nobody@x.com")).toBeNull();
   });
 
+  it("loadTokens rejects an unparseable token file with AUTH_REQUIRED", () => {
+    const fs = createFakeFs({ [getTokenPath("me@x.com")]: "{ not json" });
+    expect(() => loadTokens(fs, "me@x.com")).toThrow(
+      /Stored credentials for me@x.com are unreadable/,
+    );
+  });
+
+  it("loadTokens rejects a token file missing required fields", () => {
+    const fs = createFakeFs({
+      [getTokenPath("me@x.com")]: JSON.stringify({ email: "me@x.com", access_token: "at" }),
+    });
+    try {
+      loadTokens(fs, "me@x.com");
+      expect.unreachable("should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AppError);
+      if (error instanceof AppError) expect(error.code).toBe("AUTH_REQUIRED");
+    }
+  });
+
   it("listTokenEmails lists emails and ignores non-json files", () => {
     const fs = createFakeFs({
       [`${ACCOUNTS_DIR}/a@x.com.json`]: "{}",

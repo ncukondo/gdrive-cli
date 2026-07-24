@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { mapDriveError as mapApiError } from "./api.ts";
 import { AppError } from "../types/index.ts";
 
@@ -137,6 +138,9 @@ export function formatCsv(values: string[][]): string {
     .join("\n");
 }
 
+/** A JSON `--values` payload: rows of arbitrary cells, stringified below. */
+const GridSchema = z.array(z.array(z.unknown()));
+
 /** Parses `--values` content: a JSON 2-D array, else CSV (decision 0010). */
 export function parseValues(text: string): string[][] {
   const trimmed = text.trim();
@@ -146,12 +150,14 @@ export function parseValues(text: string): string[][] {
   try {
     parsed = JSON.parse(trimmed);
   } catch (error) {
-    throw new AppError("INVALID_ARGS", `Invalid JSON values: ${(error as Error).message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AppError("INVALID_ARGS", `Invalid JSON values: ${message}`);
   }
-  if (!Array.isArray(parsed) || !parsed.every((row) => Array.isArray(row))) {
+  const grid = GridSchema.safeParse(parsed);
+  if (!grid.success) {
     throw new AppError("INVALID_ARGS", 'JSON values must be a 2-D array, e.g. [["a","b"]].');
   }
-  return (parsed as unknown[][]).map((row) => row.map(cellToString));
+  return grid.data.map((row) => row.map(cellToString));
 }
 
 function cellToString(cell: unknown): string {

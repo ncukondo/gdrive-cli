@@ -1,4 +1,5 @@
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
+import { z } from "zod";
 import { AppError, type OutputFormat } from "../types/index.ts";
 import type { FsAdapter } from "./fs.ts";
 
@@ -72,17 +73,22 @@ function validateFormat(value: string): OutputFormat {
   return value;
 }
 
+/** Any TOML table: the untyped shape every config read starts from (0015). */
+const TableSchema = z.record(z.string(), z.unknown());
+
 function toAccountEntry(raw: unknown, index: number): AccountEntry {
-  if (typeof raw !== "object" || raw === null) {
+  const table = TableSchema.safeParse(raw);
+  if (!table.success) {
     throw new AppError("CONFIG_ERROR", `Invalid [[accounts]] entry at index ${index}`);
   }
-  const record = raw as Record<string, unknown>;
-  if (typeof record["email"] !== "string" || record["email"] === "") {
+  const email = table.data["email"];
+  if (typeof email !== "string" || email === "") {
     throw new AppError("CONFIG_ERROR", `[[accounts]] entry at index ${index} is missing "email"`);
   }
-  const entry: AccountEntry = { email: record["email"] };
-  if (typeof record["alias"] === "string" && record["alias"] !== "") {
-    entry.alias = record["alias"];
+  const entry: AccountEntry = { email };
+  const alias = table.data["alias"];
+  if (typeof alias === "string" && alias !== "") {
+    entry.alias = alias;
   }
   return entry;
 }
@@ -94,7 +100,7 @@ export function parseConfig(toml: string): Config {
     raw = {};
   } else {
     try {
-      raw = parseToml(toml) as Record<string, unknown>;
+      raw = TableSchema.parse(parseToml(toml));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new AppError("CONFIG_ERROR", `Failed to parse config: ${message}`);
@@ -186,7 +192,7 @@ export function saveConfig(fs: FsAdapter, path: string, config: Config): void {
   let base: Record<string, unknown> = {};
   if (fs.existsSync(path)) {
     try {
-      base = parseToml(fs.readFileSync(path)) as Record<string, unknown>;
+      base = TableSchema.parse(parseToml(fs.readFileSync(path)));
     } catch {
       base = {};
     }
