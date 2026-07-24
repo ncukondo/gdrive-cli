@@ -39,6 +39,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0011 `init` command](archive/0011-init.md) | 0003, 0004 | — | done |
 | [0012 Distribution, installer & `upgrade`](archive/0012-distribution.md) | 0007, 0008, 0009, 0010, 0014 | — | done |
 | [0013 README & user docs](archive/0013-docs-site.md) | 0012 | — | done |
+| [0015 Upgrade googleapis (130 → 173)](0015-googleapis-upgrade.md) | — | — | todo |
 
 ## Parallelism notes
 
@@ -51,6 +52,9 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   and 0010 add their own `lib/*-api.ts`; 0014 extends `lib/api.ts` (0006) with
   permission methods, so it merges after 0006 and coordinates with 0007/0008 on
   `lib/api.ts` edits.
+
+After v0.1.0 shipped, the plan continues with maintenance work; 0015 is the
+first such task and depends on nothing.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
