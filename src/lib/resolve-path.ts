@@ -74,7 +74,11 @@ export async function resolvePath(client: DriveClient, arg: string): Promise<str
         `Ambiguous path segment "${segment}" in ${soFar}; matches: ${ids}. Use a file ID to disambiguate.`,
       );
     }
-    parentId = matches[0]!.id;
+    const [match] = matches;
+    if (match === undefined) {
+      throw new AppError("NOT_FOUND", `No such file or folder: ${soFar}`);
+    }
+    parentId = match.id;
     walked.push(segment);
   }
 

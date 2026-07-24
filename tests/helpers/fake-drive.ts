@@ -13,13 +13,13 @@ function unescape(value: string): string {
 }
 
 function extractName(q: string): string | undefined {
-  const m = /name = '((?:[^'\\]|\\.)*)'/.exec(q);
-  return m ? unescape(m[1] as string) : undefined;
+  const [, name] = /name = '((?:[^'\\]|\\.)*)'/.exec(q) ?? [];
+  return name === undefined ? undefined : unescape(name);
 }
 
 function extractParent(q: string): string | undefined {
-  const m = /'((?:[^'\\]|\\.)*)' in parents/.exec(q);
-  return m ? unescape(m[1] as string) : undefined;
+  const [, parent] = /'((?:[^'\\]|\\.)*)' in parents/.exec(q) ?? [];
+  return parent === undefined ? undefined : unescape(parent);
 }
 
 /**

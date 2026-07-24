@@ -128,11 +128,7 @@ export interface DriveClient {
 // --- Error mapping ----------------------------------------------------------
 
 function isGoogleApiError(error: unknown): error is Error & { code: number } {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    typeof (error as { code: unknown }).code === "number"
-  );
+  return error instanceof Error && "code" in error && typeof error.code === "number";
 }
 
 /** Translates a googleapis error into an {@link AppError}; re-throws anything else. */
@@ -434,10 +430,10 @@ const GRANTEE_TYPES: GranteeType[] = ["user", "group", "domain", "anyone"];
 
 /** Normalizes a raw Drive permission into a {@link DrivePermission}. */
 export function normalizePermission(raw: PermissionRaw): DrivePermission {
-  const type = raw.type ?? "";
+  const type = GRANTEE_TYPES.find((candidate) => candidate === raw.type) ?? "user";
   return {
     id: raw.id ?? "",
-    type: GRANTEE_TYPES.includes(type as GranteeType) ? (type as GranteeType) : "user",
+    type,
     role: raw.role ?? "",
     email: raw.emailAddress ?? null,
     display_name: raw.displayName ?? null,

@@ -42,8 +42,9 @@ export function resolveAccountEmail(
   if (accounts.length === 0) {
     throw new AppError("AUTH_REQUIRED", "No authenticated accounts. Run `gdrive auth`.");
   }
-  if (accounts.length === 1) {
-    return accounts[0] as string;
+  const [only] = accounts;
+  if (accounts.length === 1 && only !== undefined) {
+    return only;
   }
   throw new AppError(
     "ACCOUNT_NOT_FOUND",

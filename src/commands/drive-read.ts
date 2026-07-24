@@ -129,7 +129,8 @@ export function registerDriveRead(program: Command): void {
           try {
             writeFileSync(path, toBuffer(content));
           } catch (err) {
-            throw new AppError("IO_ERROR", `Failed to write ${path}: ${(err as Error).message}`);
+            const message = err instanceof Error ? err.message : String(err);
+            throw new AppError("IO_ERROR", `Failed to write ${path}: ${message}`);
           }
         },
         writeStdout: (content) => process.stdout.write(toBuffer(content)),

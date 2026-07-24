@@ -4,15 +4,18 @@ export type OutputFormat = "text" | "json";
  * Stable error codes (decision 0007). Thrown internally as `AppError.code`;
  * `index.ts` maps each to an exit code and renders per the active format.
  */
-export type ErrorCode =
-  | "AUTH_REQUIRED"
-  | "AUTH_EXPIRED"
-  | "ACCOUNT_NOT_FOUND"
-  | "NOT_FOUND"
-  | "INVALID_ARGS"
-  | "API_ERROR"
-  | "CONFIG_ERROR"
-  | "IO_ERROR";
+const ERROR_CODES = [
+  "AUTH_REQUIRED",
+  "AUTH_EXPIRED",
+  "ACCOUNT_NOT_FOUND",
+  "NOT_FOUND",
+  "INVALID_ARGS",
+  "API_ERROR",
+  "CONFIG_ERROR",
+  "IO_ERROR",
+] as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[number];
 
 export const ExitCode = {
   SUCCESS: 0,
@@ -113,10 +116,9 @@ export function errorToExit(code: ErrorCode): number {
 /** Resolves an unknown thrown value to a stable {@link ErrorCode}. */
 export function errorToCode(error: unknown): ErrorCode {
   if (error instanceof Error && "code" in error) {
-    const code = (error as Error & { code: unknown }).code;
-    if (typeof code === "string" && code in ERROR_CODE_EXIT_MAP) {
-      return code as ErrorCode;
-    }
+    const { code } = error;
+    const known = ERROR_CODES.find((candidate) => candidate === code);
+    if (known !== undefined) return known;
   }
   return "API_ERROR";
 }

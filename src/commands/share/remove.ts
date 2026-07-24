@@ -30,9 +30,10 @@ export async function handleShareRemove(deps: ShareRemoveDeps): Promise<CommandR
 
   const fileId = await deps.resolvePath(deps.file);
 
+  // `given` above guarantees exactly one branch applies.
   let permissionId = deps.permissionId;
-  if (permissionId === undefined) {
-    const wanted = (deps.to as string).toLowerCase();
+  if (permissionId === undefined && deps.to !== undefined) {
+    const wanted = deps.to.toLowerCase();
     const match = (await deps.listPermissions(fileId)).find(
       (p) => p.email !== null && p.email.toLowerCase() === wanted,
     );
@@ -40,6 +41,9 @@ export async function handleShareRemove(deps: ShareRemoveDeps): Promise<CommandR
       throw new AppError("NOT_FOUND", `No permission for ${deps.to} on ${deps.file}.`);
     }
     permissionId = match.id;
+  }
+  if (permissionId === undefined) {
+    throw new AppError("INVALID_ARGS", "Specify --to <email> or --permission-id <id>.");
   }
 
   await deps.deletePermission(fileId, permissionId);
