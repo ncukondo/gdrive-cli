@@ -1,6 +1,6 @@
 # Task 0008: Drive write commands
 
-Status: todo
+Status: done
 Depends on: 0006
 Parallel: yes (group B) — alongside 0007
 
@@ -27,10 +27,14 @@ Parallel: yes (group B) — alongside 0007
 
 ## Acceptance criteria
 
-- [ ] All five commands' text/json/quiet outputs match 0008
-- [ ] `rm` defaults to trash; `--permanent` deletes
-- [ ] Path/ID addressing works for source and destination
-- [ ] `bun run test`, `bun run typecheck` pass; docs updated
+- [x] All five commands' text/json/quiet outputs match 0008
+- [x] `rm` defaults to trash; `--permanent` deletes
+- [x] Path/ID addressing works for source and destination
+- [x] `bun run test`, `bun run typecheck` pass; docs updated
+
+Live-verified end-to-end against the real account (self-cleaning smoke test):
+mkdir, upload (plain + `--as-sheet` conversion), cp, mv, then `rm` to trash the
+test folder. Unit tests cover the handlers via injected operations.
 
 ## Verification
 
