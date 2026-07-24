@@ -27,6 +27,7 @@ instead of restating them.
 | [0012](0012-testing-strategy.md) | Testing: types, fs/client injection, E2E policy |
 | [0013](0013-architecture.md) | Source-tree map & command-registration contract |
 | [0014](0014-pre-1.0-compatibility.md) | Pre-1.0: breaking input/output changes allowed until 1.0 or a first user |
+| [0015](0015-no-type-assertions.md) | No type assertions: parse at the edges, adapt generated clients |
 
 ## Related projects (reference implementations)
 

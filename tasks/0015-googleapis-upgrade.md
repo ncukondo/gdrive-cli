@@ -1,7 +1,7 @@
 # Task 0015: Upgrade googleapis (130 → 173)
 
 Status: todo
-Depends on: —
+Depends on: 0016 (removes the casts that hide this bump's breakage)
 Parallel: no — touches every command's client construction
 
 ## Goal
@@ -39,11 +39,11 @@ OAuth surface: `src/lib/auth.ts` and `src/lib/account.ts`
 
 ## Out of scope
 
-- Dropping the `as unknown as` casts in favor of the generated types. Tempting
-  (it would have caught this class of drift) but it pulls googleapis types into
-  the fakes and rewrites `decisions/0012`'s injection model — file a separate
-  task with a decision record if wanted. Note that `decisions/0014` makes this
-  kind of churn cheap right now, so it is worth doing soon rather than later.
+- Dropping the `as unknown as` casts in favor of the generated types — now
+  owned by `tasks/0016-remove-type-assertions.md` (`decisions/0015`), which
+  this task depends on. It keeps `decisions/0012`'s fakes intact by putting the
+  generated types behind adapters in `src/lib/google-clients.ts`, so after 0016
+  the bump *is* compiler-checked and step 1 below stops being a formality.
 - Other dependency bumps (`commander`, `zod`, `smol-toml`).
 
 ## Plan
