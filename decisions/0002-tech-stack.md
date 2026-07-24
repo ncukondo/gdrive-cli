@@ -72,3 +72,6 @@ bun run lint / format / format:check / typecheck
 - Tooling differs from yaml-form-cli (which uses `bun test` + `biome`); only
   its *process* (0001) and *distribution* (0003) are borrowed, not its
   toolchain.
+- `bun.lock` **is committed** (unlike gcal-cli, which ignores it). gdrive-cli
+  ships as an npm package and a single-file binary, so a pinned dependency tree
+  keeps installs, CI, and the compiled binary reproducible.

@@ -6,4 +6,3 @@ gdrive
 .env
 .DS_Store
 credentials.json
-bun.lock
