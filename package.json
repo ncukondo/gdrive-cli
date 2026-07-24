@@ -1,0 +1,51 @@
+{
+  "name": "@ncukondo/gdrive-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "bin": {
+    "gdrive": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ncukondo/gdrive-cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "build:bin": "bun build src/index.ts --compile --outfile gdrive",
+    "test": "vitest",
+    "test:unit": "vitest run src",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "test:all": "vitest run",
+    "lint": "oxlint src tests",
+    "format": "oxfmt src tests",
+    "format:check": "oxfmt --check src tests",
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky || true",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "googleapis": "^130.0.0",
+    "smol-toml": "^1.0.0",
+    "zod": "^4.0.0-beta"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0",
+    "oxlint": "latest",
+    "oxfmt": "latest",
+    "husky": "^9.1.7"
+  }
+}

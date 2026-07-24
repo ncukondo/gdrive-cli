@@ -2,5 +2,8 @@ node_modules/
 dist/
 gdrive
 *.log
+*.tsbuildinfo
 .env
 .DS_Store
+credentials.json
+bun.lock

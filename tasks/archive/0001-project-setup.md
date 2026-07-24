@@ -1,6 +1,6 @@
 # Task 0001: Project setup & tooling
 
-Status: todo
+Status: done
 Depends on: —
 Parallel: no — foundation for everything
 
@@ -39,11 +39,11 @@ A buildable, testable TypeScript/Bun project skeleton with the tech stack from
 
 ## Acceptance criteria
 
-- [ ] `bun run dev -- --version` prints the version
-- [ ] `bun run dev -- --help` lists global options
-- [ ] Unknown command exits 3 (`INVALID_ARGS`)
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint` pass
-- [ ] README stub exists
+- [x] `bun run dev -- --version` prints the version
+- [x] `bun run dev -- --help` lists global options
+- [x] Unknown command exits 3 (`INVALID_ARGS`)
+- [x] `bun run test`, `bun run typecheck`, `bun run lint` pass
+- [x] README stub exists
 
 ## Verification
 

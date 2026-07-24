@@ -1,0 +1,3 @@
+bun run lint
+bun run typecheck
+bunx vitest --changed --run --exclude 'tests/e2e/**'
