@@ -13,6 +13,10 @@ stable interface: the envelope shape, `error.code` values, and each command's
 `data` fields are treated as a contract — additive changes preferred, breaking
 changes require a decision record. Text output is the convenience layer.
 
+> While the project is pre-1.0 with no known users, this contract is relaxed:
+> see [0014](0014-pre-1.0-compatibility.md). Read the paragraph above as the
+> policy from 1.0 onward.
+
 ## Decision
 
 ### Output modes

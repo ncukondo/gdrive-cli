@@ -26,6 +26,7 @@ instead of restating them.
 | [0011](0011-sharing-commands.md) | Sharing & permissions (`share list/add/remove/link`) |
 | [0012](0012-testing-strategy.md) | Testing: types, fs/client injection, E2E policy |
 | [0013](0013-architecture.md) | Source-tree map & command-registration contract |
+| [0014](0014-pre-1.0-compatibility.md) | Pre-1.0: breaking input/output changes allowed until 1.0 or a first user |
 
 ## Related projects (reference implementations)
 

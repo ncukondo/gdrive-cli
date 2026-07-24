@@ -42,7 +42,8 @@ OAuth surface: `src/lib/auth.ts` and `src/lib/account.ts`
 - Dropping the `as unknown as` casts in favor of the generated types. Tempting
   (it would have caught this class of drift) but it pulls googleapis types into
   the fakes and rewrites `decisions/0012`'s injection model — file a separate
-  task with a decision record if wanted.
+  task with a decision record if wanted. Note that `decisions/0014` makes this
+  kind of churn cheap right now, so it is worth doing soon rather than later.
 - Other dependency bumps (`commander`, `zod`, `smol-toml`).
 
 ## Plan
