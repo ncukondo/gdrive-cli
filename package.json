@@ -48,6 +48,7 @@
     "test:e2e": "vitest run tests/e2e",
     "test:all": "vitest run",
     "lint": "oxlint src tests scripts",
+    "lint:casts": "bun scripts/lint-casts.ts",
     "format": "oxfmt src tests scripts",
     "format:check": "oxfmt --check src tests scripts",
     "typecheck": "tsc --noEmit",

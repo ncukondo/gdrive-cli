@@ -9,6 +9,7 @@ import {
 import { saveTokens, type TokenData } from "../lib/auth.ts";
 import { parseConfig, type Config } from "../lib/config.ts";
 import { createFakeFs, type FakeFs } from "../../tests/helpers/fake-fs.ts";
+import { callArgs } from "../../tests/helpers/mock.ts";
 
 const HOME = "/home/test";
 
@@ -134,7 +135,7 @@ describe("handleAccountList", () => {
 
 describe("handleAccountUse", () => {
   it("sets default_account to the resolved email and persists", async () => {
-    const writeConfig = vi.fn();
+    const writeConfig = vi.fn((_config: Config) => {});
     const out = collect();
     await handleAccountUse({
       fs: fsWithAccounts("work@example.com", "me@gmail.com"),
@@ -166,7 +167,7 @@ describe("handleAccountUse", () => {
 
 describe("handleAccountAlias", () => {
   it("assigns an alias and persists", async () => {
-    const writeConfig = vi.fn();
+    const writeConfig = vi.fn((_config: Config) => {});
     await handleAccountAlias({
       fs: fsWithAccounts("new@x.com"),
       config: { default_format: "text", accounts: [] },
@@ -177,7 +178,7 @@ describe("handleAccountAlias", () => {
       write: () => {},
       writeConfig,
     });
-    const saved = writeConfig.mock.calls[0]?.[0] as Config;
+    const [saved] = callArgs(writeConfig);
     expect(saved.accounts).toEqual([{ email: "new@x.com", alias: "fresh" }]);
   });
 
@@ -199,7 +200,7 @@ describe("handleAccountAlias", () => {
 
 describe("handleAccountRemove", () => {
   it("revokes, drops the config entry, and clears the default", async () => {
-    const writeConfig = vi.fn();
+    const writeConfig = vi.fn((_config: Config) => {});
     const revoke = vi.fn(async () => {});
     const out = collect();
     await handleAccountRemove({
@@ -213,7 +214,7 @@ describe("handleAccountRemove", () => {
       revoke,
     });
     expect(revoke).toHaveBeenCalledWith("me@gmail.com");
-    const saved = writeConfig.mock.calls[0]?.[0] as Config;
+    const [saved] = callArgs(writeConfig);
     expect(saved.accounts.some((a) => a.email === "me@gmail.com")).toBe(false);
     expect(saved.default_account).toBeUndefined();
     expect(out.output).toBe("Removed me@gmail.com");

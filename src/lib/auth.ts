@@ -5,7 +5,21 @@ import { AppError } from "../types/index.ts";
 import type { FsAdapter } from "./fs.ts";
 
 export type PromptFn = (message: string) => Promise<string>;
-export type FetchFn = typeof globalThis.fetch;
+
+/**
+ * The slice of `fetch` this module uses (decision 0015). `globalThis.fetch`
+ * satisfies it, and a test double is a plain function — no cast either way.
+ */
+export interface FetchResponse {
+  ok: boolean;
+  status: number;
+  json: () => Promise<unknown>;
+}
+
+export type FetchFn = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string },
+) => Promise<FetchResponse>;
 
 export interface ClientCredentials {
   clientId: string;
@@ -24,6 +38,34 @@ export const TokenDataSchema = z.object({
 });
 
 export type TokenData = z.infer<typeof TokenDataSchema>;
+
+const ClientSecretFileSchema = z.object({
+  installed: z.object({
+    client_id: z.string(),
+    client_secret: z.string(),
+    redirect_uris: z.array(z.string()).optional(),
+  }),
+});
+
+/** OAuth token endpoint payload; `refresh_token` is absent on a refresh. */
+const TokenResponseSchema = z.object({
+  access_token: z.string(),
+  expires_in: z.number(),
+  token_type: z.string(),
+  refresh_token: z.string().optional(),
+  scope: z.string().optional(),
+});
+
+const UserInfoSchema = z.object({ email: z.string().optional() });
+
+/** JSON.parse without the throw — malformed input becomes a schema failure. */
+function readJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
 
 /** OAuth scopes requested at login (decision 0005). */
 export const OAUTH_SCOPES = [
@@ -67,13 +109,18 @@ export function getClientCredentials(
 ): ClientCredentials {
   const clientSecretPath = getClientSecretPath();
   if (fs.existsSync(clientSecretPath)) {
-    const raw = JSON.parse(fs.readFileSync(clientSecretPath)) as {
-      installed: { client_id: string; client_secret: string; redirect_uris?: string[] };
-    };
+    const raw = ClientSecretFileSchema.safeParse(readJson(fs.readFileSync(clientSecretPath)));
+    if (!raw.success) {
+      throw new AppError(
+        "AUTH_REQUIRED",
+        `Malformed ${clientSecretPath}: expected an "installed" client with client_id and client_secret.`,
+      );
+    }
+    const { installed } = raw.data;
     return {
-      clientId: raw.installed.client_id,
-      clientSecret: raw.installed.client_secret,
-      redirectUri: raw.installed.redirect_uris?.[0] ?? DEFAULT_REDIRECT_URI,
+      clientId: installed.client_id,
+      clientSecret: installed.client_secret,
+      redirectUri: installed.redirect_uris?.[0] ?? DEFAULT_REDIRECT_URI,
     };
   }
 
@@ -209,12 +256,14 @@ export async function refreshAccessToken(
     );
   }
 
-  const data = (await response.json()) as {
-    access_token: string;
-    expires_in: number;
-    token_type: string;
-    refresh_token?: string;
-  };
+  const parsed = TokenResponseSchema.safeParse(await response.json());
+  if (!parsed.success) {
+    throw new AppError(
+      "AUTH_EXPIRED",
+      `Failed to refresh token for ${tokens.email}. Re-run \`gdrive auth\`.`,
+    );
+  }
+  const data = parsed.data;
 
   return {
     email: tokens.email,
@@ -237,7 +286,7 @@ export async function fetchUserEmail(
   if (!response.ok) {
     throw new AppError("API_ERROR", "Failed to fetch account email from userinfo.");
   }
-  const data = (await response.json()) as { email?: string };
+  const data = UserInfoSchema.safeParse(await response.json()).data ?? {};
   if (!data.email) {
     throw new AppError("API_ERROR", "Userinfo response did not include an email.");
   }
@@ -341,13 +390,11 @@ export async function startOAuthFlow(
             if (!tokenResponse.ok) {
               throw new AppError("AUTH_REQUIRED", "Failed to exchange authorization code.");
             }
-            const data = (await tokenResponse.json()) as {
-              access_token: string;
-              refresh_token: string;
-              expires_in: number;
-              token_type: string;
-              scope?: string;
-            };
+            const parsed = TokenResponseSchema.safeParse(await tokenResponse.json());
+            if (!parsed.success || parsed.data.refresh_token === undefined) {
+              throw new AppError("AUTH_REQUIRED", "Failed to exchange authorization code.");
+            }
+            const data = { ...parsed.data, refresh_token: parsed.data.refresh_token };
             const email = await fetchUserEmail(data.access_token, fetchFn);
             const tokens: TokenData = {
               email,

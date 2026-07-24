@@ -27,14 +27,10 @@ import {
   type ListParams,
 } from "./api.ts";
 import { AppError } from "../types/index.ts";
+import { callArgs } from "../../tests/helpers/mock.ts";
 
 function raw(overrides: Partial<DriveFileRaw> = {}): DriveFileRaw {
   return { id: "id1", name: "File", mimeType: "text/plain", ...overrides };
-}
-
-/** Typed accessor for a mock call's argument (works around vi.fn param inference). */
-function argOf<T>(fn: unknown, callIdx = 0, argIdx = 0): T {
-  return (fn as { mock: { calls: unknown[][] } }).mock.calls[callIdx]?.[argIdx] as T;
 }
 
 type CreateParam = Parameters<DriveClient["files"]["create"]>[0];
@@ -138,7 +134,7 @@ describe("listChildren", () => {
 
     const files = await listChildren(drive, "FOLDER", { trashed: false });
     expect(files.map((f) => f.id)).toEqual(["a", "b", "c"]);
-    const firstQ = argOf<ListParams>(list).q;
+    const firstQ = callArgs(list)[0].q;
     expect(firstQ).toContain("'FOLDER' in parents");
     expect(firstQ).toContain("trashed = false");
   });
@@ -152,9 +148,9 @@ describe("listChildren", () => {
   });
 
   it("adds a type filter and orderBy", async () => {
-    const list = vi.fn(async () => ({ data: { files: [] } }));
+    const list = vi.fn(async (_params: ListParams) => ({ data: { files: [] } }));
     await listChildren(mockDrive({ list }), "F", { type: "folder", order: "modified" });
-    const params = argOf<ListParams>(list);
+    const params = callArgs(list)[0];
     expect(params.q).toContain("mimeType = 'application/vnd.google-apps.folder'");
     expect(params.orderBy).toBe("modifiedTime desc");
   });
@@ -162,10 +158,10 @@ describe("listChildren", () => {
 
 describe("searchFiles", () => {
   it("queries name and fullText", async () => {
-    const list = vi.fn(async () => ({ data: { files: [raw({ id: "x" })] } }));
+    const list = vi.fn(async (_params: ListParams) => ({ data: { files: [raw({ id: "x" })] } }));
     const files = await searchFiles(mockDrive({ list }), "budget");
     expect(files.map((f) => f.id)).toEqual(["x"]);
-    const q = argOf<ListParams>(list).q;
+    const q = callArgs(list)[0].q;
     expect(q).toContain("name contains 'budget'");
     expect(q).toContain("fullText contains 'budget'");
   });
@@ -190,13 +186,13 @@ describe("metadata & mutations", () => {
   });
 
   it("createFolder sets the folder MIME and parent", async () => {
-    const create = vi.fn(async () => ({
+    const create = vi.fn(async (_params: CreateParam) => ({
       data: raw({ id: "new", mimeType: "application/vnd.google-apps.folder" }),
     }));
     const drive = mockDrive({ create });
     const folder = await createFolder(drive, "New", "PARENT");
     expect(folder.type).toBe("folder");
-    const body = argOf<CreateParam>(create).requestBody;
+    const body = callArgs(create)[0].requestBody;
     expect(body).toMatchObject({
       name: "New",
       mimeType: "application/vnd.google-apps.folder",
@@ -205,9 +201,9 @@ describe("metadata & mutations", () => {
   });
 
   it("copyFile passes parent and optional name", async () => {
-    const copy = vi.fn(async () => ({ data: raw({ id: "copy" }) }));
+    const copy = vi.fn(async (_params: CopyParam) => ({ data: raw({ id: "copy" }) }));
     await copyFile(mockDrive({ copy }), "src", "DEST", "renamed");
-    expect(argOf<CopyParam>(copy)).toMatchObject({
+    expect(callArgs(copy)[0]).toMatchObject({
       fileId: "src",
       requestBody: { parents: ["DEST"], name: "renamed" },
     });
@@ -215,9 +211,11 @@ describe("metadata & mutations", () => {
 
   it("moveFile removes current parents and adds the new one", async () => {
     const get = vi.fn(async () => ({ data: raw({ id: "m", parents: ["old1", "old2"] }) }));
-    const update = vi.fn(async () => ({ data: raw({ id: "m", parents: ["DEST"] }) }));
+    const update = vi.fn(async (_params: UpdateParam) => ({
+      data: raw({ id: "m", parents: ["DEST"] }),
+    }));
     await moveFile(mockDrive({ get, update }), "m", "DEST");
-    expect(argOf<UpdateParam>(update)).toMatchObject({
+    expect(callArgs(update)[0]).toMatchObject({
       fileId: "m",
       addParents: "DEST",
       removeParents: "old1,old2",
@@ -225,9 +223,9 @@ describe("metadata & mutations", () => {
   });
 
   it("trashFile sets trashed=true", async () => {
-    const update = vi.fn(async () => ({ data: raw({ trashed: true }) }));
+    const update = vi.fn(async (_params: UpdateParam) => ({ data: raw({ trashed: true }) }));
     await trashFile(mockDrive({ update }), "t");
-    expect(argOf<UpdateParam>(update).requestBody).toEqual({ trashed: true });
+    expect(callArgs(update)[0].requestBody).toEqual({ trashed: true });
   });
 
   it("deleteFile calls delete", async () => {
@@ -237,7 +235,7 @@ describe("metadata & mutations", () => {
   });
 
   it("uploadMedia sends media and optional conversion type", async () => {
-    const create = vi.fn(async () => ({ data: raw({ id: "up" }) }));
+    const create = vi.fn(async (_params: CreateParam) => ({ data: raw({ id: "up" }) }));
     await uploadMedia(mockDrive({ create }), {
       name: "n.csv",
       mimeType: "text/csv",
@@ -245,7 +243,7 @@ describe("metadata & mutations", () => {
       parentId: "P",
       convertToMimeType: "application/vnd.google-apps.spreadsheet",
     });
-    const call = argOf<CreateParam>(create);
+    const call = callArgs(create)[0];
     expect(call.media).toMatchObject({ mimeType: "text/csv", body: "a,b" });
     expect(call.requestBody).toMatchObject({
       name: "n.csv",
@@ -274,7 +272,7 @@ describe("mapDriveError", () => {
     try {
       mapDriveError(err);
     } catch (e) {
-      code = (e as AppError).code;
+      if (e instanceof AppError) code = e.code;
     }
     expect(code).toBe(expected);
   });
@@ -378,7 +376,7 @@ describe("permission operations", () => {
   });
 
   it("createPermission sends the grantee body and notification flags", async () => {
-    const create = vi.fn(async () => ({
+    const create = vi.fn(async (_params: PermCreateParam) => ({
       data: { id: "p9", type: "user", role: "writer", emailAddress: "a@b.com" },
     }));
     const perm = await createPermission(mockDrive({}, { create }), "F", {
@@ -388,7 +386,7 @@ describe("permission operations", () => {
       sendNotificationEmail: true,
       emailMessage: "hi",
     });
-    const call = argOf<PermCreateParam>(create);
+    const call = callArgs(create)[0];
     expect(call.fileId).toBe("F");
     expect(call.requestBody).toEqual({ type: "user", role: "writer", emailAddress: "a@b.com" });
     expect(call.sendNotificationEmail).toBe(true);
@@ -397,17 +395,21 @@ describe("permission operations", () => {
   });
 
   it("createPermission defaults to no notification email", async () => {
-    const create = vi.fn(async () => ({ data: { id: "p9", type: "anyone", role: "reader" } }));
+    const create = vi.fn(async (_params: PermCreateParam) => ({
+      data: { id: "p9", type: "anyone", role: "reader" },
+    }));
     await createPermission(mockDrive({}, { create }), "F", { type: "anyone", role: "reader" });
-    const call = argOf<PermCreateParam>(create);
+    const call = callArgs(create)[0];
     expect(call.sendNotificationEmail).toBe(false);
     expect(call.requestBody).toEqual({ type: "anyone", role: "reader" });
   });
 
   it("updatePermissionRole patches the role", async () => {
-    const update = vi.fn(async () => ({ data: { id: "p1", type: "anyone", role: "writer" } }));
+    const update = vi.fn(async (_params: PermUpdateParam) => ({
+      data: { id: "p1", type: "anyone", role: "writer" },
+    }));
     const perm = await updatePermissionRole(mockDrive({}, { update }), "F", "p1", "writer");
-    const call = argOf<PermUpdateParam>(update);
+    const call = callArgs(update)[0];
     expect(call).toMatchObject({
       fileId: "F",
       permissionId: "p1",

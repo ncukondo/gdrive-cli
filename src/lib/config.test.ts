@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parse as parseToml } from "smol-toml";
 import {
   aliasForEmail,
   findAccount,
@@ -7,6 +6,7 @@ import {
   getDefaultConfigPath,
   loadConfig,
   parseConfig,
+  parseTomlTable,
   resolveAccount,
   saveConfig,
   serializeConfig,
@@ -25,8 +25,9 @@ function fakeFs(files: Record<string, string>) {
     dirs,
     existsSync: (p: string) => p in store,
     readFileSync: (p: string) => {
-      if (!(p in store)) throw new Error(`ENOENT: ${p}`);
-      return store[p] as string;
+      const content = store[p];
+      if (content === undefined) throw new Error(`ENOENT: ${p}`);
+      return content;
     },
     writeFileSync: (p: string, data: string) => {
       store[p] = data;
@@ -197,11 +198,11 @@ default_format = "text"
 email = "a@b.com"
 alias = "a"
 `;
-    const raw = parseToml(original) as Record<string, unknown>;
+    const raw = parseTomlTable(original);
     const config = setAlias(parseConfig(original), "a@b.com", "aa");
     const out = serializeConfig(config, raw);
 
-    const reparsed = parseToml(out) as Record<string, unknown>;
+    const reparsed = parseTomlTable(out);
     expect(reparsed["custom_key"]).toBe("keep me");
     const reconfig = parseConfig(out);
     expect(aliasForEmail(reconfig, "a@b.com")).toBe("aa");
@@ -228,14 +229,14 @@ alias = "a"
     };
     saveConfig(fs, "/home/u/.config/gdrive-cli/config.toml", config);
     expect(fs.dirs.has("/home/u/.config/gdrive-cli")).toBe(true);
-    const written = parseConfig(fs.store["/home/u/.config/gdrive-cli/config.toml"] as string);
+    const written = parseConfig(fs.store["/home/u/.config/gdrive-cli/config.toml"] ?? "");
     expect(written).toEqual(config);
   });
 
   it("saveConfig preserves unrelated keys already on disk", () => {
     const fs = fakeFs({ "/c.toml": `custom = "x"\ndefault_format = "text"\n` });
     saveConfig(fs, "/c.toml", { default_format: "json", accounts: [] });
-    const reparsed = parseToml(fs.store["/c.toml"] as string) as Record<string, unknown>;
+    const reparsed = parseTomlTable(fs.store["/c.toml"] ?? "");
     expect(reparsed["custom"]).toBe("x");
     expect(reparsed["default_format"]).toBe("json");
   });

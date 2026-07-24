@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { looksLikeId, resolvePath, ROOT_ID } from "./resolve-path.ts";
-import { AppError } from "../types/index.ts";
 import { createTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
 
 const FOLDER = "application/vnd.google-apps.folder";
@@ -59,9 +58,8 @@ describe("resolvePath", () => {
   it("errors INVALID_ARGS on an ambiguous segment, listing candidates", async () => {
     const drive = createTreeDrive(tree);
     await expect(resolvePath(drive, "Reports")).rejects.toMatchObject({ code: "INVALID_ARGS" });
-    const err = (await resolvePath(drive, "Reports").catch((e) => e)) as AppError;
-    expect(err.message).toContain("rep1");
-    expect(err.message).toContain("rep2");
+    await expect(resolvePath(drive, "Reports")).rejects.toThrow(/rep1/);
+    await expect(resolvePath(drive, "Reports")).rejects.toThrow(/rep2/);
   });
 
   it("errors NOT_FOUND when a segment does not resolve", async () => {

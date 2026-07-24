@@ -97,8 +97,10 @@ describe("getClientCredentials", () => {
     expect(() => getClientCredentials(createFakeFs())).toThrow(AppError);
     try {
       getClientCredentials(createFakeFs());
+      expect.unreachable("should have thrown");
     } catch (e) {
-      expect((e as AppError).code).toBe("AUTH_REQUIRED");
+      expect(e).toBeInstanceOf(AppError);
+      if (e instanceof AppError) expect(e.code).toBe("AUTH_REQUIRED");
     }
   });
 });
@@ -108,7 +110,7 @@ describe("saveClientCredentials", () => {
     const fs = createFakeFs();
     saveClientCredentials(fs, "cid", "csec");
     const path = `${CONFIG_DIR}/client_secret.json`;
-    expect(JSON.parse(fs.files.get(path) as string).installed.client_id).toBe("cid");
+    expect(JSON.parse(fs.files.get(path) ?? "").installed.client_id).toBe("cid");
     expect(fs.chmods.get(path)).toBe(0o600);
   });
 });
@@ -179,11 +181,7 @@ describe("refreshAccessToken", () => {
     const fetchFn = vi.fn(async () =>
       jsonResponse({ access_token: "new-at", expires_in: 3600, token_type: "Bearer" }),
     );
-    const result = await refreshAccessToken(
-      creds,
-      token("me@x.com"),
-      fetchFn as unknown as typeof fetch,
-    );
+    const result = await refreshAccessToken(creds, token("me@x.com"), fetchFn);
     expect(result.access_token).toBe("new-at");
     expect(result.email).toBe("me@x.com");
     expect(result.refresh_token).toBe("rt");
@@ -193,21 +191,21 @@ describe("refreshAccessToken", () => {
 
   it("throws AUTH_EXPIRED when refresh fails", async () => {
     const fetchFn = vi.fn(async () => jsonResponse({ error: "invalid_grant" }, false));
-    await expect(
-      refreshAccessToken(creds, token("me@x.com"), fetchFn as unknown as typeof fetch),
-    ).rejects.toMatchObject({ code: "AUTH_EXPIRED" });
+    await expect(refreshAccessToken(creds, token("me@x.com"), fetchFn)).rejects.toMatchObject({
+      code: "AUTH_EXPIRED",
+    });
   });
 });
 
 describe("fetchUserEmail", () => {
   it("returns the email from userinfo", async () => {
     const fetchFn = vi.fn(async () => jsonResponse({ email: "who@x.com" }));
-    expect(await fetchUserEmail("at", fetchFn as unknown as typeof fetch)).toBe("who@x.com");
+    expect(await fetchUserEmail("at", fetchFn)).toBe("who@x.com");
   });
 
   it("throws API_ERROR on a non-ok response", async () => {
     const fetchFn = vi.fn(async () => jsonResponse({}, false));
-    await expect(fetchUserEmail("at", fetchFn as unknown as typeof fetch)).rejects.toMatchObject({
+    await expect(fetchUserEmail("at", fetchFn)).rejects.toMatchObject({
       code: "API_ERROR",
     });
   });
@@ -243,7 +241,7 @@ describe("getAuthenticatedClient", () => {
     const fetchFn = vi.fn(async () =>
       jsonResponse({ access_token: "refreshed", expires_in: 3600, token_type: "Bearer" }),
     );
-    const client = await getAuthenticatedClient(fs, "me@x.com", fetchFn as unknown as typeof fetch);
+    const client = await getAuthenticatedClient(fs, "me@x.com", fetchFn);
     expect(client.credentials.access_token).toBe("refreshed");
     // persisted
     expect(loadTokens(fs, "me@x.com")?.access_token).toBe("refreshed");
@@ -255,16 +253,14 @@ describe("revokeTokens", () => {
     const fs = createFakeFs();
     saveTokens(fs, token("me@x.com"));
     const fetchFn = vi.fn(async () => new Response(null, { status: 200 }));
-    await revokeTokens(fs, "me@x.com", fetchFn as unknown as typeof fetch);
+    await revokeTokens(fs, "me@x.com", fetchFn);
     expect(fetchFn).toHaveBeenCalledOnce();
     expect(fs.existsSync(getTokenPath("me@x.com"))).toBe(false);
   });
 
   it("does not throw when there is no token file", async () => {
     const fetchFn = vi.fn();
-    await expect(
-      revokeTokens(createFakeFs(), "ghost@x.com", fetchFn as unknown as typeof fetch),
-    ).resolves.toBeUndefined();
+    await expect(revokeTokens(createFakeFs(), "ghost@x.com", fetchFn)).resolves.toBeUndefined();
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });

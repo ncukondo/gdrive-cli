@@ -129,6 +129,8 @@ account's alias entry from the config.
 | Symptom | Code | What to do |
 |---------|------|------------|
 | Never logged in, or no OAuth client configured | `AUTH_REQUIRED` (exit 2) | Run `gdrive auth`; set the client ID/secret |
+| Stored token file is corrupt or truncated | `AUTH_REQUIRED` (exit 2) | Re-run `gdrive auth` for that account |
+| `client_secret.json` is malformed | `AUTH_REQUIRED` (exit 2) | Re-download it, or set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` |
 | Refresh fails — token revoked or expired | `AUTH_EXPIRED` (exit 2) | Re-run `gdrive auth` for that account |
 | `-a name` names an account that has no token | `ACCOUNT_NOT_FOUND` (exit 2) | `gdrive account list` to see what is authenticated |
 | Consent screen says the app is unverified | — | Add your address as a *Test user* on the consent screen |

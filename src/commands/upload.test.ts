@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { guessMimeType, handleUpload, resolveConvertMime, type LocalFile } from "./upload.ts";
 import type { DriveFile } from "../types/index.ts";
 import type { UploadInput } from "../lib/api.ts";
+import { callArgs } from "../../tests/helpers/mock.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -67,7 +68,7 @@ describe("handleUpload", () => {
       quiet: false,
       write: () => {},
     });
-    const input = uploadMedia.mock.calls[0]?.[0] as UploadInput;
+    const [input] = callArgs(uploadMedia);
     expect(input).toEqual({ name: "notes.txt", mimeType: "text/plain", body: "BODY" });
   });
 
@@ -87,7 +88,7 @@ describe("handleUpload", () => {
       write: () => {},
     });
     expect(resolvePath).toHaveBeenCalledWith("Reports");
-    const input = uploadMedia.mock.calls[0]?.[0] as UploadInput;
+    const [input] = callArgs(uploadMedia);
     expect(input).toEqual({
       name: "Budget",
       mimeType: "text/csv",

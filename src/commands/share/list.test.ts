@@ -90,10 +90,10 @@ describe("handleShareList", () => {
       quiet: false,
       write: out.write,
     });
-    const parsed = JSON.parse(out.output) as {
+    const parsed: {
       success: boolean;
       data: { id: string; permissions: DrivePermission[] };
-    };
+    } = JSON.parse(out.output);
     expect(parsed.success).toBe(true);
     expect(parsed.data.id).toBe("FID");
     expect(parsed.data.permissions).toHaveLength(3);

@@ -12,49 +12,47 @@ function collect() {
   };
 }
 
-const outcomes: Record<string, UpgradeOutcome> = {
+const outcomes = {
   notBinary: { kind: "not-binary", package: "@ncukondo/gdrive-cli" },
   upToDate: { kind: "up-to-date", version: "0.1.0" },
   dryRun: { kind: "dry-run", current: "0.1.0", latest: "0.2.0", asset: "gdrive-linux-x64" },
   upgraded: { kind: "upgraded", from: "0.1.0", to: "0.2.0" },
-};
+} satisfies Record<string, UpgradeOutcome>;
 
 describe("formatUpgradeText", () => {
   it("advises the package manager for a runtime install", () => {
-    const text = formatUpgradeText(outcomes["notBinary"] as UpgradeOutcome);
+    const text = formatUpgradeText(outcomes.notBinary);
     expect(text).toContain("npm install -g @ncukondo/gdrive-cli@latest");
     expect(text).toContain("bun add -g @ncukondo/gdrive-cli@latest");
   });
 
   it("describes each outcome", () => {
-    expect(formatUpgradeText(outcomes["upToDate"] as UpgradeOutcome)).toBe(
-      "Already up to date (v0.1.0).",
-    );
-    expect(formatUpgradeText(outcomes["dryRun"] as UpgradeOutcome)).toBe(
+    expect(formatUpgradeText(outcomes.upToDate)).toBe("Already up to date (v0.1.0).");
+    expect(formatUpgradeText(outcomes.dryRun)).toBe(
       "Would upgrade v0.1.0 -> v0.2.0 using gdrive-linux-x64.",
     );
-    expect(formatUpgradeText(outcomes["upgraded"] as UpgradeOutcome)).toBe("Upgraded to v0.2.0.");
+    expect(formatUpgradeText(outcomes.upgraded)).toBe("Upgraded to v0.2.0.");
   });
 });
 
 describe("upgradeData", () => {
   it("exposes a stable status and version fields", () => {
-    expect(upgradeData(outcomes["dryRun"] as UpgradeOutcome)).toEqual({
+    expect(upgradeData(outcomes.dryRun)).toEqual({
       status: "dry-run",
       current_version: "0.1.0",
       latest_version: "0.2.0",
       asset: "gdrive-linux-x64",
     });
-    expect(upgradeData(outcomes["upgraded"] as UpgradeOutcome)).toEqual({
+    expect(upgradeData(outcomes.upgraded)).toEqual({
       status: "upgraded",
       current_version: "0.1.0",
       latest_version: "0.2.0",
     });
-    expect(upgradeData(outcomes["upToDate"] as UpgradeOutcome)).toEqual({
+    expect(upgradeData(outcomes.upToDate)).toEqual({
       status: "up-to-date",
       current_version: "0.1.0",
     });
-    expect(upgradeData(outcomes["notBinary"] as UpgradeOutcome)).toEqual({
+    expect(upgradeData(outcomes.notBinary)).toEqual({
       status: "not-binary",
       package: "@ncukondo/gdrive-cli",
     });
@@ -68,7 +66,7 @@ describe("handleUpgrade", () => {
     await handleUpgrade({
       runUpgrade: async (options) => {
         seen = options;
-        return outcomes["dryRun"] as UpgradeOutcome;
+        return outcomes.dryRun;
       },
       dryRun: true,
       format: "text",
@@ -82,7 +80,7 @@ describe("handleUpgrade", () => {
   it("prints the target version in quiet mode", async () => {
     const out = collect();
     await handleUpgrade({
-      runUpgrade: async () => outcomes["upgraded"] as UpgradeOutcome,
+      runUpgrade: async () => outcomes.upgraded,
       format: "text",
       quiet: true,
       write: out.write,
@@ -93,7 +91,7 @@ describe("handleUpgrade", () => {
   it("emits the envelope in JSON mode", async () => {
     const out = collect();
     await handleUpgrade({
-      runUpgrade: async () => outcomes["upToDate"] as UpgradeOutcome,
+      runUpgrade: async () => outcomes.upToDate,
       format: "json",
       quiet: false,
       write: out.write,

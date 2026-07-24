@@ -7,6 +7,7 @@ import type { GlobalOptions } from "./index.ts";
 import { createProgram, isEntryPoint, resolveGlobalOptions, handleError } from "./index.ts";
 import { AppError, ExitCode } from "./types/index.ts";
 import pkg from "../package.json" with { type: "json" };
+import { ExitSignal, mockProcessExit } from "../tests/helpers/mock.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -91,10 +92,10 @@ describe("--help", () => {
 describe("unknown command", () => {
   it("exits with code 3", () => {
     const program = createProgram();
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    const exitSpy = mockProcessExit();
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    program.parse(["node", "gdrive", "nope"]);
+    expect(() => program.parse(["node", "gdrive", "nope"])).toThrow(ExitSignal);
 
     expect(exitSpy).toHaveBeenCalledWith(ExitCode.ARGUMENT);
   });
@@ -102,12 +103,12 @@ describe("unknown command", () => {
 
 describe("format validation", () => {
   it("rejects an invalid format with exit code 3", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    const exitSpy = mockProcessExit();
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
     const program = createProgram();
     program.parse(["node", "gdrive", "--format", "xml"]);
-    resolveGlobalOptions(program);
+    expect(() => resolveGlobalOptions(program)).toThrow(ExitSignal);
 
     expect(exitSpy).toHaveBeenCalledWith(ExitCode.ARGUMENT);
     const output = stderrSpy.mock.calls.map((c) => c[0]).join("");
@@ -154,20 +155,22 @@ describe("isEntryPoint", () => {
 
 describe("handleError", () => {
   it("writes a text message to stderr and exits 1 for general errors", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    const exitSpy = mockProcessExit();
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    handleError(new Error("boom"), "text");
+    expect(() => handleError(new Error("boom"), "text")).toThrow(ExitSignal);
 
     expect(stderrSpy.mock.calls.map((c) => c[0]).join("")).toContain("boom");
     expect(exitSpy).toHaveBeenCalledWith(ExitCode.GENERAL);
   });
 
   it("writes a JSON envelope to stderr for json format", () => {
-    vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    mockProcessExit();
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    handleError(new AppError("AUTH_REQUIRED", "login first"), "json");
+    expect(() => handleError(new AppError("AUTH_REQUIRED", "login first"), "json")).toThrow(
+      ExitSignal,
+    );
 
     const parsed = JSON.parse(stderrSpy.mock.calls.map((c) => c[0]).join(""));
     expect(parsed.success).toBe(false);
@@ -176,16 +179,16 @@ describe("handleError", () => {
   });
 
   it("maps AppError codes to exit codes", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    const exitSpy = mockProcessExit();
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    handleError(new AppError("AUTH_REQUIRED", "x"), "text");
+    expect(() => handleError(new AppError("AUTH_REQUIRED", "x"), "text")).toThrow(ExitSignal);
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.AUTH);
 
-    handleError(new AppError("INVALID_ARGS", "x"), "text");
+    expect(() => handleError(new AppError("INVALID_ARGS", "x"), "text")).toThrow(ExitSignal);
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.ARGUMENT);
 
-    handleError(new AppError("NOT_FOUND", "x"), "text");
+    expect(() => handleError(new AppError("NOT_FOUND", "x"), "text")).toThrow(ExitSignal);
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.GENERAL);
   });
 });

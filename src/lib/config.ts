@@ -76,6 +76,11 @@ function validateFormat(value: string): OutputFormat {
 /** Any TOML table: the untyped shape every config read starts from (0015). */
 const TableSchema = z.record(z.string(), z.unknown());
 
+/** Parses TOML into a plain table. Throws `TomlError` on malformed input. */
+export function parseTomlTable(toml: string): Record<string, unknown> {
+  return TableSchema.parse(parseToml(toml));
+}
+
 function toAccountEntry(raw: unknown, index: number): AccountEntry {
   const table = TableSchema.safeParse(raw);
   if (!table.success) {
@@ -100,7 +105,7 @@ export function parseConfig(toml: string): Config {
     raw = {};
   } else {
     try {
-      raw = TableSchema.parse(parseToml(toml));
+      raw = parseTomlTable(toml);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new AppError("CONFIG_ERROR", `Failed to parse config: ${message}`);
@@ -192,7 +197,7 @@ export function saveConfig(fs: FsAdapter, path: string, config: Config): void {
   let base: Record<string, unknown> = {};
   if (fs.existsSync(path)) {
     try {
-      base = TableSchema.parse(parseToml(fs.readFileSync(path)));
+      base = parseTomlTable(fs.readFileSync(path));
     } catch {
       base = {};
     }

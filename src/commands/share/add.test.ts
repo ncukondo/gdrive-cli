@@ -165,9 +165,9 @@ describe("handleShareAdd", () => {
       quiet: false,
       write: j.write,
     });
-    const parsed = JSON.parse(j.output) as {
+    const parsed: {
       data: { id: string; permission: DrivePermission };
-    };
+    } = JSON.parse(j.output);
     expect(parsed.data).toEqual({ id: "FID", permission: perm() });
   });
 });

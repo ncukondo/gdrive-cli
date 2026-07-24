@@ -30,7 +30,7 @@ function env(overrides: Partial<UpgradeEnv> = {}): UpgradeEnv {
     execPath: "/home/u/.local/bin/gdrive",
     platform: "linux",
     arch: "x64",
-    fetchJson: vi.fn(async () => release() as unknown),
+    fetchJson: vi.fn(async (): Promise<unknown> => release()),
     download: vi.fn(async (url: string) =>
       url.endsWith("SHA256SUMS")
         ? new TextEncoder().encode(`${BINARY_SHA}  gdrive-linux-x64\n`)
@@ -91,7 +91,7 @@ describe("runUpgrade", () => {
   it("reports up-to-date when the release is not newer", async () => {
     const e = env({
       currentVersion: "9.9.9",
-      fetchJson: vi.fn(async () => release() as unknown),
+      fetchJson: vi.fn(async (): Promise<unknown> => release()),
     });
     expect(await runUpgrade(e, {})).toEqual({ kind: "up-to-date", version: "9.9.9" });
     expect(e.download).not.toHaveBeenCalled();

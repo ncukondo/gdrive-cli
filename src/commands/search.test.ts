@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleSearch } from "./search.ts";
 import type { DriveFile } from "../types/index.ts";
 import type { ListOptions } from "../lib/api.ts";
+import { callArgs } from "../../tests/helpers/mock.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -47,7 +48,7 @@ describe("handleSearch", () => {
     });
     expect(out.output).toContain("budget");
     expect(searchFiles.mock.calls[0]?.[0]).toBe("budget");
-    expect(searchFiles.mock.calls[0]?.[1] as ListOptions).toEqual({ type: "sheet", limit: 3 });
+    expect(callArgs(searchFiles)[1]).toEqual({ type: "sheet", limit: 3 });
   });
 
   it("shows a friendly message when there are no matches (text)", async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleLs, parseLimit, parseOrder, parseType } from "./ls.ts";
 import type { DriveFile } from "../types/index.ts";
 import type { ListOptions } from "../lib/api.ts";
+import { callArgs } from "../../tests/helpers/mock.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -140,7 +141,7 @@ describe("handleLs", () => {
       order: "modified",
       trashed: true,
     });
-    expect(listChildren.mock.calls[0]?.[1] as ListOptions).toEqual({
+    expect(callArgs(listChildren)[1]).toEqual({
       type: "folder",
       limit: 5,
       order: "modified",

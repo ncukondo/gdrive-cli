@@ -78,8 +78,10 @@ alias = "personal"
     expect(() => resolveAccountEmail(fs, configWithAlias, "personal")).toThrow(AppError);
     try {
       resolveAccountEmail(fs, configWithAlias, "personal");
+      expect.unreachable("should have thrown");
     } catch (e) {
-      expect((e as AppError).code).toBe("ACCOUNT_NOT_FOUND");
+      expect(e).toBeInstanceOf(AppError);
+      if (e instanceof AppError) expect(e.code).toBe("ACCOUNT_NOT_FOUND");
     }
   });
 

@@ -17,11 +17,10 @@ import {
   type SheetTab,
   type SpreadsheetRaw,
 } from "./sheets-api.ts";
+import { callArgs } from "../../tests/helpers/mock.ts";
 
-/** Typed accessor for a mock call's argument (works around vi.fn param inference). */
-function argOf<T>(fn: unknown, callIdx = 0, argIdx = 0): T {
-  return (fn as { mock: { calls: unknown[][] } }).mock.calls[callIdx]?.[argIdx] as T;
-}
+type ValuesUpdateParam = Parameters<SheetsClient["spreadsheets"]["values"]["update"]>[0];
+type ValuesAppendParam = Parameters<SheetsClient["spreadsheets"]["values"]["append"]>[0];
 
 const spreadsheet: SpreadsheetRaw = {
   spreadsheetId: "S1",
@@ -172,7 +171,7 @@ describe("buildRange", () => {
 
 describe("resolveRangeWith", () => {
   it("skips the tab lookup for a qualified range or an explicit --tab", async () => {
-    const fetchTabs = vi.fn(async () => [] as SheetTab[]);
+    const fetchTabs = vi.fn(async (): Promise<SheetTab[]> => []);
     expect(await resolveRangeWith(fetchTabs, { range: "Summary!A1" })).toBe("Summary!A1");
     expect(await resolveRangeWith(fetchTabs, { range: "A1", tab: "Summary" })).toBe("Summary!A1");
     expect(fetchTabs).not.toHaveBeenCalled();
@@ -246,13 +245,13 @@ describe("value operations", () => {
   });
 
   it("writeValues honors the user input mode", async () => {
-    const update = vi.fn(async () => ({ data: {} }));
+    const update = vi.fn(async (_params: ValuesUpdateParam) => ({ data: {} }));
     await writeValues(mockSheets({}, { update }), "S1", "Sheet1!A1", [["=1+1"]], "user");
-    expect(argOf(update)).toMatchObject({ valueInputOption: "USER_ENTERED" });
+    expect(callArgs(update)[0]).toMatchObject({ valueInputOption: "USER_ENTERED" });
   });
 
   it("appendValues reads counts from the updates envelope", async () => {
-    const append = vi.fn(async () => ({
+    const append = vi.fn(async (_params: ValuesAppendParam) => ({
       data: {
         updates: {
           updatedRange: "Sheet1!A4:B5",
@@ -269,7 +268,7 @@ describe("value operations", () => {
       [["a", "b"]],
       "raw",
     );
-    expect(argOf(append)).toMatchObject({
+    expect(callArgs(append)[0]).toMatchObject({
       spreadsheetId: "S1",
       range: "Sheet1",
       valueInputOption: "RAW",

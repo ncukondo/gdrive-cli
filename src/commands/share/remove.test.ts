@@ -117,7 +117,7 @@ describe("handleShareRemove", () => {
       quiet: false,
       write: j.write,
     });
-    const parsed = JSON.parse(j.output) as { data: unknown };
+    const parsed: { data: unknown } = JSON.parse(j.output);
     expect(parsed.data).toEqual({ id: "FID", permission_id: "p1", removed: true });
   });
 });

@@ -36,7 +36,7 @@ record … worth doing soon rather than later".
 
 ## Decision
 
-**No type assertions in `src/**` or `tests/**`.** That covers `as T`,
+**No type assertions in `src/**`, `tests/**`, or `scripts/**`.** That covers `as T`,
 `as unknown as T`, `as any`, `<T>expr`, and non-null `!`. `as const` and
 `satisfies` stay — they constrain rather than override inference.
 
@@ -110,11 +110,13 @@ the mock was never called, returns the typed argument tuple) and an
 
 ### Enforcement
 
-`oxlint` has no rule for this today, so the guard is a `bun run lint:casts`
-script (a grep over `src/` and `tests/`) wired into CI next to `typecheck`.
-Any assertion that must survive needs an inline comment giving the reason; the
-script's allowlist is that comment marker (`// assertion:`). At the time of
-writing the allowlist is empty.
+`oxlint` has no rule for this today, so the guard is `bun run lint:casts`
+(`scripts/lint-casts.ts`), wired into CI next to `lint`. It blanks out comments
+and string literals before matching, so prose like "surfaces as `AppError`"
+never trips it, and it recognizes all three forms (`as T`, `<T>expr`, `x!.y`)
+while allowing `as const`, `satisfies`, and `import { a as b }`. Any assertion
+that must survive needs a same-line `// assertion: <reason>` comment; at the
+time of writing there are none.
 
 ## Consequences
 

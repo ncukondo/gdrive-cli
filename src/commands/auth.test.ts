@@ -3,6 +3,7 @@ import { handleAuthLogin, handleAuthLogout, handleAuthStatus } from "./auth.ts";
 import { saveTokens, type ClientCredentials, type TokenData } from "../lib/auth.ts";
 import { parseConfig, type Config } from "../lib/config.ts";
 import { createFakeFs, type FakeFs } from "../../tests/helpers/fake-fs.ts";
+import { callArgs } from "../../tests/helpers/mock.ts";
 
 const HOME = "/home/test";
 const CLIENT_SECRET = `${HOME}/.config/gdrive-cli/client_secret.json`;
@@ -109,7 +110,7 @@ describe("handleAuthLogin", () => {
     const fs = withClientSecret(createFakeFs());
     const config: Config = { default_format: "text", accounts: [] };
     const runFlow = vi.fn(async () => token("first@x.com"));
-    const writeConfig = vi.fn();
+    const writeConfig = vi.fn((_config: Config) => {});
     const out = collect();
 
     const result = await handleAuthLogin({
@@ -135,7 +136,7 @@ describe("handleAuthLogin", () => {
     const fs = withClientSecret(createFakeFs());
     saveTokens(fs, token("existing@x.com"));
     const config: Config = { default_format: "text", accounts: [] };
-    const writeConfig = vi.fn();
+    const writeConfig = vi.fn((_config: Config) => {});
 
     await handleAuthLogin({
       fs,
@@ -185,7 +186,7 @@ email = "me@gmail.com"
 alias = "personal"
 `);
     const fetchFn = vi.fn(async () => new Response(null, { status: 200 }));
-    const writeConfig = vi.fn();
+    const writeConfig = vi.fn((_config: Config) => {});
     const out = collect();
 
     const result = await handleAuthLogout({
@@ -194,14 +195,14 @@ alias = "personal"
       format: "text",
       quiet: false,
       write: out.write,
-      fetchFn: fetchFn as unknown as typeof fetch,
+      fetchFn,
       writeConfig,
       account: "personal",
     });
 
     expect(result.exitCode).toBe(0);
     expect(fs.existsSync(`${HOME}/.config/gdrive-cli/accounts/me@gmail.com.json`)).toBe(false);
-    const savedConfig = writeConfig.mock.calls[0]?.[0] as Config;
+    const [savedConfig] = callArgs(writeConfig);
     expect(savedConfig.accounts).toEqual([]);
     expect(savedConfig.default_account).toBeUndefined();
     expect(out.output).toContain("Logged out me@gmail.com");
@@ -215,7 +216,7 @@ alias = "personal"
         format: "text",
         quiet: false,
         write: () => {},
-        fetchFn: (async () => new Response(null)) as unknown as typeof fetch,
+        fetchFn: async () => new Response(null),
         writeConfig: () => {},
         account: "ghost@x.com",
       }),

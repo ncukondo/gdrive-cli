@@ -46,7 +46,7 @@ function collect() {
 const deps = () => ({
   resolvePath: async () => "FID",
   getFile: async () => file(),
-  listPermissions: async () => [] as DrivePermission[],
+  listPermissions: async (): Promise<DrivePermission[]> => [],
   createPermission: vi.fn(async () => perm()),
   updatePermissionRole: vi.fn(async () => perm({ role: "writer" })),
   file: "F",
@@ -101,9 +101,9 @@ describe("handleShareLink", () => {
 
     const j = collect();
     await handleShareLink({ ...d, format: "json", write: j.write });
-    const parsed = JSON.parse(j.output) as {
+    const parsed: {
       data: { id: string; web_view_link: string; permission: DrivePermission };
-    };
+    } = JSON.parse(j.output);
     expect(parsed.data.id).toBe("FID");
     expect(parsed.data.web_view_link).toBe("https://docs.google.com/document/d/FID/edit");
     expect(parsed.data.permission).toEqual(perm());

@@ -6,8 +6,9 @@ function fakeFs(files: Record<string, string>) {
   return {
     existsSync: (path: string) => path in files,
     readFileSync: (path: string) => {
-      if (!(path in files)) throw new Error("ENOENT");
-      return files[path] as string;
+      const content = files[path];
+      if (content === undefined) throw new Error("ENOENT");
+      return content;
     },
   };
 }
