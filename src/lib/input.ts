@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
 import { AppError } from "../types/index.ts";
 import type { FsAdapter } from "./fs.ts";
 
 export type StdinReader = () => Promise<string> | string;
+
+/** The production {@link StdinReader}: reads all of fd 0. */
+export const readProcessStdin: StdinReader = () => readFileSync(0, "utf8");
 
 export interface ReadInputDeps {
   /** Only `existsSync`/`readFileSync` are used. */

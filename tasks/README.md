@@ -33,7 +33,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0006 Drive API wrapper & path resolution](archive/0006-drive-api.md) | 0004 | — | done |
 | [0007 Drive read commands (ls/search/info/download)](archive/0007-drive-read.md) | 0006 | B | done |
 | [0008 Drive write commands (upload/mkdir/mv/cp/rm)](archive/0008-drive-write.md) | 0006 | B | done |
-| [0009 Docs commands](0009-docs.md) | 0006 | C | todo |
+| [0009 Docs commands](archive/0009-docs.md) | 0006 | C | done |
 | [0010 Sheets commands](0010-sheets.md) | 0006 | C | todo |
 | [0014 Share/permissions commands](archive/0014-share.md) | 0006 | C | done |
 | [0011 `init` command](0011-init.md) | 0003, 0004 | — | todo |

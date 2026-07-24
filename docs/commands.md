@@ -87,6 +87,18 @@ Ownership transfer is not yet supported. See
 | `replace <file> --find <s> --replace <s> [--match-case]` | Find & replace |
 | `insert <file> <text\|@file\|-> (--index <n> \| --at start\|end)` | Insert text |
 
+- `read --as markdown` maps headings, bold/italic, links, bulleted/numbered
+  lists, and (best effort) tables; `--as text` emits plain paragraph text. Both
+  print the body to stdout, in quiet mode too.
+- `create --parent` places the new document in a folder (the Docs API creates in
+  My Drive first, then the file is moved).
+- `insert --index` is Docs' 1-based character index in the body; `--at start` is
+  index 1 and `--at end` is the end of the body. Exactly one of the two is
+  required — `append` is the shorthand for adding a paragraph at the end.
+- `replace` always replaces every match (`--all` is accepted for clarity) and
+  reports the occurrence count; the count is in the JSON `data.replaced`.
+- Quiet `create`/`append`/`replace`/`insert` print the document ID.
+
 See [`../decisions/0009`](../decisions/0009-docs-commands.md).
 
 ## Sheets (`gdrive sheets`)
