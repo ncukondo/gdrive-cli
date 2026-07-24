@@ -1,6 +1,6 @@
 # Task 0006: Drive API wrapper & path resolution
 
-Status: todo
+Status: done
 Depends on: 0004
 Parallel: no — shared dependency of 0007/0008/0009/0010
 
@@ -37,9 +37,12 @@ ID-or-path addressing per `decisions/0008`.
 
 ## Acceptance criteria
 
-- [ ] List/search/get/create/copy/move/trash/delete/export covered
-- [ ] Path resolution handles nesting, ambiguity, and not-found
-- [ ] `bun run test`, `bun run typecheck` pass
+- [x] List/search/get/create/copy/move/trash/delete/export covered
+- [x] Path resolution handles nesting, ambiguity, and not-found
+- [x] `bun run test`, `bun run typecheck` pass
+
+Also smoke-tested live against real Drive: `listChildren`, `getFile`, and
+`resolvePath` (by name, incl. spaces) against the authenticated account.
 
 ## Verification
 

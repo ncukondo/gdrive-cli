@@ -42,6 +42,24 @@ export interface CommandResult {
   exitCode: number;
 }
 
+/** Friendly file-type label derived from a Drive MIME type (decision 0008). */
+export type FileType = "folder" | "doc" | "sheet" | "slides" | "file";
+
+/** Normalized Drive file (decision 0008). Byte size is null for Google-native files. */
+export interface DriveFile {
+  id: string;
+  name: string;
+  mime_type: string;
+  type: FileType;
+  size: number | null;
+  parents: string[];
+  trashed: boolean;
+  web_view_link: string | null;
+  created: string | null;
+  modified: string | null;
+  owners: string[];
+}
+
 export interface SuccessResponse<T> {
   success: true;
   data: T;
