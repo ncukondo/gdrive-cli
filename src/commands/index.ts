@@ -7,6 +7,7 @@ import { registerDriveWrite } from "./drive-write.ts";
 import { registerShare } from "./share/index.ts";
 import { registerDocs } from "./docs/index.ts";
 import { registerSheets } from "./sheets/index.ts";
+import { registerUpgrade } from "./upgrade.ts";
 
 /**
  * Attaches every command area to the program. Each command task appends one
@@ -22,4 +23,5 @@ export function registerCommands(program: Command): void {
   registerShare(program);
   registerDocs(program);
   registerSheets(program);
+  registerUpgrade(program);
 }

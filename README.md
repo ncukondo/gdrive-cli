@@ -31,9 +31,21 @@ AI-agent use.
 npm i -g @ncukondo/gdrive-cli
 npx @ncukondo/gdrive-cli --help
 
-# single-file binary (planned) — see decisions/0003
+# single-file binary (no runtime required)
 curl -fsSL https://raw.githubusercontent.com/ncukondo/gdrive-cli/main/install.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/ncukondo/gdrive-cli/main/install.ps1 | iex
 ```
+
+The installer downloads the binary for your platform from GitHub Releases,
+verifies its SHA-256 checksum, and installs it to `~/.local/bin`
+(`%LOCALAPPDATA%\gdrive-cli` on Windows). Set `GDRIVE_CLI_VERSION` to pin a
+release and `GDRIVE_CLI_INSTALL_DIR` to relocate.
+
+Update a binary install in place with `gdrive upgrade` (`--dry-run` reports the
+target version without changing anything). npm installs are upgraded with your
+package manager instead. See [`decisions/0003`](decisions/0003-distribution.md).
 
 ## Quick start
 

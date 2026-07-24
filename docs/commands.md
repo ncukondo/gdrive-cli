@@ -34,6 +34,7 @@ without `--force`; quiet mode prints the path. See
 | `gdrive account alias <email\|alias> <alias>` | Assign/rename an alias |
 | `gdrive account remove <email\|alias>` | Remove an account (alias of logout) |
 | `gdrive init [--local] [--force]` | Generate a config file |
+| `gdrive upgrade [--dry-run]` | Update a binary install to the latest release |
 
 ## Drive
 
@@ -136,6 +137,20 @@ See [`../decisions/0009`](../decisions/0009-docs-commands.md).
   creates in My Drive first, then the file is moved).
 
 See [`../decisions/0010`](../decisions/0010-sheets-commands.md).
+
+## Install & upgrade
+
+Install via npm (`npm i -g @ncukondo/gdrive-cli`) or the single-file binary
+installers (`install.sh` / `install.ps1`), which verify a SHA-256 checksum and
+honor `GDRIVE_CLI_VERSION` and `GDRIVE_CLI_INSTALL_DIR`.
+
+`gdrive upgrade` replaces a binary install in place: it fetches the latest
+GitHub release, verifies the checksum against `SHA256SUMS`, and swaps the
+executable atomically. `--dry-run` reports the target version and downloads
+nothing; a checksum mismatch aborts without touching the binary. When the CLI
+is running under Node/Bun (npm, npx, bunx), `upgrade` prints the package-manager
+command instead of replacing anything. See
+[`../decisions/0003`](../decisions/0003-distribution.md).
 
 ## Exit codes
 
