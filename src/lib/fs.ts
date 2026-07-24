@@ -1,9 +1,20 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, chmodSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  unlinkSync,
+  chmodSync,
+  readdirSync,
+} from "node:fs";
 
 /**
  * Injectable filesystem surface (decision 0012). Testable code depends on this
  * interface, never on `node:fs` directly; production wires {@link nodeFs},
  * tests pass an in-memory fake.
+ *
+ * `readdirSync` extends gcal-cli's shape: multi-account token discovery
+ * (decision 0004) needs to enumerate `accounts/<email>.json` files.
  */
 export interface FsAdapter {
   existsSync: (path: string) => boolean;
@@ -12,6 +23,7 @@ export interface FsAdapter {
   mkdirSync: (path: string, options?: { recursive: boolean }) => void;
   unlinkSync: (path: string) => void;
   chmodSync: (path: string, mode: number) => void;
+  readdirSync: (path: string) => string[];
 }
 
 export const nodeFs: FsAdapter = {
@@ -23,4 +35,5 @@ export const nodeFs: FsAdapter = {
   },
   unlinkSync: (path) => unlinkSync(path),
   chmodSync: (path, mode) => chmodSync(path, mode),
+  readdirSync: (path) => readdirSync(path),
 };

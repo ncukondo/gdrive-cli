@@ -38,6 +38,7 @@ function fakeFs(files: Record<string, string>) {
       delete store[p];
     },
     chmodSync: () => {},
+    readdirSync: () => [],
   };
 }
 

@@ -1,6 +1,6 @@
 # Task 0004: OAuth + multi-account auth
 
-Status: todo
+Status: done
 Depends on: 0002, 0003
 Parallel: no — central to all data commands
 
@@ -42,13 +42,23 @@ authenticated googleapis client. Implements `decisions/0004` and `0005`.
 
 ## Acceptance criteria
 
-- [ ] `gdrive auth` stores `accounts/<email>.json`; first login sets default
-- [ ] `gdrive auth status` shows resolved account (text + JSON per 0005)
-- [ ] `gdrive auth logout [acct]` revokes + deletes the token
-- [ ] Account resolution priority honored; correct errors/exit codes
-- [ ] `bun run test`, `bun run typecheck` pass
+- [x] `gdrive auth` stores `accounts/<email>.json`; first login sets default
+- [x] `gdrive auth status` shows resolved account (text + JSON per 0005)
+- [x] `gdrive auth logout [acct]` revokes + deletes the token
+- [x] Account resolution priority honored; correct errors/exit codes
+- [x] `bun run test`, `bun run typecheck` pass
 
 ## Verification
 
 - `bun run test src/lib/auth.test.ts src/lib/account.test.ts src/commands/auth.test.ts`
-- Manual: real `gdrive auth` against a test project (e2e, local only)
+- Manual: real `gdrive auth` against a test project (e2e, local only) — **pending**
+  (requires real OAuth credentials; unit tests inject the flow per decision 0012).
+
+## Notes
+
+- `FsAdapter` gained `readdirSync` (lib/fs.ts) for enumerating token files — a
+  minimal additive extension to gcal-cli's shape, needed by sole-account
+  detection (decision 0004).
+- The OAuth login flow (`startOAuthFlow`) is wired in `registerAuth`; the
+  handler receives `runFlow`/`writeConfig` injected so login/status/logout are
+  unit-testable without a browser or real fs.
