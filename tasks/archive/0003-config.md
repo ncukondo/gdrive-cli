@@ -1,6 +1,6 @@
 # Task 0003: Config (TOML) & discovery
 
-Status: todo
+Status: done
 Depends on: 0001
 Parallel: yes (group A) — alongside 0002
 
@@ -34,11 +34,11 @@ rewrite the accounts table (for `account alias` / `init`).
 
 ## Acceptance criteria
 
-- [ ] Resolution order honored
-- [ ] Alias ↔ email resolution both ways
-- [ ] Round-trip write preserves unrelated keys
-- [ ] Malformed config → `CONFIG_ERROR`
-- [ ] `bun run test`, `bun run typecheck` pass
+- [x] Resolution order honored
+- [x] Alias ↔ email resolution both ways
+- [x] Round-trip write preserves unrelated keys
+- [x] Malformed config → `CONFIG_ERROR`
+- [x] `bun run test`, `bun run typecheck` pass
 
 ## Verification
 

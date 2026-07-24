@@ -27,7 +27,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | ---- | ---------- | -------------- | ------ |
 | [0001 Project setup & tooling](archive/0001-project-setup.md) | — | — | done |
 | [0002 Output & error core](archive/0002-output-and-errors.md) | 0001 | A | done |
-| [0003 Config (TOML) & discovery](0003-config.md) | 0001 | A | todo |
+| [0003 Config (TOML) & discovery](archive/0003-config.md) | 0001 | A | done |
 | [0004 OAuth + multi-account auth](0004-auth-multi-account.md) | 0002, 0003 | — | todo |
 | [0005 Account commands](0005-account-commands.md) | 0004 | — | todo |
 | [0006 Drive API wrapper & path resolution](0006-drive-api.md) | 0004 | — | todo |
