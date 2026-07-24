@@ -68,5 +68,19 @@ export function createTreeDrive(nodes: DriveNode[]): DriveClient {
         throw new Error("not implemented in tree fake");
       },
     },
+    permissions: {
+      list: async () => {
+        throw new Error("not implemented in tree fake");
+      },
+      create: async () => {
+        throw new Error("not implemented in tree fake");
+      },
+      update: async () => {
+        throw new Error("not implemented in tree fake");
+      },
+      delete: async () => {
+        throw new Error("not implemented in tree fake");
+      },
+    },
   };
 }

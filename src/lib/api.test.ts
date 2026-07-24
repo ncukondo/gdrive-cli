@@ -16,6 +16,12 @@ import {
   trashFile,
   typeFilterClause,
   uploadMedia,
+  createPermission,
+  deletePermission,
+  inferGrantee,
+  listPermissions,
+  normalizePermission,
+  updatePermissionRole,
   type DriveClient,
   type DriveFileRaw,
   type ListParams,
@@ -36,7 +42,10 @@ type CopyParam = Parameters<DriveClient["files"]["copy"]>[0];
 type UpdateParam = Parameters<DriveClient["files"]["update"]>[0];
 
 /** A DriveClient whose methods are vi mocks; override per test. */
-function mockDrive(overrides: Partial<DriveClient["files"]> = {}): DriveClient {
+function mockDrive(
+  overrides: Partial<DriveClient["files"]> = {},
+  permissionOverrides: Partial<DriveClient["permissions"]> = {},
+): DriveClient {
   return {
     files: {
       list: vi.fn(async () => ({ data: { files: [] } })),
@@ -47,6 +56,13 @@ function mockDrive(overrides: Partial<DriveClient["files"]> = {}): DriveClient {
       delete: vi.fn(async () => ({})),
       export: vi.fn(async () => ({ data: "exported" })),
       ...overrides,
+    },
+    permissions: {
+      list: vi.fn(async () => ({ data: { permissions: [] } })),
+      create: vi.fn(async () => ({ data: { id: "p1", type: "user", role: "reader" } })),
+      update: vi.fn(async () => ({ data: { id: "p1", type: "anyone", role: "writer" } })),
+      delete: vi.fn(async () => ({})),
+      ...permissionOverrides,
     },
   };
 }
@@ -256,5 +272,148 @@ describe("mapDriveError", () => {
       throw Object.assign(new Error("nope"), { code: 404 });
     });
     await expect(getFile(mockDrive({ get }), "x")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+// --- Permissions (decision 0011) --------------------------------------------
+
+type PermCreateParam = Parameters<DriveClient["permissions"]["create"]>[0];
+type PermUpdateParam = Parameters<DriveClient["permissions"]["update"]>[0];
+
+describe("normalizePermission", () => {
+  it("normalizes a user grant", () => {
+    expect(
+      normalizePermission({
+        id: "perm-abc",
+        type: "user",
+        role: "writer",
+        emailAddress: "alice@example.com",
+        displayName: "Alice",
+      }),
+    ).toEqual({
+      id: "perm-abc",
+      type: "user",
+      role: "writer",
+      email: "alice@example.com",
+      display_name: "Alice",
+      domain: null,
+      allow_file_discovery: false,
+      deleted: false,
+    });
+  });
+
+  it("normalizes an anyone grant with discovery enabled", () => {
+    expect(
+      normalizePermission({
+        id: "perm-any",
+        type: "anyone",
+        role: "reader",
+        allowFileDiscovery: true,
+      }),
+    ).toMatchObject({ type: "anyone", email: null, allow_file_discovery: true });
+  });
+});
+
+describe("inferGrantee", () => {
+  it("infers user from an email address", () => {
+    expect(inferGrantee({ to: "alice@example.com" })).toEqual({
+      type: "user",
+      emailAddress: "alice@example.com",
+    });
+  });
+
+  it("infers group for a googlegroups.com address", () => {
+    expect(inferGrantee({ to: "team@googlegroups.com" })).toEqual({
+      type: "group",
+      emailAddress: "team@googlegroups.com",
+    });
+  });
+
+  it("infers domain and anyone", () => {
+    expect(inferGrantee({ domain: "example.com" })).toEqual({
+      type: "domain",
+      domain: "example.com",
+    });
+    expect(inferGrantee({ anyone: true })).toEqual({ type: "anyone" });
+  });
+
+  it("rejects zero or multiple grantees", () => {
+    expect(() => inferGrantee({})).toThrow(AppError);
+    expect(() => inferGrantee({ to: "a@b.com", anyone: true })).toThrow(/only one/i);
+  });
+
+  it("rejects a --to value that is not an email address", () => {
+    expect(() => inferGrantee({ to: "alice" })).toThrow(/email/i);
+  });
+});
+
+describe("permission operations", () => {
+  it("listPermissions normalizes and follows pages", async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          permissions: [{ id: "p1", type: "user", role: "owner", emailAddress: "me@x.com" }],
+          nextPageToken: "T",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: { permissions: [{ id: "p2", type: "anyone", role: "reader" }] },
+      });
+    const perms = await listPermissions(mockDrive({}, { list }), "F");
+    expect(perms.map((p) => p.id)).toEqual(["p1", "p2"]);
+    expect(perms[0]?.email).toBe("me@x.com");
+  });
+
+  it("createPermission sends the grantee body and notification flags", async () => {
+    const create = vi.fn(async () => ({
+      data: { id: "p9", type: "user", role: "writer", emailAddress: "a@b.com" },
+    }));
+    const perm = await createPermission(mockDrive({}, { create }), "F", {
+      type: "user",
+      role: "writer",
+      emailAddress: "a@b.com",
+      sendNotificationEmail: true,
+      emailMessage: "hi",
+    });
+    const call = argOf<PermCreateParam>(create);
+    expect(call.fileId).toBe("F");
+    expect(call.requestBody).toEqual({ type: "user", role: "writer", emailAddress: "a@b.com" });
+    expect(call.sendNotificationEmail).toBe(true);
+    expect(call.emailMessage).toBe("hi");
+    expect(perm.id).toBe("p9");
+  });
+
+  it("createPermission defaults to no notification email", async () => {
+    const create = vi.fn(async () => ({ data: { id: "p9", type: "anyone", role: "reader" } }));
+    await createPermission(mockDrive({}, { create }), "F", { type: "anyone", role: "reader" });
+    const call = argOf<PermCreateParam>(create);
+    expect(call.sendNotificationEmail).toBe(false);
+    expect(call.requestBody).toEqual({ type: "anyone", role: "reader" });
+  });
+
+  it("updatePermissionRole patches the role", async () => {
+    const update = vi.fn(async () => ({ data: { id: "p1", type: "anyone", role: "writer" } }));
+    const perm = await updatePermissionRole(mockDrive({}, { update }), "F", "p1", "writer");
+    const call = argOf<PermUpdateParam>(update);
+    expect(call).toMatchObject({
+      fileId: "F",
+      permissionId: "p1",
+      requestBody: { role: "writer" },
+    });
+    expect(perm.role).toBe("writer");
+  });
+
+  it("deletePermission calls through and maps errors", async () => {
+    const del = vi.fn(async () => ({}));
+    await deletePermission(mockDrive({}, { delete: del }), "F", "p1");
+    expect(del).toHaveBeenCalledWith({ fileId: "F", permissionId: "p1" });
+
+    const boom = vi.fn(async () => {
+      throw Object.assign(new Error("nope"), { code: 404 });
+    });
+    await expect(
+      deletePermission(mockDrive({}, { delete: boom }), "F", "p1"),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

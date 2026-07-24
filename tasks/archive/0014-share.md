@@ -1,6 +1,6 @@
 # Task 0014: Share / permissions commands
 
-Status: todo
+Status: done
 Depends on: 0006
 Parallel: yes (group C) — alongside 0009 / 0010
 
@@ -16,8 +16,8 @@ Parallel: yes (group C) — alongside 0009 / 0010
 
 ## Scope
 
-- `src/lib/api.ts` permission methods (`permissions.list/create/delete`) +
-  grantee→type inference.
+- `src/lib/api.ts` permission methods (`permissions.list/create/update/delete`)
+  + grantee→type inference.
 - `src/commands/share/*` (`index.ts`, `list.ts`, `add.ts`, `remove.ts`,
   `link.ts`).
 
@@ -36,10 +36,18 @@ Parallel: yes (group C) — alongside 0009 / 0010
 
 ## Acceptance criteria
 
-- [ ] `list/add/remove/link` behave and format per 0011
-- [ ] Grantee type inference and role defaults correct
-- [ ] `remove` works by email and by permission id
-- [ ] `bun run test`, `bun run typecheck` pass; docs updated
+- [x] `list/add/remove/link` behave and format per 0011
+- [x] Grantee type inference and role defaults correct
+- [x] `remove` works by email and by permission id
+- [x] `bun run test`, `bun run typecheck` pass; docs updated
+
+Notes:
+
+- `--to` infers `group` only for `@googlegroups.com` addresses (Drive cannot
+  classify an arbitrary address without a lookup); everything else is `user`.
+- `share link` reuses an existing anyone-with-link permission and upgrades its
+  role via `permissions.update` when `--role` differs — hence the extra
+  `permissions.update` method beyond the three listed in the original scope.
 
 ## Verification
 

@@ -1,4 +1,11 @@
-import { AppError, type DriveFile, type FileType } from "../types/index.ts";
+import {
+  AppError,
+  type DriveFile,
+  type DrivePermission,
+  type FileType,
+  type GranteeType,
+  type ShareRole,
+} from "../types/index.ts";
 
 export const MAX_PAGES = 100;
 
@@ -37,6 +44,25 @@ export interface FileCreateBody {
   parents?: string[];
 }
 
+export interface PermissionRaw {
+  id?: string | null;
+  type?: string | null;
+  role?: string | null;
+  emailAddress?: string | null;
+  displayName?: string | null;
+  domain?: string | null;
+  allowFileDiscovery?: boolean | null;
+  deleted?: boolean | null;
+}
+
+export interface PermissionBody {
+  type?: GranteeType;
+  role?: string;
+  emailAddress?: string;
+  domain?: string;
+  allowFileDiscovery?: boolean;
+}
+
 /**
  * Minimal abstraction over `google.drive({version:"v3"}).files` for testability
  * (decision 0012). Unit tests pass a hand-written fake exposing only these.
@@ -72,6 +98,30 @@ export interface DriveClient {
       params: { fileId: string; mimeType: string },
       options?: { responseType?: string },
     ) => Promise<{ data: unknown }>;
+  };
+  permissions: {
+    list: (params: {
+      fileId: string;
+      fields?: string;
+      pageSize?: number;
+      pageToken?: string;
+    }) => Promise<{
+      data: { permissions?: PermissionRaw[]; nextPageToken?: string | null };
+    }>;
+    create: (params: {
+      fileId: string;
+      requestBody: PermissionBody;
+      sendNotificationEmail?: boolean;
+      emailMessage?: string;
+      fields?: string;
+    }) => Promise<{ data: PermissionRaw }>;
+    update: (params: {
+      fileId: string;
+      permissionId: string;
+      requestBody: PermissionBody;
+      fields?: string;
+    }) => Promise<{ data: PermissionRaw }>;
+    delete: (params: { fileId: string; permissionId: string }) => Promise<unknown>;
   };
 }
 
@@ -369,6 +419,174 @@ export async function exportFile(
   try {
     const res = await client.files.export({ fileId, mimeType }, { responseType: "arraybuffer" });
     return res.data;
+  } catch (error) {
+    mapDriveError(error);
+  }
+}
+
+// --- Permissions (decision 0011) --------------------------------------------
+
+export const PERMISSION_FIELDS =
+  "id,type,role,emailAddress,displayName,domain,allowFileDiscovery,deleted";
+const PERMISSION_LIST_FIELDS = `nextPageToken,permissions(${PERMISSION_FIELDS})`;
+
+const GRANTEE_TYPES: GranteeType[] = ["user", "group", "domain", "anyone"];
+
+/** Normalizes a raw Drive permission into a {@link DrivePermission}. */
+export function normalizePermission(raw: PermissionRaw): DrivePermission {
+  const type = raw.type ?? "";
+  return {
+    id: raw.id ?? "",
+    type: GRANTEE_TYPES.includes(type as GranteeType) ? (type as GranteeType) : "user",
+    role: raw.role ?? "",
+    email: raw.emailAddress ?? null,
+    display_name: raw.displayName ?? null,
+    domain: raw.domain ?? null,
+    allow_file_discovery: raw.allowFileDiscovery ?? false,
+    deleted: raw.deleted ?? false,
+  };
+}
+
+export interface GranteeArgs {
+  to?: string;
+  domain?: string;
+  anyone?: boolean;
+}
+
+export interface Grantee {
+  type: GranteeType;
+  emailAddress?: string;
+  domain?: string;
+}
+
+/** Google Groups addresses are the one grantee we can classify without a lookup. */
+const GROUP_DOMAIN = "googlegroups.com";
+
+/**
+ * Resolves exactly one of `--to` / `--domain` / `--anyone` into a grantee
+ * (decision 0011). `--to` maps to `user`, or `group` for a `googlegroups.com`
+ * address — Drive cannot be asked to classify an arbitrary address up front.
+ */
+export function inferGrantee(args: GranteeArgs): Grantee {
+  const given = [args.to !== undefined, args.domain !== undefined, args.anyone === true].filter(
+    Boolean,
+  ).length;
+  if (given === 0) {
+    throw new AppError(
+      "INVALID_ARGS",
+      "Specify a grantee: --to <email>, --domain <d>, or --anyone.",
+    );
+  }
+  if (given > 1) {
+    throw new AppError("INVALID_ARGS", "Use only one of --to, --domain, or --anyone.");
+  }
+
+  if (args.to !== undefined) {
+    const at = args.to.indexOf("@");
+    if (at <= 0 || at === args.to.length - 1) {
+      throw new AppError("INVALID_ARGS", `--to must be an email address, got "${args.to}".`);
+    }
+    const domain = args.to.slice(at + 1).toLowerCase();
+    return { type: domain === GROUP_DOMAIN ? "group" : "user", emailAddress: args.to };
+  }
+  if (args.domain !== undefined) return { type: "domain", domain: args.domain };
+  return { type: "anyone" };
+}
+
+/** Lists every permission on a file, following pages (decision 0011). */
+export async function listPermissions(
+  client: DriveClient,
+  fileId: string,
+): Promise<DrivePermission[]> {
+  const permissions: DrivePermission[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+  try {
+    do {
+      const params: { fileId: string; fields: string; pageSize: number; pageToken?: string } = {
+        fileId,
+        fields: PERMISSION_LIST_FIELDS,
+        pageSize: 100,
+      };
+      if (pageToken !== undefined) params.pageToken = pageToken;
+      const res = await client.permissions.list(params);
+      for (const raw of res.data.permissions ?? []) permissions.push(normalizePermission(raw));
+      pageToken = res.data.nextPageToken ?? undefined;
+      pages += 1;
+    } while (pageToken !== undefined && pages < MAX_PAGES);
+  } catch (error) {
+    mapDriveError(error);
+  }
+  return permissions;
+}
+
+export interface PermissionCreateInput {
+  type: GranteeType;
+  role: ShareRole;
+  emailAddress?: string;
+  domain?: string;
+  allowFileDiscovery?: boolean;
+  /** Defaults to false so agent runs stay quiet (decision 0011). */
+  sendNotificationEmail?: boolean;
+  emailMessage?: string;
+}
+
+/** Grants access to a file. */
+export async function createPermission(
+  client: DriveClient,
+  fileId: string,
+  input: PermissionCreateInput,
+): Promise<DrivePermission> {
+  const requestBody: PermissionBody = { type: input.type, role: input.role };
+  if (input.emailAddress !== undefined) requestBody.emailAddress = input.emailAddress;
+  if (input.domain !== undefined) requestBody.domain = input.domain;
+  if (input.allowFileDiscovery !== undefined)
+    requestBody.allowFileDiscovery = input.allowFileDiscovery;
+
+  const params: Parameters<DriveClient["permissions"]["create"]>[0] = {
+    fileId,
+    requestBody,
+    sendNotificationEmail: input.sendNotificationEmail ?? false,
+    fields: PERMISSION_FIELDS,
+  };
+  if (input.emailMessage !== undefined) params.emailMessage = input.emailMessage;
+
+  try {
+    const res = await client.permissions.create(params);
+    return normalizePermission(res.data);
+  } catch (error) {
+    mapDriveError(error);
+  }
+}
+
+/** Changes an existing permission's role (used by `share link` upgrades). */
+export async function updatePermissionRole(
+  client: DriveClient,
+  fileId: string,
+  permissionId: string,
+  role: ShareRole,
+): Promise<DrivePermission> {
+  try {
+    const res = await client.permissions.update({
+      fileId,
+      permissionId,
+      requestBody: { role },
+      fields: PERMISSION_FIELDS,
+    });
+    return normalizePermission(res.data);
+  } catch (error) {
+    mapDriveError(error);
+  }
+}
+
+/** Revokes a permission. */
+export async function deletePermission(
+  client: DriveClient,
+  fileId: string,
+  permissionId: string,
+): Promise<void> {
+  try {
+    await client.permissions.delete({ fileId, permissionId });
   } catch (error) {
     mapDriveError(error);
   }

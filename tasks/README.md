@@ -35,7 +35,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0008 Drive write commands (upload/mkdir/mv/cp/rm)](archive/0008-drive-write.md) | 0006 | B | done |
 | [0009 Docs commands](0009-docs.md) | 0006 | C | todo |
 | [0010 Sheets commands](0010-sheets.md) | 0006 | C | todo |
-| [0014 Share/permissions commands](0014-share.md) | 0006 | C | todo |
+| [0014 Share/permissions commands](archive/0014-share.md) | 0006 | C | done |
 | [0011 `init` command](0011-init.md) | 0003, 0004 | — | todo |
 | [0012 Distribution, installer & `upgrade`](0012-distribution.md) | 0007, 0008, 0009, 0010, 0014 | — | todo |
 | [0013 README & user docs](0013-docs-site.md) | 0012 | — | todo |

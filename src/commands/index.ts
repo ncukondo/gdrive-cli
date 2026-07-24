@@ -3,6 +3,7 @@ import { registerAuth } from "./auth.ts";
 import { registerAccount } from "./account.ts";
 import { registerDriveRead } from "./drive-read.ts";
 import { registerDriveWrite } from "./drive-write.ts";
+import { registerShare } from "./share/index.ts";
 
 /**
  * Attaches every command area to the program. Each command task appends one
@@ -14,4 +15,5 @@ export function registerCommands(program: Command): void {
   registerAccount(program);
   registerDriveRead(program);
   registerDriveWrite(program);
+  registerShare(program);
 }

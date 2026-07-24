@@ -60,9 +60,19 @@ Read-command options:
 | Command | Description |
 |---------|-------------|
 | `share list <file>` | List all permissions |
-| `share add <file> (--to <email> \| --domain <d> \| --anyone) [--role reader\|commenter\|writer] [--notify]` | Grant access |
+| `share add <file> (--to <email> \| --domain <d> \| --anyone) [--role reader\|commenter\|writer] [--notify] [--message <s>] [--allow-discovery]` | Grant access |
 | `share remove <file> (--to <email> \| --permission-id <id>)` | Revoke access |
 | `share link <file> [--role reader]` | Ensure "anyone with link" and print the URL |
+
+- Grantee type is inferred: `--to` → `user` (or `group` for a
+  `@googlegroups.com` address), `--domain` → `domain`, `--anyone` → `anyone`.
+  Exactly one grantee option is required.
+- `--role` defaults to `reader`; `--notify` is off by default so agent runs stay
+  quiet (Google may still notify for some grants).
+- `share remove --to` resolves the email to its permission id; an email with no
+  permission on the file is a `NOT_FOUND` error. Quiet mode prints nothing.
+- `share link` reuses an existing anyone-with-link permission and upgrades its
+  role when `--role` differs. Quiet mode prints just the URL.
 
 Ownership transfer is not yet supported. See
 [`../decisions/0011`](../decisions/0011-sharing-commands.md).

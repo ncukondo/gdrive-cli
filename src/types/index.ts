@@ -60,6 +60,25 @@ export interface DriveFile {
   owners: string[];
 }
 
+/** Grantee kinds a permission can target (decision 0011). */
+export type GranteeType = "user" | "group" | "domain" | "anyone";
+
+/** Roles this CLI grants; `owner` (transfer) is out of scope (decision 0011). */
+export type ShareRole = "reader" | "commenter" | "writer";
+
+/** Normalized Drive permission (decision 0011). */
+export interface DrivePermission {
+  id: string;
+  type: GranteeType;
+  /** The API role; may be `owner` on existing permissions we only read. */
+  role: string;
+  email: string | null;
+  display_name: string | null;
+  domain: string | null;
+  allow_file_discovery: boolean;
+  deleted: boolean;
+}
+
 export interface SuccessResponse<T> {
   success: true;
   data: T;
