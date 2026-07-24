@@ -15,6 +15,13 @@ User-facing behavior. Design rationale lives in [`../decisions/`](../decisions/)
 Account resolution: `-a` > `GDRIVE_CLI_ACCOUNT` > `default_account` in config >
 the sole authenticated account. See [`../decisions/0004`](../decisions/0004-multi-account.md).
 
+`gdrive init` writes `~/.config/gdrive-cli/config.toml` (or `./gdrive-cli.toml`
+with `--local`, or the path given by the global `--config`), seeding
+`[[accounts]]` from the already-authenticated accounts and setting
+`default_account` to the first one. It refuses to overwrite an existing file
+without `--force`; quiet mode prints the path. See
+[`../decisions/0006`](../decisions/0006-configuration.md).
+
 ## Auth & accounts
 
 | Command | Description |
@@ -26,7 +33,7 @@ the sole authenticated account. See [`../decisions/0004`](../decisions/0004-mult
 | `gdrive account use <email\|alias>` | Set the default account |
 | `gdrive account alias <email\|alias> <alias>` | Assign/rename an alias |
 | `gdrive account remove <email\|alias>` | Remove an account (alias of logout) |
-| `gdrive init` | Generate `config.toml` |
+| `gdrive init [--local] [--force]` | Generate a config file |
 
 ## Drive
 

@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { registerAuth } from "./auth.ts";
 import { registerAccount } from "./account.ts";
+import { registerInit } from "./init.ts";
 import { registerDriveRead } from "./drive-read.ts";
 import { registerDriveWrite } from "./drive-write.ts";
 import { registerShare } from "./share/index.ts";
@@ -15,6 +16,7 @@ import { registerSheets } from "./sheets/index.ts";
 export function registerCommands(program: Command): void {
   registerAuth(program);
   registerAccount(program);
+  registerInit(program);
   registerDriveRead(program);
   registerDriveWrite(program);
   registerShare(program);
