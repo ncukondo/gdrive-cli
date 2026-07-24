@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { z } from "zod";
@@ -99,11 +100,29 @@ export function main(argv: string[] = process.argv): void {
   }
 }
 
-const invokedPath = process.argv[1];
-const isMain =
-  (typeof import.meta.main === "boolean" && import.meta.main) ||
-  (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href);
+/**
+ * True when this module is the process entry point.
+ *
+ * `argv[1]` must be resolved through symlinks first: an npm install links
+ * `node_modules/.bin/gdrive` at the real `dist/index.js`, so comparing the raw
+ * path would never match and the CLI would exit silently.
+ */
+export function isEntryPoint(
+  moduleUrl: string,
+  invokedPath: string | undefined,
+  moduleMain?: unknown,
+): boolean {
+  if (typeof moduleMain === "boolean" && moduleMain) return true;
+  if (invokedPath === undefined) return false;
+  let resolved = invokedPath;
+  try {
+    resolved = realpathSync(invokedPath);
+  } catch {
+    // Not a real path (or unreadable) — fall back to comparing it as given.
+  }
+  return moduleUrl === pathToFileURL(resolved).href;
+}
 
-if (isMain) {
+if (isEntryPoint(import.meta.url, process.argv[1], import.meta.main)) {
   main();
 }

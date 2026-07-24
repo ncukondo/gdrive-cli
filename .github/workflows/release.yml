@@ -40,10 +40,17 @@ jobs:
       - name: Build npm distribution
         run: bun run build
 
-      - name: Smoke-test dist under Node
+      - name: Smoke-test the npm package as installed
         run: |
           node dist/index.js --version
-          node dist/index.js --help | grep -q "gdrive"
+          # Install the real tarball and run the linked bin: npm links
+          # node_modules/.bin/gdrive at dist/index.js, and only that path
+          # exercises the entry-point check.
+          npm pack --pack-destination /tmp
+          mkdir -p /tmp/installcheck && cd /tmp/installcheck
+          npm install /tmp/ncukondo-gdrive-cli-*.tgz
+          ./node_modules/.bin/gdrive --version
+          ./node_modules/.bin/gdrive --help | grep -q "Google Drive"
 
       - name: Compile release binaries
         run: bun run build:release

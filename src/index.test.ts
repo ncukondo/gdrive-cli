@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GlobalOptions } from "./index.ts";
-import { createProgram, resolveGlobalOptions, handleError } from "./index.ts";
+import { createProgram, isEntryPoint, resolveGlobalOptions, handleError } from "./index.ts";
 import { AppError, ExitCode } from "./types/index.ts";
 import pkg from "../package.json" with { type: "json" };
 
@@ -111,6 +112,43 @@ describe("format validation", () => {
     expect(exitSpy).toHaveBeenCalledWith(ExitCode.ARGUMENT);
     const output = stderrSpy.mock.calls.map((c) => c[0]).join("");
     expect(output).toContain("invalid format");
+  });
+});
+
+describe("isEntryPoint", () => {
+  it("trusts import.meta.main when the runtime provides it", () => {
+    expect(isEntryPoint("file:///whatever.js", undefined, true)).toBe(true);
+    expect(isEntryPoint("file:///a.js", "/b.js", false)).toBe(false);
+  });
+
+  it("matches when the module is invoked by its own path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "gdrive-entry-"));
+    const real = join(dir, "index.js");
+    writeFileSync(real, "");
+    try {
+      expect(isEntryPoint(pathToFileURL(real).href, real)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("follows a symlink, as npm's node_modules/.bin link does", () => {
+    const dir = mkdtempSync(join(tmpdir(), "gdrive-entry-"));
+    const real = join(dir, "index.js");
+    const link = join(dir, "gdrive");
+    writeFileSync(real, "");
+    symlinkSync(real, link);
+    try {
+      // The bug this guards: argv[1] is the link, import.meta.url is the target.
+      expect(isEntryPoint(pathToFileURL(real).href, link)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("is false with no argv[1] or for an unrelated path", () => {
+    expect(isEntryPoint("file:///a.js", undefined)).toBe(false);
+    expect(isEntryPoint("file:///a.js", "/nonexistent/b.js")).toBe(false);
   });
 });
 
