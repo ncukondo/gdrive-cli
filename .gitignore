@@ -1,0 +1,6 @@
+node_modules/
+dist/
+gdrive
+*.log
+.env
+.DS_Store
