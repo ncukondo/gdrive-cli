@@ -12,7 +12,8 @@ ID-or-path addressing per `decisions/0008`.
 ## Context
 
 - Relevant decisions: `decisions/0008-drive-commands.md`
-- Adapt gcal-cli's `lib/api.ts` patterns (pagination, response normalization).
+- Adapt gcal-cli's `lib/api.ts` patterns (pagination, response normalization);
+  `../gcal-cli` or clone — see `decisions/README.md`.
 
 ## Scope
 

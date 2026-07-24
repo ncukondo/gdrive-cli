@@ -15,7 +15,8 @@ modes; `lib/input.ts` reads a literal / `@file` / `-` (stdin) argument;
 
 - Relevant decisions: `decisions/0007-output-and-errors.md`,
   `decisions/0012-testing-strategy.md`, `decisions/0013-architecture.md`
-- Adapt from gcal-cli's `src/lib/output.ts` (at `../gcal-cli`).
+- Adapt from gcal-cli's `src/lib/output.ts` (`../gcal-cli` or clone — see
+  `decisions/README.md`).
 
 ## Scope
 

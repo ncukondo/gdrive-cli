@@ -10,20 +10,28 @@ multi-account switching. Sibling of `gcal-cli`, designed for AI-agent use.
 - Architecture map: `decisions/0013`. Testing conventions: `decisions/0012`.
 - User-facing behavior lives in `docs/` and `README.md`.
 
-## Reference implementations (on disk)
+## Reference implementations
 
-Two sibling repos live next to this one and are required reading for tasks that
-say "adapt from …":
+Two sibling repos are required reading for tasks that say "adapt from …". They
+may or may not be checked out locally (they won't be on a fresh PC), so the
+GitHub repos are the canonical source — clone them if the local paths are absent:
 
-- **`../gcal-cli`** — tech stack, `tsconfig.json`/`vitest.config.ts`, and the
-  patterns to adapt for `lib/{output,config,auth,api}.ts` (tasks 0002/0003/0004/
-  0006). Its `spec/` mirrors what our `decisions/` cover.
-- **`../yaml-form-cli`** — the dev *process* this repo follows, plus
+```sh
+# canonical source (works on any machine)
+git clone https://github.com/ncukondo/gcal-cli      # ../gcal-cli if not present
+git clone https://github.com/ncukondo/yaml-form-cli # ../yaml-form-cli if not present
+```
+
+- **gcal-cli** (`https://github.com/ncukondo/gcal-cli`, local `../gcal-cli` if
+  present) — tech stack, `tsconfig.json`/`vitest.config.ts`, and the patterns
+  to adapt for `lib/{output,config,auth,api}.ts` (tasks 0002/0003/0004/0006).
+  Its `spec/` mirrors what our `decisions/` cover.
+- **yaml-form-cli** (`https://github.com/ncukondo/yaml-form-cli`, local
+  `../yaml-form-cli` if present) — the dev *process* this repo follows, plus
   `src/upgrade.ts` + `install.sh`/`install.ps1` to adapt for task 0012.
 
-If a checkout lacks them, clone from their GitHub URLs (see
-`decisions/README.md`). Our `decisions/` fully specify behavior; the siblings
-are an accelerator, not a hard dependency.
+Our `decisions/` fully specify behavior; the siblings are an accelerator, not a
+hard dependency.
 
 ## Tech Stack (see `decisions/0002`)
 

@@ -29,16 +29,23 @@ instead of restating them.
 
 ## Related projects (reference implementations)
 
-Both live **on disk as siblings of this repo** and are required reading for the
-tasks that say "adapt from …". If a checkout lacks them, clone from the URLs;
-the decisions here fully specify behavior, so the siblings are an accelerator,
+Required reading for the tasks that say "adapt from …". The **GitHub repos are
+the canonical source** — a fresh PC won't have the local `../` checkouts, so
+clone them when the local paths are absent:
+
+```sh
+git clone https://github.com/ncukondo/gcal-cli      # → ../gcal-cli
+git clone https://github.com/ncukondo/yaml-form-cli # → ../yaml-form-cli
+```
+
+The decisions here fully specify behavior, so the siblings are an accelerator,
 not a hard dependency.
 
-- [`gcal-cli`](https://github.com/ncukondo/gcal-cli) — at `../gcal-cli`. Sibling
-  Google Calendar CLI; gdrive-cli mirrors its tech stack, output conventions,
-  and auth UX. Adapt `src/lib/{output,config,auth,api}.ts` and its
-  `tsconfig.json` / `vitest.config.ts`.
-- [`yaml-form-cli`](https://github.com/ncukondo/yaml-form-cli) — at
-  `../yaml-form-cli`. Source of the development *process* (decisions + tasks +
-  TDD + worktree) and the distribution model; adapt `src/upgrade.ts`,
-  `install.sh`, `install.ps1`.
+- [`gcal-cli`](https://github.com/ncukondo/gcal-cli) (local: `../gcal-cli` if
+  present) — sibling Google Calendar CLI; gdrive-cli mirrors its tech stack,
+  output conventions, and auth UX. Adapt `src/lib/{output,config,auth,api}.ts`
+  and its `tsconfig.json` / `vitest.config.ts`.
+- [`yaml-form-cli`](https://github.com/ncukondo/yaml-form-cli) (local:
+  `../yaml-form-cli` if present) — source of the development *process*
+  (decisions + tasks + TDD + worktree) and the distribution model; adapt
+  `src/upgrade.ts`, `install.sh`, `install.ps1`.

@@ -12,7 +12,8 @@ per `decisions/0003`.
 ## Context
 
 - Relevant decisions: `decisions/0003-distribution.md`
-- Adapt yaml-form-cli's `src/upgrade.ts` and installer scripts.
+- Adapt yaml-form-cli's `src/upgrade.ts`, `install.sh`, `install.ps1`
+  (`../yaml-form-cli` or clone — see `decisions/README.md`).
 
 ## Scope
 

@@ -13,8 +13,9 @@ authenticated googleapis client. Implements `decisions/0004` and `0005`.
 ## Context
 
 - Relevant decisions: `decisions/0004-multi-account.md`, `decisions/0005-auth-and-scopes.md`
-- Adapt gcal-cli's `src/lib/auth.ts` (loopback OAuth, client_secret prompt,
-  token refresh); extend for per-email token files + email detection.
+- Adapt gcal-cli's `src/lib/auth.ts` (`../gcal-cli` or clone — see
+  `decisions/README.md`): loopback OAuth, client_secret prompt, token refresh;
+  extend for per-email token files + email detection.
 
 ## Scope
 

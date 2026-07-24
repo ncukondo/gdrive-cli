@@ -37,9 +37,11 @@ APIs in shipped code paths.
 Sheets v4, OAuth2), `smol-toml ^1`, `zod ^4`. Dev: `typescript ^5`,
 `vitest ^2`, `oxlint`/`oxfmt` latest, `husky ^9`, `@types/bun` latest.
 
-### tsconfig / vitest (copy from gcal-cli at `../gcal-cli`)
+### tsconfig / vitest (copy from gcal-cli)
 
-Use gcal-cli's `tsconfig.json` verbatim: `target/module ESNext`,
+Source: `https://github.com/ncukondo/gcal-cli` (local `../gcal-cli` if present;
+clone it if not — see `decisions/README.md`). Use gcal-cli's `tsconfig.json`
+verbatim: `target/module ESNext`,
 `moduleResolution "bundler"`, `types ["bun-types"]`,
 `allowImportingTsExtensions`, `strict`, `noUncheckedIndexedAccess`,
 `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `isolatedModules`,
