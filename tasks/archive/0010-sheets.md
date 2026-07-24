@@ -1,6 +1,6 @@
 # Task 0010: Sheets commands
 
-Status: todo
+Status: done
 Depends on: 0006
 Parallel: yes (group C) — alongside 0009
 
@@ -30,9 +30,16 @@ Parallel: yes (group C) — alongside 0009
 
 ## Acceptance criteria
 
-- [ ] All six subcommands behave and format per 0010
-- [ ] Range/tab resolution and value encodings correct
-- [ ] `bun run test`, `bun run typecheck` pass; docs updated
+- [x] All six subcommands behave and format per 0010
+- [x] Range/tab resolution and value encodings correct
+- [x] `bun run test`, `bun run typecheck` pass; docs updated
+
+Notes:
+
+- `resolveRangeWith` fetches the tab list only when the range needs a default,
+  so a qualified range or `--tab` costs no extra API call.
+- `sheets create --parent` moves the new spreadsheet with Drive `files.update`
+  — the Sheets API cannot create inside a folder.
 
 ## Verification
 

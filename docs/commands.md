@@ -112,8 +112,23 @@ See [`../decisions/0009`](../decisions/0009-docs-commands.md).
 | `clear <file> <range>` | Clear a range |
 | `create <title> [--parent <folder>]` | New spreadsheet |
 
-`<range>` is A1 notation, optionally tab-qualified (`Sheet1!A1:C10`). See
-[`../decisions/0010`](../decisions/0010-sheets-commands.md).
+`<range>` is A1 notation, optionally tab-qualified (`Sheet1!A1:C10`).
+
+- A range that names a tab wins; otherwise `--tab <name>` qualifies it, and
+  with neither the first *visible* tab is used. Omitting the range targets the
+  whole tab (its used range).
+- `--values` accepts CSV (RFC 4180 quoting) or a JSON 2-D array
+  (`[["a","b"],["c","d"]]`), directly or via `@file` / `-`; input starting with
+  `[` is treated as JSON.
+- `write`/`append` send values RAW by default; `--input-mode user` lets Sheets
+  parse formulas and dates.
+- `read --as` is `table` (default), `csv`, or `json`; quiet `read` prints CSV.
+  Quiet `write`/`append` print the updated cell count, quiet `clear` prints
+  nothing, quiet `create` prints the new spreadsheet ID.
+- `create --parent` places the new spreadsheet in a folder (the Sheets API
+  creates in My Drive first, then the file is moved).
+
+See [`../decisions/0010`](../decisions/0010-sheets-commands.md).
 
 ## Exit codes
 
