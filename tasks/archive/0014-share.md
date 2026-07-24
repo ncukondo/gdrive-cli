@@ -49,6 +49,12 @@ Notes:
   role via `permissions.update` when `--role` differs — hence the extra
   `permissions.update` method beyond the three listed in the original scope.
 
+Live-verified end-to-end against the real account (self-cleaning smoke test):
+`share list`, `share link` (create, then role upgrade to writer), `share remove
+--permission-id`, and the missing-grantee `INVALID_ARGS` guard. Note: deleting
+the owner permission fails at the API with 403, which maps to `AUTH_REQUIRED`
+(exit 2) via the shared error mapper from 0006.
+
 ## Verification
 
 - `bun run test src/commands/share/*.test.ts`

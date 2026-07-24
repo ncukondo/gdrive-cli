@@ -41,6 +41,10 @@ Notes:
 - `sheets create --parent` moves the new spreadsheet with Drive `files.update`
   — the Sheets API cannot create inside a folder.
 
+Live-verified end-to-end against the real account (self-cleaning smoke test):
+`sheets create --parent`, `tabs`, `write` (CSV), `append` (JSON), `read`
+(table/csv/json), and `clear`, then the folder was trashed.
+
 ## Verification
 
 - `bun run test src/lib/sheets-api.test.ts src/commands/sheets/*.test.ts`
