@@ -1,6 +1,6 @@
 # Task 0016: Remove type assertions
 
-Status: in-progress
+Status: done
 Depends on: — (do this **before** 0015 googleapis upgrade; it is what makes the
 bump compiler-checked)
 Parallel: no — touches every command's client construction and most option
@@ -72,16 +72,28 @@ Work in slices; each slice is Red → Green → commit.
 
 ## Acceptance criteria
 
-- [ ] `bun run lint:casts` reports zero assertions in `src/**`, `tests/**`
-- [ ] `bun run test:all`, `typecheck`, `lint`, `format:check` pass
-- [ ] No diff in any command's output, error code, or exit code (unit +
+- [x] `bun run lint:casts` reports zero assertions in `src/**`, `tests/**`
+- [x] `bun run test:all`, `typecheck`, `lint`, `format:check` pass
+- [x] No diff in any command's output, error code, or exit code (unit +
       integration suites cover this; they are edited only where an assertion
       lived)
-- [ ] `src/lib/google-clients.ts` is the only file that imports `googleapis`
+- [x] `src/lib/google-clients.ts` is the only file that imports `googleapis`
       to build a Drive/Docs/Sheets client
-- [ ] `decisions/0015` linked from `decisions/README.md`; task 0015's
+- [x] `decisions/0015` linked from `decisions/README.md`; task 0015's
       "Out of scope" note updated to point here
-- [ ] CI runs `lint:casts`
+- [x] CI runs `lint:casts`
+
+## Outcome
+
+- 0 assertions left in `src/`, `tests/`, `scripts/`; `lint:casts` guards it.
+- Two findings the refactor surfaced, both fixed with a test:
+  - `errorToCode` used `code in ERROR_CODE_EXIT_MAP`, which also matched
+    inherited keys — an error carrying `code: "toString"` was returned as an
+    `ErrorCode` and mapped to an undefined exit code.
+  - `lint:casts` found two `as unknown` sites in `src/upgrade.test.ts` that the
+    initial grep-based inventory had missed.
+- The client casts were hiding exactly one mismatch (`responseType`), so the
+  planned adapter layer proved unnecessary — see `decisions/0015` §3.
 
 ## Verification
 
@@ -89,3 +101,11 @@ Work in slices; each slice is Red → Green → commit.
 - `bun run typecheck` — now also checks the ports against googleapis
 - `bun run dev -- ls` / `docs read` / `sheets read` against a real account —
   the client factories are the one runtime-shaped change
+
+Live sweep run on 2026-07-24 against `ncukondo@gmail.com` (read-only):
+`account list`, `ls` (text/json/`-q`/`--type`), `search`, `info`,
+`share list`, `docs read`, `sheets tabs`, `sheets read --as csv`, and both
+`download` paths — `--export-as pdf` (valid 8-page PDF) and binary media
+(byte count matches `info`), which is what exercises the narrowed
+`responseType: "arraybuffer"`. Error paths: `--type bogus` → exit 3, unknown
+file → exit 1.

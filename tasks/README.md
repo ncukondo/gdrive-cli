@@ -39,7 +39,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0011 `init` command](archive/0011-init.md) | 0003, 0004 | — | done |
 | [0012 Distribution, installer & `upgrade`](archive/0012-distribution.md) | 0007, 0008, 0009, 0010, 0014 | — | done |
 | [0013 README & user docs](archive/0013-docs-site.md) | 0012 | — | done |
-| [0016 Remove type assertions](0016-remove-type-assertions.md) | — | — | in-progress |
+| [0016 Remove type assertions](archive/0016-remove-type-assertions.md) | — | — | done |
 | [0015 Upgrade googleapis (130 → 173)](0015-googleapis-upgrade.md) | 0016 | — | todo |
 
 ## Parallelism notes
