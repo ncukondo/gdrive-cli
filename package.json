@@ -37,6 +37,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target node --packages external",
@@ -57,7 +60,7 @@
   },
   "dependencies": {
     "commander": "^12.0.0",
-    "googleapis": "^130.0.0",
+    "googleapis": "^173.0.0",
     "smol-toml": "^1.0.0",
     "zod": "^4.4.3"
   },
