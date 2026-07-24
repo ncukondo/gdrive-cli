@@ -1,7 +1,7 @@
 import { existsSync, createReadStream } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { google } from "googleapis";
+import { buildDriveClient } from "../lib/google-clients.ts";
 import { AppError } from "../types/index.ts";
 import { nodeFs } from "../lib/fs.ts";
 import { loadConfig } from "../lib/config.ts";
@@ -26,7 +26,7 @@ import { createRmCommand, handleRm } from "./rm.ts";
 async function buildDrive(opts: GlobalOptions): Promise<DriveClient> {
   const config = loadConfig(nodeFs, opts.config);
   const { client } = await getAccountClient(nodeFs, config, opts.account);
-  return google.drive({ version: "v3", auth: client }) as unknown as DriveClient;
+  return buildDriveClient(client);
 }
 
 function readLocalFile(path: string): LocalFile {

@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import type { Command } from "commander";
-import { google } from "googleapis";
+import { buildDriveClient } from "../lib/google-clients.ts";
 import { AppError } from "../types/index.ts";
 import { nodeFs } from "../lib/fs.ts";
 import { loadConfig } from "../lib/config.ts";
@@ -23,7 +23,7 @@ import { createDownloadCommand, handleDownload, parseExportAs } from "./download
 async function buildDrive(opts: GlobalOptions): Promise<DriveClient> {
   const config = loadConfig(nodeFs, opts.config);
   const { client } = await getAccountClient(nodeFs, config, opts.account);
-  return google.drive({ version: "v3", auth: client }) as unknown as DriveClient;
+  return buildDriveClient(client);
 }
 
 /** Coerces a googleapis media payload to a Buffer for binary-safe output. */

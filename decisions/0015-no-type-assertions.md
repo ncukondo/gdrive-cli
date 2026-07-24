@@ -1,4 +1,4 @@
-# 0015: No type assertions — parse at the edges, adapt generated clients
+# 0015: No type assertions — parse at the edges, annotate generated clients
 
 Date: 2026-07-24
 Status: accepted
@@ -69,27 +69,31 @@ Stored token files are the one behavior change: a corrupt
 raises `AUTH_REQUIRED` ("re-run `gdrive auth`"), which is what the user has to
 do anyway.
 
-### 3. Generated clients → an adapter module, not a cast
+### 3. Generated clients → one annotated factory module
 
 The hand-written port interfaces (`DriveClient`, `DocsClient`, `SheetsClient`)
 stay exactly as they are — 0012's injection model and the `tests/helpers/`
 fakes are untouched. What changes is how *production* builds one:
-`src/lib/google-clients.ts` exposes `toDriveClient(drive_v3.Drive)`,
-`toDocsClient(docs_v1.Docs)`, `toSheetsClient(sheets_v4.Sheets)`, each a plain
-delegating object literal. The generated types are checked against our ports at
-that single file, and nowhere else in the codebase imports `drive_v3` & co.
+`src/lib/google-clients.ts` exposes `buildDriveClient(auth)`,
+`buildDocsClient(auth)`, `buildSheetsClient(auth)`, and nothing else in the
+codebase imports `googleapis` for a client.
 
-Two port tweaks fall out of actually type-checking against googleapis 130:
+The casts turned out to be hiding a single incompatibility. Narrowing one port
+field — `files.get`/`files.export` take `responseType?: "arraybuffer"` instead
+of `responseType?: string`, matching gaxios' literal union — makes
+`drive_v3.Drive`, `docs_v1.Docs`, and `sheets_v4.Sheets` *directly assignable*
+to our ports. So the factories need no adapter or delegation layer at all: the
+return-type annotation is the whole check.
 
-- `files.get`/`files.export` take `responseType?: "arraybuffer"` rather than
-  `responseType?: string`, matching gaxios' literal union.
-- `files.get` splits into `get` (metadata → `DriveFileRaw`) and `getMedia`
-  (`alt: "media"` → `unknown`), which is what removes the
-  `res.data as DriveFileRaw` assertion at its root instead of validating a
-  payload we already asked Drive to shape with `fields`.
+That is the piece task 0015 wanted. A googleapis bump that renames a parameter,
+moves a `data` field, or changes a response envelope now fails
+`bun run typecheck` at `google-clients.ts` instead of failing live.
 
-This is the piece task 0015 wanted: a googleapis bump that moves a parameter or
-a response envelope now fails `bun run typecheck` instead of failing live.
+The one payload still typed `unknown` is `files.get`, which serves both
+metadata (`fields=…`) and media (`alt=media`) requests, so the port cannot
+promise a shape. `getFile` therefore parses it with `DriveFileRawSchema`
+(group 2 above) and reports `API_ERROR` on anything else, which is also how the
+`res.data as DriveFileRaw` assertion goes away.
 
 ### 4/5. Errors and index access → checks, not assertions
 
@@ -119,6 +123,9 @@ writing the allowlist is empty.
 - `zod` moves from one site to every external boundary; schemas are the source
   of truth for config, token, and release shapes.
 - Fakes and `decisions/0012`'s injection model are unchanged; production wiring
-  gains one adapter call per client.
+  goes through one factory call per client.
+- The ports must stay supertypes of the generated clients. If a future bump
+  breaks that, the fix is to widen or correct the port — not to reintroduce a
+  cast at the call site.
 - New code must reach for `parseChoice`, a zod schema, or a narrowing check.
   Anything that still "needs" an assertion is a signal the port type is wrong.

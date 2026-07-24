@@ -177,6 +177,18 @@ describe("metadata & mutations", () => {
     expect((await getFile(mockDrive({ get }), "g")).name).toBe("doc");
   });
 
+  it("getFile rejects a response that is not a file object", async () => {
+    const get = vi.fn(async () => ({ data: "<html>login</html>" }));
+    await expect(getFile(mockDrive({ get }), "g")).rejects.toThrow(
+      /Unexpected response from Drive/,
+    );
+  });
+
+  it("getFile tolerates unknown extra fields in the response", async () => {
+    const get = vi.fn(async () => ({ data: { ...raw({ id: "g", name: "doc" }), newField: 1 } }));
+    expect((await getFile(mockDrive({ get }), "g")).name).toBe("doc");
+  });
+
   it("createFolder sets the folder MIME and parent", async () => {
     const create = vi.fn(async () => ({
       data: raw({ id: "new", mimeType: "application/vnd.google-apps.folder" }),

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   AppError,
   type DriveFile,
@@ -16,18 +17,25 @@ const LIST_FIELDS = `nextPageToken,files(${FILE_FIELDS})`;
 
 // --- Raw googleapis shapes (only the fields we read) -----------------------
 
-export interface DriveFileRaw {
-  id?: string | null;
-  name?: string | null;
-  mimeType?: string | null;
-  size?: string | null;
-  parents?: string[] | null;
-  trashed?: boolean | null;
-  webViewLink?: string | null;
-  createdTime?: string | null;
-  modifiedTime?: string | null;
-  owners?: { emailAddress?: string | null }[] | null;
-}
+/**
+ * The subset of Drive's file resource we read. Doubles as the schema for
+ * `files.get`, whose payload arrives as `unknown` (decision 0015); list
+ * responses are already typed by the port.
+ */
+export const DriveFileRawSchema = z.object({
+  id: z.string().nullish(),
+  name: z.string().nullish(),
+  mimeType: z.string().nullish(),
+  size: z.string().nullish(),
+  parents: z.array(z.string()).nullish(),
+  trashed: z.boolean().nullish(),
+  webViewLink: z.string().nullish(),
+  createdTime: z.string().nullish(),
+  modifiedTime: z.string().nullish(),
+  owners: z.array(z.object({ emailAddress: z.string().nullish() })).nullish(),
+});
+
+export type DriveFileRaw = z.infer<typeof DriveFileRawSchema>;
 
 export interface ListParams {
   q?: string;
@@ -74,7 +82,7 @@ export interface DriveClient {
     }>;
     get: (
       params: { fileId: string; fields?: string; alt?: string },
-      options?: { responseType?: string },
+      options?: { responseType?: "arraybuffer" },
     ) => Promise<{ data: unknown }>;
     create: (params: {
       requestBody: FileCreateBody;
@@ -96,7 +104,7 @@ export interface DriveClient {
     delete: (params: { fileId: string }) => Promise<unknown>;
     export: (
       params: { fileId: string; mimeType: string },
-      options?: { responseType?: string },
+      options?: { responseType?: "arraybuffer" },
     ) => Promise<{ data: unknown }>;
   };
   permissions: {
@@ -286,7 +294,11 @@ export async function searchFiles(
 export async function getFile(client: DriveClient, fileId: string): Promise<DriveFile> {
   try {
     const res = await client.files.get({ fileId, fields: FILE_FIELDS });
-    return normalizeFile(res.data as DriveFileRaw);
+    const parsed = DriveFileRawSchema.safeParse(res.data);
+    if (!parsed.success) {
+      throw new AppError("API_ERROR", `Unexpected response from Drive for ${fileId}.`);
+    }
+    return normalizeFile(parsed.data);
   } catch (error) {
     mapDriveError(error);
   }

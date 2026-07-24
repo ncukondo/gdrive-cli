@@ -26,7 +26,7 @@ to keep it that way.
 ## Scope
 
 - New: `src/lib/args.ts` (`parseChoice`), `src/lib/google-clients.ts`
-  (`toDriveClient` / `toDocsClient` / `toSheetsClient`),
+  (`buildDriveClient` / `buildDocsClient` / `buildSheetsClient`),
   `tests/helpers/mock.ts` (`firstCall`, `ExitSignal` exit mock).
 - Edited: option parsers (`ls`, `download`, `docs/read`, `sheets/read`,
   `sheets/write`, `share/add`), boundary parsers (`lib/config.ts`,
@@ -57,12 +57,14 @@ Work in slices; each slice is Red → Green → commit.
 3. **Errors & index access** — Red (where not already covered): `errorToCode`
    on an error carrying a non-`ErrorCode` string `code`; `resolve-path`'s
    ambiguous-match branch. Green: narrowing checks, destructuring.
-4. **Client adapters** — Red: `src/lib/google-clients.test.ts` asserting each
-   adapter delegates to the injected API object (call-through, params
-   forwarded, `data` returned). Green: the three adapters + the `files.get` /
-   `getMedia` split and `responseType: "arraybuffer"` in the port; update
-   `tests/helpers/fake-drive.ts` and the inline fakes. `bun run typecheck` is
-   the real assertion here — it now checks our ports against `drive_v3` &c.
+4. **Client factories** — Red: `getFile` against a non-file payload must
+   report `API_ERROR`. Green: `responseType: "arraybuffer"` in the port (which
+   turns out to be the only thing blocking direct assignment, so no adapter
+   layer is needed), `DriveFileRawSchema` for the `unknown` `files.get`
+   payload, and the three annotated factories at the six construction sites.
+   `bun run typecheck` is the real assertion here — it now checks our ports
+   against `drive_v3` &c.; `google-clients.test.ts` adds the runtime half
+   (the promised methods exist on what googleapis returns).
 5. **Tests' own assertions** — mechanical: `firstCall`, `satisfies`,
    `ExitSignal`, `instanceof` in catch blocks, `Map` for fake stores.
 6. **Guard** — `bun run lint:casts` fails on a re-introduced assertion (verify
@@ -75,8 +77,8 @@ Work in slices; each slice is Red → Green → commit.
 - [ ] No diff in any command's output, error code, or exit code (unit +
       integration suites cover this; they are edited only where an assertion
       lived)
-- [ ] `src/lib/google-clients.ts` is the only file importing `drive_v3`,
-      `docs_v1`, or `sheets_v4` types
+- [ ] `src/lib/google-clients.ts` is the only file that imports `googleapis`
+      to build a Drive/Docs/Sheets client
 - [ ] `decisions/0015` linked from `decisions/README.md`; task 0015's
       "Out of scope" note updated to point here
 - [ ] CI runs `lint:casts`
@@ -86,4 +88,4 @@ Work in slices; each slice is Red → Green → commit.
 - `bun run test:all` — the whole suite; behavior parity is the point
 - `bun run typecheck` — now also checks the ports against googleapis
 - `bun run dev -- ls` / `docs read` / `sheets read` against a real account —
-  the adapters are the one runtime-shaped change
+  the client factories are the one runtime-shaped change

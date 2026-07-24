@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { google } from "googleapis";
+import { buildDocsClient, buildDriveClient } from "../../lib/google-clients.ts";
 import { nodeFs } from "../../lib/fs.ts";
 import { loadConfig } from "../../lib/config.ts";
 import { getAccountClient } from "../../lib/account.ts";
@@ -26,8 +26,8 @@ async function buildClients(
   const config = loadConfig(nodeFs, opts.config);
   const { client } = await getAccountClient(nodeFs, config, opts.account);
   return {
-    drive: google.drive({ version: "v3", auth: client }) as unknown as DriveClient,
-    docs: google.docs({ version: "v1", auth: client }) as unknown as DocsClient,
+    drive: buildDriveClient(client),
+    docs: buildDocsClient(client),
   };
 }
 

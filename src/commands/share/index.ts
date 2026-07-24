@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { google } from "googleapis";
+import { buildDriveClient } from "../../lib/google-clients.ts";
 import { nodeFs } from "../../lib/fs.ts";
 import { loadConfig } from "../../lib/config.ts";
 import { getAccountClient } from "../../lib/account.ts";
@@ -21,7 +21,7 @@ import { createShareLinkCommand, handleShareLink } from "./link.ts";
 async function buildDrive(opts: GlobalOptions): Promise<DriveClient> {
   const config = loadConfig(nodeFs, opts.config);
   const { client } = await getAccountClient(nodeFs, config, opts.account);
-  return google.drive({ version: "v3", auth: client }) as unknown as DriveClient;
+  return buildDriveClient(client);
 }
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
