@@ -117,6 +117,28 @@ describe("renderDocument --as markdown", () => {
     expect(md).toBe("- first\n  - nested\n1. step");
   });
 
+  it("recognizes numbered lists from glyphFormat and bullets from glyphSymbol", () => {
+    const md = renderDocument(
+      doc(
+        [
+          para(["numbered\n"], { bullet: { listId: "F" } }),
+          para(["bulleted\n"], { bullet: { listId: "S" } }),
+          para(["unknown\n"], { bullet: { listId: "U" } }),
+        ],
+        {
+          lists: {
+            F: { listProperties: { nestingLevels: [{ glyphFormat: "%0." }] } },
+            S: { listProperties: { nestingLevels: [{ glyphSymbol: "\u25cf" }] } },
+            // Docs reports this for HTML-converted lists: no usable glyph info.
+            U: { listProperties: { nestingLevels: [{ glyphType: "GLYPH_TYPE_UNSPECIFIED" }] } },
+          },
+        },
+      ),
+      "markdown",
+    );
+    expect(md).toBe("1. numbered\n- bulleted\n- unknown");
+  });
+
   it("renders tables as pipe rows with a header separator", () => {
     const table: StructuralElementRaw = {
       table: {

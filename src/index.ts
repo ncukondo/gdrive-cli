@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { OutputFormat } from "./types/index.ts";
 import { ExitCode, errorToCode, errorToExit } from "./types/index.ts";
 import { renderError } from "./lib/output.ts";
+import { nodeFs } from "./lib/fs.ts";
+import { loadConfig } from "./lib/config.ts";
 import { registerCommands } from "./commands/index.ts";
 import pkg from "../package.json" with { type: "json" };
 
@@ -39,6 +41,21 @@ export function createProgram(): Command {
   return program;
 }
 
+/**
+ * Format default when `-f/--format` is absent: `$GDRIVE_CLI_FORMAT`, then
+ * `default_format` in the config (decision 0006). A broken config is ignored
+ * here — the command's own `loadConfig` reports it as a `CONFIG_ERROR`.
+ */
+function defaultFormat(configPath?: string): string {
+  const fromEnv = process.env["GDRIVE_CLI_FORMAT"];
+  if (fromEnv) return fromEnv;
+  try {
+    return loadConfig(nodeFs, configPath).default_format;
+  } catch {
+    return "text";
+  }
+}
+
 export function resolveGlobalOptions(program: Command): GlobalOptions {
   const raw = program.opts<{
     format: string;
@@ -47,9 +64,12 @@ export function resolveGlobalOptions(program: Command): GlobalOptions {
     config?: string;
   }>();
 
-  const formatResult = FormatSchema.safeParse(raw.format);
+  const explicitFormat = program.getOptionValueSource("format") !== "default";
+  const format = explicitFormat ? raw.format : defaultFormat(raw.config);
+
+  const formatResult = FormatSchema.safeParse(format);
   if (!formatResult.success) {
-    process.stderr.write(`error: invalid format '${raw.format}'. Must be 'text' or 'json'.\n`);
+    process.stderr.write(`error: invalid format '${format}'. Must be 'text' or 'json'.\n`);
     process.exit(ExitCode.ARGUMENT);
   }
 

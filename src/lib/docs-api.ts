@@ -38,8 +38,14 @@ export interface StructuralElementRaw {
   table?: TableRaw | null;
 }
 
+export interface NestingLevelRaw {
+  glyphType?: string | null;
+  glyphFormat?: string | null;
+  glyphSymbol?: string | null;
+}
+
 export interface ListRaw {
-  listProperties?: { nestingLevels?: { glyphType?: string | null }[] | null } | null;
+  listProperties?: { nestingLevels?: NestingLevelRaw[] | null } | null;
 }
 
 export interface DocumentRaw {
@@ -116,14 +122,28 @@ function inlineMarkdown(elements: ParagraphElementRaw[]): string {
   return out;
 }
 
+/**
+ * True when a list level is numbered. Docs reports this three different ways
+ * and sometimes not at all — documents converted from HTML come back with
+ * `GLYPH_TYPE_UNSPECIFIED` and no glyph fields, which falls back to a bullet.
+ */
+function isOrderedLevel(level: NestingLevelRaw | undefined): boolean {
+  if (!level) return false;
+  if (level.glyphType && ORDERED_GLYPHS.has(level.glyphType)) return true;
+  if (level.glyphSymbol) return false;
+  // A numbered format interpolates the count, e.g. "%0." or "%0.%1".
+  return level.glyphFormat !== undefined && level.glyphFormat !== null
+    ? level.glyphFormat.includes("%0")
+    : false;
+}
+
 /** Heading / list marker for a paragraph, or "" for body text. */
 function paragraphPrefix(paragraph: ParagraphRaw, lists: Record<string, ListRaw>): string {
   const bullet = paragraph.bullet;
   if (bullet) {
     const level = bullet.nestingLevel ?? 0;
-    const glyph =
-      lists[bullet.listId ?? ""]?.listProperties?.nestingLevels?.[level]?.glyphType ?? "";
-    return "  ".repeat(level) + (ORDERED_GLYPHS.has(glyph) ? "1. " : "- ");
+    const nesting = lists[bullet.listId ?? ""]?.listProperties?.nestingLevels?.[level];
+    return "  ".repeat(level) + (isOrderedLevel(nesting) ? "1. " : "- ");
   }
   const style = paragraph.paragraphStyle?.namedStyleType ?? "";
   const heading = /^HEADING_([1-6])$/.exec(style);

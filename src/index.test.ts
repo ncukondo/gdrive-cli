@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GlobalOptions } from "./index.ts";
 import { createProgram, resolveGlobalOptions, handleError } from "./index.ts";
@@ -28,6 +31,33 @@ describe("global options", () => {
 
   it("accepts -f json", () => {
     expect(parseArgs(["-f", "json"]).format).toBe("json");
+  });
+
+  it("falls back to $GDRIVE_CLI_FORMAT when -f is absent", () => {
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
+    expect(parseArgs([]).format).toBe("json");
+    expect(parseArgs(["-f", "text"]).format).toBe("text");
+    vi.unstubAllEnvs();
+  });
+
+  it("falls back to default_format in the config", () => {
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "");
+    const dir = mkdtempSync(join(tmpdir(), "gdrive-cfg-"));
+    const path = join(dir, "gdrive-cli.toml");
+    writeFileSync(path, 'default_format = "json"\n');
+    try {
+      expect(parseArgs(["--config", path]).format).toBe("json");
+      expect(parseArgs(["--config", path, "-f", "text"]).format).toBe("text");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("ignores an unreadable config when defaulting the format", () => {
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "");
+    expect(parseArgs(["--config", "/nonexistent/gdrive-cli.toml"]).format).toBe("text");
+    vi.unstubAllEnvs();
   });
 
   it("--quiet defaults to false and sets true with -q", () => {

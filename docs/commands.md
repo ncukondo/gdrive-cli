@@ -1,28 +1,90 @@
 # Command reference
 
-User-facing behavior. Design rationale lives in [`../decisions/`](../decisions/).
+Every command, with an example and its JSON shape. Design rationale lives in
+[`../decisions/`](../decisions/); authentication, accounts, and the config file
+have their own pages:
+
+- [`authentication.md`](authentication.md) — Google Cloud setup, scopes, login
+- [`accounts.md`](accounts.md) — multiple accounts, aliases, `-a`
+- [`configuration.md`](configuration.md) — config file and environment variables
 
 ## Global options
 
 | Option | Description |
 |--------|-------------|
-| `-a, --account <email\|alias>` | Account to use (overrides default) |
+| `-a, --account <email\|alias>` | Account to use (overrides the default) |
 | `-f, --format <text\|json>` | Output format (default `text`) |
 | `-q, --quiet` | Minimal output for piping |
 | `--config <path>` | Config file path |
-| `-h, --help`, `--version` | Help / version |
+| `-h, --help`, `-V, --version` | Help / version |
 
-Account resolution: `-a` > `GDRIVE_CLI_ACCOUNT` > `default_account` in config >
-the sole authenticated account. See [`../decisions/0004`](../decisions/0004-multi-account.md).
+Account resolution: `-a` > `$GDRIVE_CLI_ACCOUNT` > `default_account` in config >
+the sole authenticated account. Format resolution: `-f` > `$GDRIVE_CLI_FORMAT` >
+`default_format` in config > `text`.
 
-`gdrive init` writes `~/.config/gdrive-cli/config.toml` (or `./gdrive-cli.toml`
-with `--local`, or the path given by the global `--config`), seeding
-`[[accounts]]` from the already-authenticated accounts and setting
-`default_account` to the first one. It refuses to overwrite an existing file
-without `--force`; quiet mode prints the path. See
-[`../decisions/0006`](../decisions/0006-configuration.md).
+## Output modes
+
+Three modes, chosen with `-f` and `-q`:
+
+- **text** (default) — human-readable tables and sentences.
+- **`-q` quiet** — one value per line, made for pipes: usually IDs. Some
+  commands (`rm`, `share remove`, `sheets clear`) print nothing at all.
+- **`-f json`** — a stable envelope. `--quiet` is ignored in JSON mode.
+
+```json
+{ "success": true, "data": { } }
+{ "success": false, "error": { "code": "NOT_FOUND", "message": "..." } }
+```
+
+The `data` shapes below are what goes in that envelope.
+
+## Addressing files
+
+Anywhere a command takes `<file>` or `<folder>`, you can pass a Drive **ID** or
+a **path** relative to My Drive root:
+
+```sh
+gdrive info 1AbCdEf...              # by ID
+gdrive info "Reports/2026/summary"  # by path
+```
+
+Paths are resolved segment by segment; a segment that matches nothing is
+`NOT_FOUND`, and one that matches several files is `INVALID_ARGS`.
+
+An argument that *looks like* an ID — 20 or more characters of
+`[A-Za-z0-9_-]` with no slash — is always treated as an ID, so a file whose
+name happens to match that shape has to be addressed by its real ID.
+
+## The file object
+
+`ls`, `search`, `info`, `upload`, `mkdir`, `mv`, `cp`, and `rm` all report files
+in one normalized shape. `size` is `null` for Google-native files (Docs, Sheets,
+Slides, folders):
+
+```json
+{
+  "id": "1AbCdEf...",
+  "name": "photo.png",
+  "mime_type": "image/png",
+  "type": "file",
+  "size": 6172242,
+  "parents": ["0AIhndZ..."],
+  "trashed": false,
+  "web_view_link": "https://drive.google.com/file/d/1AbCdEf.../view",
+  "created": "2026-07-23T23:59:15.000Z",
+  "modified": "2026-07-23T23:59:15.000Z",
+  "owners": ["me@gmail.com"]
+}
+```
+
+`type` is one of `folder`, `doc`, `sheet`, `slides`, `file`.
+
+---
 
 ## Auth & accounts
+
+Covered in detail in [`authentication.md`](authentication.md) and
+[`accounts.md`](accounts.md).
 
 | Command | Description |
 |---------|-------------|
@@ -32,128 +94,531 @@ without `--force`; quiet mode prints the path. See
 | `gdrive account list` | List accounts, aliases, and the default |
 | `gdrive account use <email\|alias>` | Set the default account |
 | `gdrive account alias <email\|alias> <alias>` | Assign/rename an alias |
-| `gdrive account remove <email\|alias>` | Remove an account (alias of logout) |
-| `gdrive init [--local] [--force]` | Generate a config file |
-| `gdrive upgrade [--dry-run]` | Update a binary install to the latest release |
+| `gdrive account remove <email\|alias>` | Remove an account (revoke + drop alias) |
+
+---
 
 ## Drive
 
-| Command | Description |
-|---------|-------------|
-| `gdrive ls [<folder>] [--type <t>] [--trashed] [-n <limit>] [--order <o>]` | List a folder (My Drive root if omitted) |
-| `gdrive search <query> [--type <t>] [-n <limit>] [--order <o>]` | Search files by name / full text |
-| `gdrive info <file>` | Show file metadata |
-| `gdrive download <file> [-o <path>] [--export-as <fmt>]` | Download / export (stdout if no `-o`) |
-| `gdrive upload <local> [--parent <folder>]` | Upload (`--as-doc`/`--as-sheet` to convert) |
-| `gdrive mkdir <name> [--parent <folder>]` | Create a folder |
-| `gdrive mv <file> <folder>` | Move |
-| `gdrive cp <file> <folder> [--name <name>]` | Copy |
-| `gdrive rm <file> [--permanent]` | Trash (default) or delete permanently |
+### `gdrive ls [<folder>]`
 
-`<file>` / `<folder>` accept a Drive **ID** or a root-relative **path**
-(`"Reports/2026/summary"`). See [`../decisions/0008`](../decisions/0008-drive-commands.md).
+Lists a folder's direct children; My Drive root when the argument is omitted.
 
-Read-command options:
+| Option | Description |
+|--------|-------------|
+| `--type <t>` | `folder` \| `doc` \| `sheet` \| `slides` \| `file` |
+| `--trashed` | List trashed files instead |
+| `-n, --limit <n>` | Cap the number of results |
+| `--order <o>` | `name` \| `modified` \| `created` |
 
-- `--type` — `folder` | `doc` | `sheet` | `slides` | `file`
-- `--order` — `name` | `modified` | `created`
-- `-n, --limit <n>` — cap the number of results
-- `download --export-as` — `pdf` | `docx` | `xlsx` | `csv` | `md` | `txt`.
-  Applies to Google Docs/Sheets/Slides; a Doc/Sheet with no `--export-as`
-  defaults to `pdf`/`csv`. Binary files download as-is (error if `--export-as`
-  is given). With no `-o`, content is written to stdout for piping.
+```console
+$ gdrive ls "Reports/2026" --type sheet -n 2 --order modified
+Type    Modified          Name                       ID
+sheet   2026-07-24 06:17  Budget                     1S6cRd...
+sheet   2026-06-02 11:40  Headcount                  1QwErT...
+```
+
+```json
+{ "files": [ { /* file object */ } ] }
+```
+
+Quiet: one file ID per line.
+
+### `gdrive search <query>`
+
+Searches file names and full text across the account.
+
+| Option | Description |
+|--------|-------------|
+| `--type <t>`, `-n, --limit <n>`, `--order <o>` | As for `ls` |
+
+```console
+$ gdrive search budget --type sheet
+Type    Modified          Name                       ID
+sheet   2026-07-24 06:17  Budget                     1S6cRd...
+```
+
+```json
+{ "files": [ { /* file object */ } ] }
+```
+
+Quiet: one file ID per line.
+
+### `gdrive info <file>`
+
+```console
+$ gdrive info "Reports/2026/Budget"
+Name:      Budget
+Type:      sheet
+ID:        1S6cRd...
+MIME:      application/vnd.google-apps.spreadsheet
+Size:      -
+Modified:  2026-07-24T06:17:02.000Z
+Created:   2026-07-24T06:17:00.000Z
+Owners:    me@gmail.com
+Trashed:   false
+Link:      https://docs.google.com/spreadsheets/d/1S6cRd.../edit
+```
+
+```json
+{ "file": { /* file object */ } }
+```
+
+Quiet: the file ID.
+
+### `gdrive download <file>`
+
+Downloads binary content, or exports a Google-native file. With no `-o`, the
+bytes go to stdout so you can pipe them.
+
+| Option | Description |
+|--------|-------------|
+| `-o, --output <path>` | Write to a local file instead of stdout |
+| `--export-as <fmt>` | `pdf` \| `docx` \| `xlsx` \| `csv` \| `md` \| `txt` |
+
+A Doc or Sheet with no `--export-as` defaults to `pdf` / `csv`. Binary files are
+downloaded as-is; passing `--export-as` for one is `INVALID_ARGS`.
+
+```console
+$ gdrive download "Reports/2026/Notes" --export-as md -o notes.md
+Downloaded Notes to notes.md
+
+$ gdrive download 1AbC... > photo.png
+```
+
+```json
+{ "file": "Notes", "id": "1AbC...", "path": "notes.md", "bytes": 20481 }
+```
+
+Quiet: the output path (nothing when writing to stdout).
+
+### `gdrive upload <local>`
+
+| Option | Description |
+|--------|-------------|
+| `--parent <folder>` | Parent folder ID or path |
+| `--name <name>` | Name in Drive (defaults to the local filename) |
+| `--as-doc` / `--as-sheet` | Convert to a Google Doc / Sheet on upload |
+
+```console
+$ gdrive upload ./data.csv --parent Reports --name Budget --as-sheet
+Uploaded Budget (1S6cRd...)
+```
+
+```json
+{ "file": { /* file object */ } }
+```
+
+Quiet: the new file ID.
+
+### `gdrive mkdir <name>`
+
+```console
+$ gdrive mkdir 2027 --parent Reports
+Created folder 2027 (1FoLdEr...)
+```
+
+```json
+{ "file": { /* file object */ } }
+```
+
+Quiet: the new folder ID.
+
+### `gdrive mv <file> <folder>` / `gdrive cp <file> <folder>`
+
+`mv` detaches the file from its current parents; `cp` takes an optional
+`--name` for the copy.
+
+```console
+$ gdrive mv "Inbox/Budget" "Reports/2026"
+Moved Budget to 1FoLdEr...
+
+$ gdrive cp "Reports/2026/Budget" Archive --name "Budget (2026)"
+Copied to Budget (2026) (1CoPy...)
+```
+
+```json
+{ "file": { /* file object */ } }
+```
+
+Quiet: the file ID.
+
+### `gdrive rm <file>`
+
+Moves the file to the trash. `--permanent` deletes it outright — that cannot be
+undone.
+
+```console
+$ gdrive rm "Reports/2026/Draft"
+Trashed Draft (1DrAfT...)
+```
+
+```json
+{ "file": { /* file object */ }, "trashed": true }
+{ "id": "1DrAfT...", "deleted": true }
+```
+
+The second shape is what `--permanent` returns. Quiet: prints nothing.
+
+---
 
 ## Sharing (`gdrive share`)
 
-| Command | Description |
-|---------|-------------|
-| `share list <file>` | List all permissions |
-| `share add <file> (--to <email> \| --domain <d> \| --anyone) [--role reader\|commenter\|writer] [--notify] [--message <s>] [--allow-discovery]` | Grant access |
-| `share remove <file> (--to <email> \| --permission-id <id>)` | Revoke access |
-| `share link <file> [--role reader]` | Ensure "anyone with link" and print the URL |
-
-- Grantee type is inferred: `--to` → `user` (or `group` for a
-  `@googlegroups.com` address), `--domain` → `domain`, `--anyone` → `anyone`.
-  Exactly one grantee option is required.
-- `--role` defaults to `reader`; `--notify` is off by default so agent runs stay
-  quiet (Google may still notify for some grants).
-- `share remove --to` resolves the email to its permission id; an email with no
-  permission on the file is a `NOT_FOUND` error. Quiet mode prints nothing.
-- `share link` reuses an existing anyone-with-link permission and upgrades its
-  role when `--role` differs. Quiet mode prints just the URL.
-
-Ownership transfer is not yet supported. See
+Permission management. Ownership transfer is not supported — see
 [`../decisions/0011`](../decisions/0011-sharing-commands.md).
+
+The permission object:
+
+```json
+{ "id": "perm-abc", "type": "user", "role": "writer",
+  "email": "alice@example.com", "display_name": "Alice",
+  "domain": null, "allow_file_discovery": false, "deleted": false }
+```
+
+`type` is `user`, `group`, `domain`, or `anyone`.
+
+### `gdrive share list <file>`
+
+```console
+$ gdrive share list "Reports/2026/Budget"
+Role       Type    Grantee                 Permission ID
+owner      user    me@gmail.com            15586974644968362332
+writer     anyone  (anyone with link)      anyoneWithLink
+```
+
+```json
+{ "id": "1S6cRd...", "permissions": [ { /* permission object */ } ] }
+```
+
+Quiet: one permission ID per line.
+
+### `gdrive share add <file>`
+
+Exactly one grantee option is required.
+
+| Option | Description |
+|--------|-------------|
+| `--to <email>` | A user, or a group for a `@googlegroups.com` address |
+| `--domain <domain>` | Everyone in a domain |
+| `--anyone` | Anyone with the link |
+| `--role <role>` | `reader` (default) \| `commenter` \| `writer` |
+| `--notify` | Send a notification email (off by default) |
+| `--message <text>` | Message included in that email |
+| `--allow-discovery` | Make the file discoverable in search |
+
+```console
+$ gdrive share add "Reports/2026/Budget" --to alice@example.com --role writer
+Granted writer to alice@example.com (perm-abc)
+```
+
+```json
+{ "id": "1S6cRd...", "permission": { /* permission object */ } }
+```
+
+Quiet: the new permission ID. `--role owner` is rejected with `INVALID_ARGS`.
+
+### `gdrive share remove <file>`
+
+Requires `--to <email>` (resolved to its permission ID) or an explicit
+`--permission-id <id>`. An email with no permission on the file is `NOT_FOUND`.
+
+```console
+$ gdrive share remove "Reports/2026/Budget" --to alice@example.com
+Removed permission perm-abc from 1S6cRd...
+```
+
+```json
+{ "id": "1S6cRd...", "permission_id": "perm-abc", "removed": true }
+```
+
+Quiet: prints nothing.
+
+### `gdrive share link <file>`
+
+Ensures an "anyone with link" permission and prints the shareable URL. An
+existing one is reused, and upgraded when `--role` differs.
+
+```console
+$ gdrive share link "Reports/2026/Budget" --role writer
+Anyone with the link (writer)
+https://docs.google.com/spreadsheets/d/1S6cRd.../edit
+```
+
+```json
+{ "id": "1S6cRd...", "web_view_link": "https://docs.google.com/...",
+  "permission": { /* permission object */ } }
+```
+
+Quiet: just the URL.
+
+---
 
 ## Docs (`gdrive docs`)
 
-| Command | Description |
-|---------|-------------|
-| `read <file> [--as markdown\|text]` | Export the body (default markdown) |
-| `create <title> [--content <text\|@file\|->] [--parent]` | New document |
-| `append <file> <text\|@file\|->` | Append a paragraph |
-| `replace <file> --find <s> --replace <s> [--match-case]` | Find & replace |
-| `insert <file> <text\|@file\|-> (--index <n> \| --at start\|end)` | Insert text |
+Text arguments accept a literal string, `@file` to read a local file, or `-` to
+read stdin.
 
-- `read --as markdown` maps headings, bold/italic, links, bulleted/numbered
-  lists, and (best effort) tables; `--as text` emits plain paragraph text. Both
-  print the body to stdout, in quiet mode too.
-- `create --parent` places the new document in a folder (the Docs API creates in
-  My Drive first, then the file is moved).
-- `insert --index` is Docs' 1-based character index in the body; `--at start` is
-  index 1 and `--at end` is the end of the body. Exactly one of the two is
-  required — `append` is the shorthand for adding a paragraph at the end.
-- `replace` always replaces every match (`--all` is accepted for clarity) and
-  reports the occurrence count; the count is in the JSON `data.replaced`.
-- Quiet `create`/`append`/`replace`/`insert` print the document ID.
+### `gdrive docs read <file>`
 
-See [`../decisions/0009`](../decisions/0009-docs-commands.md).
+`--as markdown` (default) maps headings, bold/italic, links, bulleted and
+numbered lists, and — best effort — tables. `--as text` emits plain paragraph
+text. Both print the body to stdout, in quiet mode too.
+
+Rendering is best effort: a numbered list becomes `1.` only when Docs reports
+its glyph, and documents converted from HTML report no glyph information, so
+their numbered lists come back as `-`.
+
+```console
+$ gdrive docs read "Notes/Meeting"
+# Meeting notes
+Discussed the **budget** and [the plan](https://example.com).
+- ship on Friday
+```
+
+```json
+{ "id": "1BzqpK...", "title": "Meeting notes", "format": "markdown",
+  "content": "# Meeting notes\n..." }
+```
+
+### `gdrive docs create <title>`
+
+| Option | Description |
+|--------|-------------|
+| `--content <text\|@file\|->` | Initial body content |
+| `--parent <folder>` | Parent folder ID or path |
+
+The Docs API always creates in My Drive, so `--parent` is applied as a move
+right after creation.
+
+```console
+$ gdrive docs create "Meeting notes" --content @agenda.md --parent Notes
+Created Meeting notes (1BzqpK...)
+```
+
+```json
+{ "id": "1BzqpK...", "title": "Meeting notes", "parent_id": "1FoLdEr..." }
+```
+
+Content is inserted as plain text — Markdown in the input is not converted to
+Docs formatting. Quiet: the new document ID.
+
+### `gdrive docs append <file> <text|@file|->`
+
+Appends the text as a new paragraph at the end of the body.
+
+```console
+$ echo "decided: ship on Friday" | gdrive docs append "Notes/Meeting" -
+Appended to Meeting notes (1BzqpK...)
+```
+
+```json
+{ "id": "1BzqpK...", "title": "Meeting notes" }
+```
+
+Quiet: the document ID.
+
+### `gdrive docs replace <file>`
+
+Replaces every match and reports how many. `--find` and `--replace` are
+required; matching is case-insensitive unless `--match-case` is given. `--all`
+is accepted for clarity but changes nothing — all matches are always replaced.
+
+```console
+$ gdrive docs replace "Notes/Meeting" --find Q3 --replace Q4 --match-case
+Replaced 3 occurrences
+```
+
+```json
+{ "id": "1BzqpK...", "replaced": 3, "message": "Replaced 3 occurrences" }
+```
+
+Quiet: the document ID.
+
+### `gdrive docs insert <file> <text|@file|->`
+
+Exactly one position is required: `--index <n>` (Docs' 1-based character index
+in the body) or `--at start|end`.
+
+```console
+$ gdrive docs insert "Notes/Meeting" "DRAFT — " --at start
+Inserted into Meeting notes (1BzqpK...)
+```
+
+```json
+{ "id": "1BzqpK...", "title": "Meeting notes", "index": 1 }
+```
+
+Quiet: the document ID.
+
+---
 
 ## Sheets (`gdrive sheets`)
 
-| Command | Description |
-|---------|-------------|
-| `tabs <file>` | List tabs (sheets) |
-| `read <file> [<range>] [--tab <name>] [--as table\|csv\|json]` | Read values |
-| `write <file> <range> --values <csv\|json\|@file\|->` | Overwrite a range |
-| `append <file> [<range>] --values <csv\|json\|@file\|->` | Append rows |
-| `clear <file> <range>` | Clear a range |
-| `create <title> [--parent <folder>]` | New spreadsheet |
+`<range>` is A1 notation, optionally tab-qualified (`Sheet1!A1:C10`). A range
+that names a tab wins; otherwise `--tab <name>` qualifies it, and with neither
+the first *visible* tab is used. Omitting the range targets the whole tab.
 
-`<range>` is A1 notation, optionally tab-qualified (`Sheet1!A1:C10`).
+`--values` takes CSV (RFC 4180 quoting) or a JSON 2-D array, directly or via
+`@file` / `-`; input starting with `[` is treated as JSON.
 
-- A range that names a tab wins; otherwise `--tab <name>` qualifies it, and
-  with neither the first *visible* tab is used. Omitting the range targets the
-  whole tab (its used range).
-- `--values` accepts CSV (RFC 4180 quoting) or a JSON 2-D array
-  (`[["a","b"],["c","d"]]`), directly or via `@file` / `-`; input starting with
-  `[` is treated as JSON.
-- `write`/`append` send values RAW by default; `--input-mode user` lets Sheets
-  parse formulas and dates.
-- `read --as` is `table` (default), `csv`, or `json`; quiet `read` prints CSV.
-  Quiet `write`/`append` print the updated cell count, quiet `clear` prints
-  nothing, quiet `create` prints the new spreadsheet ID.
-- `create --parent` places the new spreadsheet in a folder (the Sheets API
-  creates in My Drive first, then the file is moved).
+### `gdrive sheets tabs <file>`
 
-See [`../decisions/0010`](../decisions/0010-sheets-commands.md).
+```console
+$ gdrive sheets tabs "Reports/2026/Budget"
+Index  Rows  Cols  Title
+0      1000  26    Sheet1
+1      50    10    Summary
+```
 
-## Install & upgrade
+```json
+{ "id": "1S6cRd...", "tabs": [
+  { "index": 0, "title": "Sheet1", "sheet_id": 0, "rows": 1000, "cols": 26, "hidden": false }
+] }
+```
 
-Install via npm (`npm i -g @ncukondo/gdrive-cli`) or the single-file binary
-installers (`install.sh` / `install.ps1`), which verify a SHA-256 checksum and
-honor `GDRIVE_CLI_VERSION` and `GDRIVE_CLI_INSTALL_DIR`.
+Quiet: one tab title per line.
 
-`gdrive upgrade` replaces a binary install in place: it fetches the latest
-GitHub release, verifies the checksum against `SHA256SUMS`, and swaps the
-executable atomically. `--dry-run` reports the target version and downloads
-nothing; a checksum mismatch aborts without touching the binary. When the CLI
-is running under Node/Bun (npm, npx, bunx), `upgrade` prints the package-manager
-command instead of replacing anything. See
+### `gdrive sheets read <file> [<range>]`
+
+`--as` is `table` (default), `csv`, or `json`.
+
+```console
+$ gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:B3"
+name   score
+alice  90
+bob    80
+```
+
+```json
+{ "id": "1S6cRd...", "range": "Sheet1!A1:B3",
+  "values": [["name","score"],["alice","90"],["bob","80"]],
+  "rows": 3, "cols": 2 }
+```
+
+Quiet: CSV to stdout.
+
+### `gdrive sheets write <file> <range>`
+
+`--values` is required. Values are sent RAW by default; `--input-mode user`
+lets Sheets parse formulas and dates.
+
+```console
+$ gdrive sheets write "Reports/2026/Budget" A1:B2 --values 'name,score
+alice,90'
+Updated 4 cells in Sheet1!A1:B2
+```
+
+```json
+{ "id": "1S6cRd...", "updated_range": "Sheet1!A1:B2", "updated_rows": 2,
+  "updated_columns": 2, "updated_cells": 4,
+  "message": "Updated 4 cells in Sheet1!A1:B2" }
+```
+
+Quiet: the updated cell count.
+
+### `gdrive sheets append <file> [<range>]`
+
+Appends rows after the existing table. Same options as `write`; the range is
+where to look for that table (the whole tab if omitted).
+
+```console
+$ gdrive sheets append "Reports/2026/Budget" --values '[["carol","70"]]'
+Appended 1 rows to Sheet1!A4:B4
+```
+
+```json
+{ "id": "1S6cRd...", "updated_range": "Sheet1!A4:B4", "updated_rows": 1,
+  "updated_columns": 2, "updated_cells": 2,
+  "message": "Appended 1 rows to Sheet1!A4:B4" }
+```
+
+Quiet: the updated cell count.
+
+### `gdrive sheets clear <file> <range>`
+
+Clears values, leaving formatting alone.
+
+```console
+$ gdrive sheets clear "Reports/2026/Budget" A4:B4
+Cleared Sheet1!A4:B4
+```
+
+```json
+{ "id": "1S6cRd...", "cleared_range": "Sheet1!A4:B4",
+  "message": "Cleared Sheet1!A4:B4" }
+```
+
+Quiet: prints nothing.
+
+### `gdrive sheets create <title>`
+
+`--parent <folder>` places the spreadsheet in a folder (created in My Drive
+first, then moved).
+
+```console
+$ gdrive sheets create Budget --parent "Reports/2026"
+Created Budget (1S6cRd...)
+```
+
+```json
+{ "id": "1S6cRd...", "title": "Budget", "parent_id": "1FoLdEr..." }
+```
+
+Quiet: the new spreadsheet ID.
+
+---
+
+## Setup & maintenance
+
+### `gdrive init [--local] [--force]`
+
+Generates the config file, seeded from the authenticated accounts. See
+[`configuration.md`](configuration.md).
+
+```json
+{ "path": "/home/me/.config/gdrive-cli/config.toml",
+  "accounts": ["work@example.com"], "default_account": "work@example.com",
+  "created": true }
+```
+
+### `gdrive upgrade [--dry-run]`
+
+Updates a **binary** install in place: fetches the latest GitHub release,
+verifies its SHA-256 against `SHA256SUMS`, and swaps the executable atomically.
+`--dry-run` reports the target version and downloads nothing; a checksum
+mismatch aborts without touching the binary. Running under Node or Bun (npm,
+npx, bunx), it prints the package-manager command instead.
+
+```console
+$ gdrive upgrade --dry-run
+Would upgrade v0.1.0 -> v0.2.0 using gdrive-linux-x64.
+```
+
+```json
+{ "status": "dry-run", "current_version": "0.1.0", "latest_version": "0.2.0",
+  "asset": "gdrive-linux-x64" }
+{ "status": "upgraded", "current_version": "0.1.0", "latest_version": "0.2.0" }
+{ "status": "up-to-date", "current_version": "0.2.0" }
+{ "status": "not-binary", "package": "@ncukondo/gdrive-cli" }
+```
+
+Quiet: the target version.
+
+Install itself is covered in the [README](../README.md): npm, `npx`, or the
+`install.sh` / `install.ps1` binary installers, which verify the checksum and
+honor `GDRIVE_CLI_VERSION` and `GDRIVE_CLI_INSTALL_DIR`. See
 [`../decisions/0003`](../decisions/0003-distribution.md).
+
+---
 
 ## Exit codes
 
-`0` success · `1` general/operation error · `2` authentication error ·
-`3` argument error. Error codes and JSON envelope:
-[`../decisions/0007`](../decisions/0007-output-and-errors.md).
+| Code | Meaning | Error codes |
+|------|---------|-------------|
+| `0` | Success | — |
+| `1` | Operation failed | `NOT_FOUND`, `API_ERROR`, `CONFIG_ERROR`, `IO_ERROR` |
+| `2` | Authentication problem | `AUTH_REQUIRED`, `AUTH_EXPIRED`, `ACCOUNT_NOT_FOUND` |
+| `3` | Bad arguments | `INVALID_ARGS` |
+
+Errors go to stderr — as `Error: <message>` in text mode, or as the envelope in
+JSON mode. See [`../decisions/0007`](../decisions/0007-output-and-errors.md).

@@ -38,7 +38,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0014 Share/permissions commands](archive/0014-share.md) | 0006 | C | done |
 | [0011 `init` command](archive/0011-init.md) | 0003, 0004 | — | done |
 | [0012 Distribution, installer & `upgrade`](archive/0012-distribution.md) | 0007, 0008, 0009, 0010, 0014 | — | done |
-| [0013 README & user docs](0013-docs-site.md) | 0012 | — | todo |
+| [0013 README & user docs](archive/0013-docs-site.md) | 0012 | — | done |
 
 ## Parallelism notes
 
