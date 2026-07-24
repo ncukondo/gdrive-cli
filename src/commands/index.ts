@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { registerAuth } from "./auth.ts";
+import { registerDriveRead } from "./drive-read.ts";
 
 /**
  * Attaches every command area to the program. Each command task appends one
@@ -8,4 +9,5 @@ import { registerAuth } from "./auth.ts";
  */
 export function registerCommands(program: Command): void {
   registerAuth(program);
+  registerDriveRead(program);
 }

@@ -1,6 +1,6 @@
 # Task 0007: Drive read commands
 
-Status: todo
+Status: done
 Depends on: 0006
 Parallel: yes (group B) — alongside 0008
 
@@ -26,10 +26,14 @@ Parallel: yes (group B) — alongside 0008
 
 ## Acceptance criteria
 
-- [ ] Each command's text, JSON, quiet outputs match 0008
-- [ ] `download` streams to stdout when no `-o`; export formats work
-- [ ] `NOT_FOUND` / ambiguous path errors surface correctly
-- [ ] `bun run test`, `bun run typecheck` pass; docs updated
+- [x] Each command's text, JSON, quiet outputs match 0008
+- [x] `download` streams to stdout when no `-o`; export formats work
+- [x] `NOT_FOUND` / ambiguous path errors surface correctly
+- [x] `bun run test`, `bun run typecheck` pass; docs updated
+
+Live-verified against the authenticated account: `ls` (text/json/quiet, `--type`,
+`-n`), `search`, `info` (by path), `download` (Sheet→CSV to file and to stdout),
+and error cases (`NOT_FOUND` exit 1, `--export-as` on binary → `INVALID_ARGS`).
 
 ## Verification
 

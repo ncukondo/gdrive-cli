@@ -32,10 +32,10 @@ the sole authenticated account. See [`../decisions/0004`](../decisions/0004-mult
 
 | Command | Description |
 |---------|-------------|
-| `gdrive ls [<folder>]` | List a folder (My Drive root if omitted) |
-| `gdrive search <query>` | Search files by name / full text |
+| `gdrive ls [<folder>] [--type <t>] [--trashed] [-n <limit>] [--order <o>]` | List a folder (My Drive root if omitted) |
+| `gdrive search <query> [--type <t>] [-n <limit>] [--order <o>]` | Search files by name / full text |
 | `gdrive info <file>` | Show file metadata |
-| `gdrive download <file> [-o <path>]` | Download / export (stdout if no `-o`) |
+| `gdrive download <file> [-o <path>] [--export-as <fmt>]` | Download / export (stdout if no `-o`) |
 | `gdrive upload <local> [--parent <folder>]` | Upload (`--as-doc`/`--as-sheet` to convert) |
 | `gdrive mkdir <name> [--parent <folder>]` | Create a folder |
 | `gdrive mv <file> <folder>` | Move |
@@ -44,6 +44,16 @@ the sole authenticated account. See [`../decisions/0004`](../decisions/0004-mult
 
 `<file>` / `<folder>` accept a Drive **ID** or a root-relative **path**
 (`"Reports/2026/summary"`). See [`../decisions/0008`](../decisions/0008-drive-commands.md).
+
+Read-command options:
+
+- `--type` — `folder` | `doc` | `sheet` | `slides` | `file`
+- `--order` — `name` | `modified` | `created`
+- `-n, --limit <n>` — cap the number of results
+- `download --export-as` — `pdf` | `docx` | `xlsx` | `csv` | `md` | `txt`.
+  Applies to Google Docs/Sheets/Slides; a Doc/Sheet with no `--export-as`
+  defaults to `pdf`/`csv`. Binary files download as-is (error if `--export-as`
+  is given). With no `-o`, content is written to stdout for piping.
 
 ## Sharing (`gdrive share`)
 
