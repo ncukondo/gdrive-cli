@@ -1,6 +1,6 @@
 # Task 0002: Output & error core
 
-Status: todo
+Status: done
 Depends on: 0001
 Parallel: yes (group A) — alongside 0003
 
@@ -42,11 +42,11 @@ modes; `lib/input.ts` reads a literal / `@file` / `-` (stdin) argument;
 
 ## Acceptance criteria
 
-- [ ] Text, JSON, quiet renderers behave per 0007
-- [ ] `lib/input.ts` handles literal / `@file` / `-`; errors are `IO_ERROR`
-- [ ] Every `ErrorCode` maps to the correct exit code
-- [ ] JSON mode ignores `--quiet`
-- [ ] `bun run test`, `bun run typecheck` pass
+- [x] Text, JSON, quiet renderers behave per 0007
+- [x] `lib/input.ts` handles literal / `@file` / `-`; errors are `IO_ERROR`
+- [x] Every `ErrorCode` maps to the correct exit code
+- [x] JSON mode ignores `--quiet`
+- [x] `bun run test`, `bun run typecheck` pass
 
 ## Verification
 

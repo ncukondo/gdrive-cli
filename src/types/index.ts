@@ -41,3 +41,45 @@ export class AppError extends Error {
 export interface CommandResult {
   exitCode: number;
 }
+
+export interface SuccessResponse<T> {
+  success: true;
+  data: T;
+}
+
+export interface ErrorResponse {
+  success: false;
+  error: {
+    code: ErrorCode;
+    message: string;
+  };
+}
+
+export type Envelope<T> = SuccessResponse<T> | ErrorResponse;
+
+const ERROR_CODE_EXIT_MAP: Record<ErrorCode, number> = {
+  AUTH_REQUIRED: ExitCode.AUTH,
+  AUTH_EXPIRED: ExitCode.AUTH,
+  ACCOUNT_NOT_FOUND: ExitCode.AUTH,
+  NOT_FOUND: ExitCode.GENERAL,
+  INVALID_ARGS: ExitCode.ARGUMENT,
+  API_ERROR: ExitCode.GENERAL,
+  CONFIG_ERROR: ExitCode.GENERAL,
+  IO_ERROR: ExitCode.GENERAL,
+};
+
+/** Maps a stable {@link ErrorCode} to its process exit code (decision 0007). */
+export function errorToExit(code: ErrorCode): number {
+  return ERROR_CODE_EXIT_MAP[code];
+}
+
+/** Resolves an unknown thrown value to a stable {@link ErrorCode}. */
+export function errorToCode(error: unknown): ErrorCode {
+  if (error instanceof Error && "code" in error) {
+    const code = (error as Error & { code: unknown }).code;
+    if (typeof code === "string" && code in ERROR_CODE_EXIT_MAP) {
+      return code as ErrorCode;
+    }
+  }
+  return "API_ERROR";
+}

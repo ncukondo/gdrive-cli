@@ -2,8 +2,9 @@
 import { pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { z } from "zod";
-import type { ErrorCode, OutputFormat } from "./types/index.ts";
-import { ExitCode } from "./types/index.ts";
+import type { OutputFormat } from "./types/index.ts";
+import { ExitCode, errorToCode, errorToExit } from "./types/index.ts";
+import { renderError } from "./lib/output.ts";
 import { registerCommands } from "./commands/index.ts";
 import pkg from "../package.json" with { type: "json" };
 
@@ -61,38 +62,11 @@ export function resolveGlobalOptions(program: Command): GlobalOptions {
   return opts;
 }
 
-const ERROR_CODE_EXIT_MAP: Record<ErrorCode, number> = {
-  AUTH_REQUIRED: ExitCode.AUTH,
-  AUTH_EXPIRED: ExitCode.AUTH,
-  ACCOUNT_NOT_FOUND: ExitCode.AUTH,
-  NOT_FOUND: ExitCode.GENERAL,
-  INVALID_ARGS: ExitCode.ARGUMENT,
-  API_ERROR: ExitCode.GENERAL,
-  CONFIG_ERROR: ExitCode.GENERAL,
-  IO_ERROR: ExitCode.GENERAL,
-};
-
-function getErrorCode(error: unknown): ErrorCode {
-  if (error instanceof Error && "code" in error) {
-    const code = (error as Error & { code: unknown }).code;
-    if (typeof code === "string" && code in ERROR_CODE_EXIT_MAP) {
-      return code as ErrorCode;
-    }
-  }
-  return "API_ERROR";
-}
-
 export function handleError(error: unknown, format: OutputFormat): void {
-  const code = getErrorCode(error);
+  const code = errorToCode(error);
   const message = error instanceof Error ? error.message : String(error);
-
-  if (format === "json") {
-    process.stderr.write(JSON.stringify({ success: false, error: { code, message } }, null, 2));
-  } else {
-    process.stderr.write(`Error: ${message}\n`);
-  }
-
-  process.exit(ERROR_CODE_EXIT_MAP[code]);
+  process.stderr.write(renderError(code, message, format));
+  process.exit(errorToExit(code));
 }
 
 export function main(argv: string[] = process.argv): void {
