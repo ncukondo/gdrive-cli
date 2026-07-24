@@ -85,9 +85,19 @@ of `responseType?: string`, matching gaxios' literal union — makes
 to our ports. So the factories need no adapter or delegation layer at all: the
 return-type annotation is the whole check.
 
-That is the piece task 0015 wanted. A googleapis bump that renames a parameter,
-moves a `data` field, or changes a response envelope now fails
-`bun run typecheck` at `google-clients.ts` instead of failing live.
+That is the piece task 0015 wanted — for the *response* half. A bump that moves
+a `data` field or changes a response envelope now fails `bun run typecheck` at
+`google-clients.ts` instead of failing live.
+
+Carrying out task 0015 showed the *request* half is not covered by the same
+annotation: parameters are compared contravariantly, and extra properties on
+our side are not an assignability error, so a parameter googleapis had dropped
+or renamed would still compile and we would send a key the API ignores. The
+bump therefore added an explicit guard in the same file — `GeneratedParamChecks`
+asserts that `keyof Parameters<port method>[0]` is a subset of the generated
+`Params$Resource$…` type for every method the ports declare. The params are read
+back out of the ports via `Parameters<…>`, so there is no parallel list to
+maintain and a newly declared port method is covered automatically.
 
 The one payload still typed `unknown` is `files.get`, which serves both
 metadata (`fields=…`) and media (`alt=media`) requests, so the port cannot
@@ -120,8 +130,9 @@ time of writing there are none.
 
 ## Consequences
 
-- googleapis drift becomes a compile error at one file — the main open risk in
-  task 0015 shrinks to runtime/OAuth behavior.
+- googleapis drift becomes a compile error at one file — response shapes via the
+  factory return types, request parameters via `GeneratedParamChecks` — so the
+  main open risk in task 0015 shrinks to runtime/OAuth behavior.
 - `zod` moves from one site to every external boundary; schemas are the source
   of truth for config, token, and release shapes.
 - Fakes and `decisions/0012`'s injection model are unchanged; production wiring
