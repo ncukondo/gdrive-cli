@@ -1,6 +1,6 @@
 # Task 0015: Upgrade googleapis (130 → 173)
 
-Status: todo
+Status: done
 Depends on: 0016 (removes the casts that hide this bump's breakage)
 Parallel: no — touches every command's client construction
 
@@ -62,14 +62,77 @@ OAuth surface: `src/lib/auth.ts` and `src/lib/account.ts`
 
 ## Acceptance criteria
 
-- [ ] `googleapis` at the current major; `bun.lock` committed
-- [ ] `bun run test:all`, `bun run typecheck`, `bun run lint`, `format:check` pass
-- [ ] CI green, including the packed-tarball install smoke test
-- [ ] Live sweep passes: `auth status`, `ls`, `search`, `info`, `download`,
+- [x] `googleapis` at the current major; `bun.lock` committed
+- [x] `bun run test:all`, `bun run typecheck`, `bun run lint`, `format:check` pass
+- [x] CI green, including the packed-tarball install smoke test
+- [x] Live sweep passes: `auth status`, `ls`, `search`, `info`, `download`,
       `upload`, `mkdir`, `mv`, `cp`, `rm`, all `share`, `docs`, and `sheets`
       subcommands — text, `-q`, and `-f json`
-- [ ] Any behavior change is reflected in `docs/` and noted here
-- [ ] Node engine floor (`>=18`) is compatible with what we ship and document
+- [x] Any behavior change is reflected in `docs/` and noted here — there was none
+- [x] Node engine floor (`>=18`) is compatible with what we ship and document
+
+## Outcome
+
+`googleapis` 130.0.0 → 173.0.0 with **no source change required** by the bump
+itself, and no behavior change to report in `docs/`. The 43 majors were indeed
+regenerated API surface, not deliberate breakage.
+
+**The OAuth surface was the smallest risk, not the largest.** Token exchange,
+refresh, and revoke all go through raw `fetch` against hardcoded endpoints, so
+googleapis is only involved in three calls: the positional
+`new google.auth.OAuth2(id, secret, redirectUri)` constructor, `generateAuthUrl`
+({`access_type`, `scope`, `prompt`}), and `setCredentials`. All three are intact
+in google-auth-library 10.9.1. `getToken` is not used at all. The positional
+constructor is now marked `@deprecated` in favor of an options object; it still
+works and was left alone (changing it is not forced by this bump).
+
+**Decision 0015's compile-time claim was half true, and is now fully true.** The
+factory return-type annotations catch *response* drift — verified by probe: a
+port declaring a `data` field googleapis does not return fails `typecheck`. They
+do **not** catch *request* drift, because parameters are compared
+contravariantly and extra properties on our side are not an assignability error;
+a probe adding `bogusRequestParam` to `ListParams` compiled clean. So a renamed
+or dropped parameter would have passed the whole suite and silently been ignored
+by the API — exactly the failure mode this task was written around. Closed by
+adding `GeneratedParamChecks` to `src/lib/google-clients.ts`, which asserts
+every port method's parameter keys are a subset of the generated
+`Params$Resource$…` type. It reads the params back out of the ports via
+`Parameters<…>`, so there is no parallel list to maintain. Verified in both
+directions: clean at 173, and a temporary bogus key fails `typecheck` naming the
+key. `decisions/0015` §3 and its Consequences were corrected to match.
+
+**Added an `engines` floor.** googleapis 173 and google-auth-library 10 both
+require Node `>=18` (was `>=14`), and `package.json` had no `engines` field, so
+an npm install on Node 16 would have succeeded and then crashed at runtime.
+`"engines": { "node": ">=18" }` now states the floor. CI already builds on Node
+22, and the compiled binaries bundle their own runtime, so nothing else moved.
+
+**Binary size:** the `bun-linux-x64` compiled binary grows 115,910,784 →
+124,917,888 bytes (+8.6 MiB, +7.8%); the bundle goes from 1073 to 1256 modules.
+Measured by building the same target before and after the bump.
+
+## Live sweep
+
+Run 2026-07-24 against `ncukondo@gmail.com`, inside one scratch folder
+(`gdrive-cli-sweep-0015`) permanently deleted at the end — verified gone
+afterwards, and the account's pre-existing trash was left untouched.
+
+Covered, in text / `-q` / `-f json` as applicable: `auth status`,
+`account list`; `mkdir` (root + `--parent`); `upload`, `info`, `download` with a
+byte-exact round-trip; `ls` (plain, `--type`, `-n`/`--order`, `--trashed`),
+`search`; `cp --name` then `mv` (parents confirmed reassigned); `share
+list`/`add --anyone`/`link`/`remove --permission-id`; `docs
+create --content`/`append`/`insert --at start`/`replace`/`read` (markdown, text,
+json) with the edited text confirmed in the read-back; `sheets
+create`/`tabs`/`write`/`append`/`read` (table, csv, json, ranged)/`clear`, plus
+`--input-mode user` confirming `=1+1` evaluates to `2`; exports
+`--export-as pdf` (valid `%PDF`), `md`, `csv`, `xlsx`; `rm` (trash, then
+`--permanent`). Error paths: `--type bogus` → exit 3, unknown file → exit 1.
+
+Everything passed on the first run with no code change. The packed tarball was
+additionally installed and exercised under **Node** (not Bun) — `--version`,
+`--help`, `auth status`, `ls`, `search` — since the sweep itself runs on Bun and
+the npm path is the one with the engine floor.
 
 ## Verification
 

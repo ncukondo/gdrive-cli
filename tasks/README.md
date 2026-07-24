@@ -40,7 +40,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0012 Distribution, installer & `upgrade`](archive/0012-distribution.md) | 0007, 0008, 0009, 0010, 0014 | — | done |
 | [0013 README & user docs](archive/0013-docs-site.md) | 0012 | — | done |
 | [0016 Remove type assertions](archive/0016-remove-type-assertions.md) | — | — | done |
-| [0015 Upgrade googleapis (130 → 173)](0015-googleapis-upgrade.md) | 0016 | — | todo |
+| [0015 Upgrade googleapis (130 → 173)](archive/0015-googleapis-upgrade.md) | 0016 | — | done |
 
 ## Parallelism notes
 
@@ -54,9 +54,9 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   permission methods, so it merges after 0006 and coordinates with 0007/0008 on
   `lib/api.ts` edits.
 
-After v0.1.0 shipped, the plan continues with maintenance work. 0016 removes
-the type assertions that would let a googleapis bump break silently, so it runs
-before 0015 (decision 0015).
+After v0.1.0 shipped, the plan continues with maintenance work. 0016 removed
+the type assertions that would let a googleapis bump break silently, so it ran
+before 0015 (decision 0015). Both are done; there is no open task right now.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
