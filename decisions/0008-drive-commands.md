@@ -36,8 +36,8 @@ deletes it irrecoverably. (There is no interactive confirm in JSON mode.)
 
 | Command | Description | Key options |
 |---------|-------------|-------------|
-| `gdrive ls [<folder>]` | List a folder's children (My Drive root if omitted) | `--type <folder\|doc\|sheet\|file>`, `--trashed`, `-n/--limit`, `--order <name\|modified\|created>` |
-| `gdrive search <query>` | Search by name / full text | `--type`, `-n/--limit`, `--order` |
+| `gdrive ls [<folder>]` | List a folder's children (My Drive root if omitted) | `--type <folder\|doc\|sheet\|file>`, `--trashed`, `-n/--limit`, `--order <name\|modified\|created>`, `--all-drives`, `--drive <name>` |
+| `gdrive search <query>` | Search by name / full text | `--type`, `-n/--limit`, `--order`, `--all-drives`, `--drive <name>` |
 | `gdrive info <file>` | Show file metadata | |
 | `gdrive download <file>` | Download binary content, or export a Doc/Sheet | `-o <path>` (stdout if omitted), `--export-as <pdf\|docx\|xlsx\|csv\|md\|txt>` |
 | `gdrive upload <local>` | Upload a local file | `--parent <folder>`, `--name <name>`, `--as-doc`, `--as-sheet` (convert on upload) |
@@ -74,10 +74,13 @@ JSON `data` carries a `files` array (or single `file`) of the File structure:
 
 - Sharing / permissions (`gdrive share`) are specified in
   [`0011`](0011-sharing-commands.md).
+- Shared drives are addressed by **ID** in every command;
+  [`0016`](0016-shared-drive-scope.md) covers that and the `ls`/`search` scope
+  flags. Path resolution above remains My Drive–only.
 
 ## Out of scope (deferred)
 
-- Multiple-parent management, shared drives, revisions.
+- Multiple-parent management, revisions, and shared-drive *paths* (see 0016).
 
 ## Consequences
 

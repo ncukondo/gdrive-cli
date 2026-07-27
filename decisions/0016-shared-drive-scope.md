@@ -28,8 +28,11 @@ invocation, not a bug fix.
 
 ### 1. `supportsAllDrives: true` on every Drive API call, unconditionally
 
-All of `files.list` / `get` / `create` / `copy` / `update` / `delete` /
-`export` and `permissions.list` / `create` / `update` / `delete` send it. It is
+All of `files.list` / `get` / `create` / `copy` / `update` / `delete` and
+`permissions.list` / `create` / `update` / `delete` send it. `files.export` is
+the exception the issue's table did not anticipate: Drive v3 defines no
+`supportsAllDrives` parameter for it, and `GeneratedParamChecks` says so at
+compile time. Export works on shared-drive files without it. It is otherwise
 a capability declaration — "this client understands shared-drive semantics" —
 not a scope widener: for an ID-addressed request it only ever turns a spurious
 `NOT_FOUND` into the correct answer. Google's own guidance is to set it on

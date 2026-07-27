@@ -55,6 +55,20 @@ An argument that *looks like* an ID — 20 or more characters of
 `[A-Za-z0-9_-]` with no slash — is always treated as an ID, so a file whose
 name happens to match that shape has to be addressed by its real ID.
 
+### Shared drives
+
+**Every command accepts the ID of a file on a shared drive**, and treats it
+exactly like a My Drive file — `info`, `download`, `upload`, `mv`, `cp`, `rm`,
+`share`, `docs`, and `sheets` alike. Copy the ID out of the Drive URL
+(`https://docs.google.com/document/d/<ID>/edit`) and pass it.
+
+**Paths cannot reach a shared drive.** Path resolution walks down from My Drive
+root, so `"Team drive/Reports/summary"` is `NOT_FOUND` even when that file
+exists. Address shared-drive files by ID.
+
+`ls` and `search` still look only at My Drive by default; `--all-drives` and
+`--drive <name>` widen them (see below).
+
 ## The file object
 
 `ls`, `search`, `info`, `upload`, `mkdir`, `mv`, `cp`, and `rm` all report files
@@ -110,6 +124,8 @@ Lists a folder's direct children; My Drive root when the argument is omitted.
 | `--trashed` | List trashed files instead |
 | `-n, --limit <n>` | Cap the number of results |
 | `--order <o>` | `name` \| `modified` \| `created` |
+| `--all-drives` | Include every shared drive as well as My Drive |
+| `--drive <name>` | Limit the listing to one shared drive, by name |
 
 ```console
 $ gdrive ls "Reports/2026" --type sheet -n 2 --order modified
@@ -124,18 +140,34 @@ sheet   2026-06-02 11:40  Headcount                  1QwErT...
 
 Quiet: one file ID per line.
 
+Without a scope flag the listing stays inside My Drive — including when
+`<folder>` is a shared-drive folder ID, whose children need `--all-drives` or
+`--drive <name>` to show up:
+
+```console
+$ gdrive ls 1FoLdErOnAsHaReDdRiVe --all-drives
+```
+
+`--drive` matches the shared drive's name exactly: an unknown name is
+`NOT_FOUND`, and two drives with the same name are `INVALID_ARGS` listing their
+IDs. Passing `--all-drives` and `--drive` together is `INVALID_ARGS`.
+
 ### `gdrive search <query>`
 
-Searches file names and full text across the account.
+Searches file names and full text across My Drive.
 
 | Option | Description |
 |--------|-------------|
 | `--type <t>`, `-n, --limit <n>`, `--order <o>` | As for `ls` |
+| `--all-drives`, `--drive <name>` | As for `ls` — search shared drives too |
 
 ```console
 $ gdrive search budget --type sheet
 Type    Modified          Name                       ID
 sheet   2026-07-24 06:17  Budget                     1S6cRd...
+
+$ gdrive search budget --drive "Finance"   # one shared drive
+$ gdrive search budget --all-drives        # My Drive + every shared drive
 ```
 
 ```json
@@ -143,6 +175,10 @@ sheet   2026-07-24 06:17  Budget                     1S6cRd...
 ```
 
 Quiet: one file ID per line.
+
+Shared drives are excluded unless you ask for them: on an account with
+organizational drives attached, widening the search is usually noise, so the
+default answers "my files".
 
 ### `gdrive info <file>`
 
