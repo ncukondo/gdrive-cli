@@ -427,7 +427,11 @@ function toSegments(blocks: MarkdownBlock[]): Segment[] {
  * still at the anchor; within a segment the blocks go back to front, because
  * bullets delete the tabs in front of an item and shift everything after it.
  */
-export function planInsert(blocks: MarkdownBlock[], anchor: number): InsertPlan {
+export function planInsert(
+  blocks: MarkdownBlock[],
+  anchor: number,
+  options: { leadingNewline?: boolean } = {},
+): InsertPlan {
   const segments = toSegments(blocks);
   const requests: DocsRequest[] = [];
   const tables: TableRows[] = [];
@@ -457,6 +461,12 @@ export function planInsert(blocks: MarkdownBlock[], anchor: number): InsertPlan 
       const start = starts[i];
       if (block !== undefined && start !== undefined) requests.push(...blockRequests(block, start));
     }
+  }
+
+  // Last at the anchor means first in the document: a paragraph break in front
+  // of everything, for an append that must not join the previous paragraph.
+  if (options.leadingNewline === true && requests.length > 0) {
+    requests.push({ insertText: { location: { index: anchor }, text: "\n" } });
   }
 
   return { requests, tables };

@@ -1,4 +1,5 @@
 import { mapDriveError as mapApiError } from "./api.ts";
+import { parseMarkdown, planInsert, planTableFills, type UnsupportedNote } from "./markdown-doc.ts";
 
 // --- Raw Docs v1 shapes (only the fields we read) ---------------------------
 
@@ -14,6 +15,7 @@ export interface TextRunRaw {
 }
 
 export interface ParagraphElementRaw {
+  startIndex?: number | null;
   textRun?: TextRunRaw | null;
 }
 
@@ -308,4 +310,112 @@ export async function replaceAllText(
   } catch (error) {
     mapApiError(error);
   }
+}
+
+// --- Markdown writes (decision 0021) ----------------------------------------
+
+async function applyRequests(
+  client: DocsClient,
+  documentId: string,
+  requests: DocsRequest[],
+): Promise<void> {
+  if (requests.length === 0) return;
+  try {
+    await client.documents.batchUpdate({ documentId, requestBody: { requests } });
+  } catch (error) {
+    mapApiError(error);
+  }
+}
+
+/**
+ * Writes Markdown `source` at a 1-based index, returning what Docs could not
+ * hold. A payload without a table is one round trip; a table costs a re-read,
+ * because its cells' indices are the API's to decide (decision 0021 §5).
+ */
+export async function insertMarkdown(
+  client: DocsClient,
+  documentId: string,
+  index: number,
+  source: string,
+  options: { leadingNewline?: boolean } = {},
+): Promise<UnsupportedNote[]> {
+  const { blocks, unsupported } = parseMarkdown(source);
+  const plan = planInsert(blocks, index, options);
+  await applyRequests(client, documentId, plan.requests);
+
+  if (plan.tables.length > 0) {
+    const document = await getDocument(client, documentId);
+    await applyRequests(client, documentId, planTableFills(document, index, plan.tables));
+  }
+  return unsupported;
+}
+
+/**
+ * Ranges of `marker` in the body's paragraphs, in document order. Table cells
+ * are skipped: the replacement may itself be a table, and Docs cannot nest one
+ * (decision 0021 §6).
+ */
+export function findMarkerRanges(
+  document: DocumentRaw,
+  marker: string,
+  matchCase: boolean,
+): DocsRange[] {
+  if (marker === "") return [];
+  const fold = (s: string) => (matchCase ? s : s.toLowerCase());
+  const needle = fold(marker);
+  const ranges: DocsRange[] = [];
+
+  for (const element of document.body?.content ?? []) {
+    const paragraph = element.paragraph;
+    if (!paragraph) continue;
+
+    // Paragraph text alongside the Docs index of each of its characters.
+    let text = "";
+    const indices: number[] = [];
+    let cursor = element.startIndex ?? 1;
+    for (const el of paragraph.elements ?? []) {
+      const start = el.startIndex ?? cursor;
+      const content = el.textRun?.content ?? "";
+      for (let k = 0; k < content.length; k += 1) {
+        text += content[k];
+        indices.push(start + k);
+      }
+      cursor = start + content.length;
+    }
+
+    const haystack = fold(text);
+    let at = haystack.indexOf(needle);
+    while (at !== -1) {
+      const startIndex = indices[at];
+      const endIndex = indices[at + needle.length - 1];
+      if (startIndex !== undefined && endIndex !== undefined) {
+        ranges.push({ startIndex, endIndex: endIndex + 1 });
+      }
+      at = haystack.indexOf(needle, at + needle.length);
+    }
+  }
+  return ranges;
+}
+
+/**
+ * Replaces every occurrence of `find` with Markdown structure. `replaceAllText`
+ * can only substitute text for text, so each occurrence is deleted and rewritten
+ * — last to first, so an earlier edit never moves a later target (0021 §6).
+ */
+export async function replaceMarkdown(
+  client: DocsClient,
+  documentId: string,
+  find: string,
+  source: string,
+  matchCase: boolean,
+): Promise<{ replaced: number; unsupported: UnsupportedNote[] }> {
+  const document = await getDocument(client, documentId);
+  const ranges = findMarkerRanges(document, find, matchCase);
+  let unsupported: UnsupportedNote[] = [];
+
+  for (const range of [...ranges].reverse()) {
+    await applyRequests(client, documentId, [{ deleteContentRange: { range } }]);
+    unsupported = await insertMarkdown(client, documentId, range.startIndex, source);
+  }
+  return { replaced: ranges.length, unsupported };
 }

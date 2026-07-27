@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { callArgs } from "../../tests/helpers/mock.ts";
 import {
   createDocument,
+  findMarkerRanges,
+  insertMarkdown,
+  replaceMarkdown,
   endOfBody,
   getDocument,
   insertText,
@@ -239,5 +243,119 @@ describe("Docs API wrappers", () => {
   it("replaceAllText reports zero when the API omits the count", async () => {
     const batchUpdate = vi.fn(async () => ({ data: { replies: [{}] } }));
     expect(await replaceAllText(mockDocs({ batchUpdate }), "D1", "x", "y", false)).toBe(0);
+  });
+});
+
+describe("insertMarkdown", () => {
+  it("writes a table-free payload in a single batchUpdate", async () => {
+    const client = mockDocs();
+    const notes = await insertMarkdown(client, "D1", 1, "# Title\nbody");
+
+    expect(client.documents.get).not.toHaveBeenCalled();
+    const [call] = callArgs(vi.mocked(client.documents.batchUpdate));
+    expect(call.requestBody.requests[0]).toEqual({
+      insertText: { location: { index: 1 }, text: "Title\nbody\n" },
+    });
+    expect(notes).toEqual([]);
+  });
+
+  it("re-reads the document to fill a table's cells", async () => {
+    const filled: DocumentRaw = {
+      body: {
+        content: [
+          {
+            startIndex: 1,
+            table: {
+              tableRows: [
+                {
+                  tableCells: [{ content: [{ startIndex: 4 }] }, { content: [{ startIndex: 6 }] }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const client = mockDocs({ get: vi.fn(async () => ({ data: filled })) });
+    await insertMarkdown(client, "D1", 1, "| a | b |\n| --- | --- |");
+
+    expect(client.documents.get).toHaveBeenCalledTimes(1);
+    const batches = vi.mocked(client.documents.batchUpdate).mock.calls;
+    expect(batches).toHaveLength(2);
+    expect(callArgs(vi.mocked(client.documents.batchUpdate), 0)[0].requestBody.requests).toEqual([
+      { insertTable: { location: { index: 1 }, rows: 1, columns: 2 } },
+    ]);
+    expect(callArgs(vi.mocked(client.documents.batchUpdate), 1)[0].requestBody.requests).toEqual([
+      { insertText: { location: { index: 6 }, text: "b" } },
+      { insertText: { location: { index: 4 }, text: "a" } },
+    ]);
+  });
+
+  it("starts a new paragraph when asked, before everything else", async () => {
+    const client = mockDocs();
+    await insertMarkdown(client, "D1", 9, "tail", { leadingNewline: true });
+    const requests = callArgs(vi.mocked(client.documents.batchUpdate))[0].requestBody.requests;
+    expect(requests[requests.length - 1]).toEqual({
+      insertText: { location: { index: 9 }, text: "\n" },
+    });
+  });
+
+  it("reports what Docs cannot hold", async () => {
+    const notes = await insertMarkdown(mockDocs(), "D1", 1, "text\n![alt](x.png)");
+    expect(notes).toEqual([{ line: 2, kind: "image" }]);
+  });
+});
+
+describe("findMarkerRanges", () => {
+  const marked = (): DocumentRaw =>
+    doc([
+      { startIndex: 1, ...para(["before ", "MARK", " after\n"]) },
+      {
+        startIndex: 20,
+        table: { tableRows: [{ tableCells: [{ content: [{ ...para(["MARK\n"]) }] }] }] },
+      },
+    ]);
+
+  it("finds a marker that spans runs and reports its Docs range", () => {
+    expect(findMarkerRanges(marked(), "MARK", true)).toEqual([{ startIndex: 8, endIndex: 12 }]);
+  });
+
+  it("matches case-insensitively unless asked not to", () => {
+    expect(findMarkerRanges(marked(), "mark", false)).toHaveLength(1);
+    expect(findMarkerRanges(marked(), "mark", true)).toEqual([]);
+  });
+
+  it("does not match inside a table, which cannot hold the replacement", () => {
+    const ranges = findMarkerRanges(marked(), "MARK", true);
+    expect(ranges.every((r) => r.startIndex < 20)).toBe(true);
+  });
+});
+
+describe("replaceMarkdown", () => {
+  it("edits occurrences last to first, so no earlier edit moves a later one", async () => {
+    const document: DocumentRaw = doc([
+      { startIndex: 1, ...para(["X here\n"]) },
+      { startIndex: 8, ...para(["and X again\n"]) },
+    ]);
+    const client = mockDocs({ get: vi.fn(async () => ({ data: document })) });
+
+    const { replaced } = await replaceMarkdown(client, "D1", "X", "**new**", true);
+
+    expect(replaced).toBe(2);
+    const deletes = vi
+      .mocked(client.documents.batchUpdate)
+      .mock.calls.flatMap((call) => call[0].requestBody.requests)
+      .filter((request) => "deleteContentRange" in request);
+    expect(deletes).toEqual([
+      { deleteContentRange: { range: { startIndex: 12, endIndex: 13 } } },
+      { deleteContentRange: { range: { startIndex: 1, endIndex: 2 } } },
+    ]);
+  });
+
+  it("reports zero without touching the document when the marker is absent", async () => {
+    const client = mockDocs({ get: vi.fn(async () => ({ data: doc([para(["nothing\n"])]) })) });
+    const { replaced } = await replaceMarkdown(client, "D1", "MARK", "x", true);
+    expect(replaced).toBe(0);
+    expect(client.documents.batchUpdate).not.toHaveBeenCalled();
   });
 });
