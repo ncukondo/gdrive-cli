@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleSearch } from "./search.ts";
+import { createSearchCommand, handleSearch } from "./search.ts";
 import type { DriveFile } from "../types/index.ts";
 import type { ListOptions } from "../lib/api.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
@@ -85,5 +85,26 @@ describe("handleSearch", () => {
       write: out.write,
     });
     expect(out.output).toBe("a\nb");
+  });
+
+  it("passes a shared-drive scope into searchFiles (decision 0016)", async () => {
+    const searchFiles = vi.fn(async (_q: string, _o: ListOptions) => []);
+    await handleSearch({
+      searchFiles,
+      query: "q",
+      format: "text",
+      quiet: false,
+      write: () => {},
+      scope: { kind: "all" },
+    });
+    expect(callArgs(searchFiles)[1]).toEqual({ scope: { kind: "all" } });
+  });
+});
+
+describe("createSearchCommand", () => {
+  it("declares the shared-drive scope flags", () => {
+    const flags = createSearchCommand().options.map((o) => o.long);
+    expect(flags).toContain("--all-drives");
+    expect(flags).toContain("--drive");
   });
 });

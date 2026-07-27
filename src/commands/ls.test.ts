@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleLs, parseLimit, parseOrder, parseType } from "./ls.ts";
+import { createLsCommand, handleLs, parseLimit, parseOrder, parseType } from "./ls.ts";
 import type { DriveFile } from "../types/index.ts";
 import type { ListOptions } from "../lib/api.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
@@ -147,5 +147,38 @@ describe("handleLs", () => {
       order: "modified",
       trashed: true,
     });
+  });
+
+  it("passes a shared-drive scope into listChildren (decision 0016)", async () => {
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    await handleLs({
+      resolvePath: vi.fn(),
+      listChildren,
+      format: "text",
+      quiet: false,
+      write: () => {},
+      scope: { kind: "drive", driveId: "D1" },
+    });
+    expect(callArgs(listChildren)[1]).toEqual({ scope: { kind: "drive", driveId: "D1" } });
+  });
+
+  it("sends no scope when neither flag is given", async () => {
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    await handleLs({
+      resolvePath: vi.fn(),
+      listChildren,
+      format: "text",
+      quiet: false,
+      write: () => {},
+    });
+    expect(callArgs(listChildren)[1]).toEqual({});
+  });
+});
+
+describe("createLsCommand", () => {
+  it("declares the shared-drive scope flags", () => {
+    const flags = createLsCommand().options.map((o) => o.long);
+    expect(flags).toContain("--all-drives");
+    expect(flags).toContain("--drive");
   });
 });
