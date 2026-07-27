@@ -32,6 +32,7 @@ instead of restating them.
 | [0017](0017-permission-denied-error-code.md) | 403 → `PERMISSION_DENIED` (exit 1), except a genuine scope failure |
 | [0018](0018-shared-drive-roles.md) | `share add` grants `organizer` / `fileOrganizer` (revises 0011) |
 | [0019](0019-shared-drive-paths.md) | `drive:<name>/<path>` reaches a shared drive by path (revises 0016 §3) |
+| [0020](0020-drive-root-name.md) | `info` on a drive root reports the drive's real name |
 
 ## Related projects (reference implementations)
 
