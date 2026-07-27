@@ -33,6 +33,7 @@ instead of restating them.
 | [0018](0018-shared-drive-roles.md) | `share add` grants `organizer` / `fileOrganizer` (revises 0011) |
 | [0019](0019-shared-drive-paths.md) | `drive:<name>/<path>` reaches a shared drive by path (revises 0016 §3) |
 | [0020](0020-drive-root-name.md) | `info` on a drive root reports the drive's real name |
+| [0021](0021-markdown-writes.md) | `docs` writes accept `--as markdown` and insert real structure (extends 0009) |
 
 ## Related projects (reference implementations)
 

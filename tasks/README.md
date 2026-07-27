@@ -47,6 +47,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0020 `share add` grants the shared-drive roles](archive/0020-shared-drive-roles.md) | — | — | done |
 | [0021 `drive:<name>/<path>` addressing](archive/0021-shared-drive-paths.md) | — | — | done |
 | [0022 `info` names a shared drive root](archive/0022-drive-root-name.md) | — | — | done |
+| [0023 `--as markdown` writes structure](0023-markdown-writes.md) | — | — | todo |
 
 ## Parallelism notes
 
@@ -71,7 +72,12 @@ Drive's permission checks once `supportsAllDrives` was set.
 which revises 0011), 0021 added `drive:<name>/<path>` addressing (issue #5,
 decision 0019, which supersedes 0016 §3), and 0022 made `info` report a drive
 root's real name (issue #6, decision 0020). That closes the shared-drive
-follow-ups opened after v0.4.0; there is no open task right now.
+follow-ups opened after v0.4.0.
+
+0023 is the open task: `docs` writes gain `--as markdown` so a Markdown table
+arrives as a Docs table instead of a line of pipes (issue #7, decision 0021,
+which extends 0009). It touches the four docs write commands and adds a
+Markdown parser, so nothing else should run in its file scope.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
