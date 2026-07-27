@@ -103,3 +103,8 @@ Drive path whose first segment names a shared drive says so instead of a bare
 - The manual pass caught a missing period — the hint read `専門医部会 A shared
   drive has that name` — which no unit test would have failed on, since they
   assert `toContain`.
+- Review then caught a worse one in the same sentence: the hint quoted the raw
+  argument, so `/Finance/2026` suggested `drive:/Finance/2026`, whose drive
+  name reads empty and which is `INVALID_ARGS`. It now quotes the normalized
+  segments, and a test follows the suggestion through to a resolved id rather
+  than only matching the string.

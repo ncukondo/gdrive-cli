@@ -66,7 +66,7 @@ function rejectFolderWithScope(deps: LsDeps): void {
   throw new AppError(
     "INVALID_ARGS",
     "--drive cannot be combined with a folder argument. " +
-      "A folder inside a shared drive is addressed by its ID alone: `gdrive ls <folder-ID>`.",
+      'Name the folder instead: `gdrive ls "drive:<drive>/<folder>"`, or pass its ID.',
   );
 }
 

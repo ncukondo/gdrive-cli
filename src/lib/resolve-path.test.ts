@@ -178,6 +178,18 @@ describe("resolvePath's shared-drive hint", () => {
     });
   });
 
+  it("suggests a form that actually works, even from a leading slash", async () => {
+    const onlyShared: DriveNode[] = [{ id: "y2026", name: "2026", parents: ["FIN"] }];
+    const message = await resolvePath(createTreeDrive(onlyShared, drives), "/Finance/2026").catch(
+      (e: Error) => e.message,
+    );
+    // "drive:/Finance/2026" would be INVALID_ARGS: the drive name reads empty.
+    expect(message).toContain('"drive:Finance/2026"');
+    expect(await resolvePath(createTreeDrive(onlyShared, drives), "drive:Finance/2026")).toBe(
+      "y2026",
+    );
+  });
+
   it("stays quiet when no shared drive has that name", async () => {
     const message = await resolvePath(createTreeDrive(tree, drives), "Missing/x").catch(
       (e: Error) => e.message,

@@ -184,18 +184,25 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-/**
- * The `reason` strings from a googleapis error body
- * (`response.data.error.errors[]`). The body is untyped JSON, so every hop is
- * narrowed and a reshaped payload simply yields nothing (decision 0015).
- */
-function errorReasons(error: unknown): string[] {
-  const errors = record(record(record(record(error)?.response)?.data)?.error)?.errors;
-  if (!Array.isArray(errors)) return [];
-  return errors.flatMap((entry) => {
+function reasonsIn(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
     const reason = record(entry)?.reason;
     return typeof reason === "string" ? [reason] : [];
   });
+}
+
+/**
+ * The `reason` strings from a googleapis error body. Google writes them in two
+ * places and the same 403 can carry both: the classic `error.errors[]`, and
+ * `error.details[]` as a `google.rpc.ErrorInfo` — which is where a scope
+ * failure's `ACCESS_TOKEN_SCOPE_INSUFFICIENT` actually lives. The body is
+ * untyped JSON, so every hop is narrowed and a reshaped payload simply yields
+ * nothing (decision 0015).
+ */
+function errorReasons(error: unknown): string[] {
+  const body = record(record(record(record(error)?.response)?.data)?.error);
+  return [...reasonsIn(body?.errors), ...reasonsIn(body?.details)];
 }
 
 /**
@@ -499,7 +506,6 @@ export async function searchFiles(
   return collectPages(client, params, options.limit);
 }
 
-/** Fetches and normalizes a single file's metadata. */
 /** The literal `files.get` gives every shared drive root instead of its name. */
 const GENERIC_DRIVE_NAME = "Drive";
 
@@ -522,6 +528,7 @@ async function driveRootName(client: DriveClient, file: DriveFile): Promise<stri
   }
 }
 
+/** Fetches and normalizes a single file's metadata. */
 export async function getFile(client: DriveClient, fileId: string): Promise<DriveFile> {
   let file: DriveFile;
   try {

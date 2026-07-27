@@ -145,9 +145,12 @@ export async function resolvePath(client: DriveClient, arg: string): Promise<str
     const path = [...walked, segment].join("/");
     const soFar = start.label === "" ? path : `${start.label}/${path}`;
     if (matches.length === 0) {
+      // The hint has to quote the *normalized* segments, not the raw argument:
+      // "/Finance/2026" would otherwise suggest "drive:/Finance/2026", whose
+      // empty drive name is INVALID_ARGS.
       const hint =
         start.hintable && walked.length === 0
-          ? await sharedDriveHint(client, segment, trimmed)
+          ? await sharedDriveHint(client, segment, start.segments.join("/"))
           : "";
       throw new AppError("NOT_FOUND", `No such file or folder: ${soFar}${hint}`);
     }

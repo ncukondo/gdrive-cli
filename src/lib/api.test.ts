@@ -559,12 +559,32 @@ describe("mapDriveError", () => {
     expect(codeOf(err)).toBe(expected);
   });
 
-  it.each([["ACCESS_TOKEN_SCOPE_INSUFFICIENT"], ["insufficientPermissions"]])(
-    "keeps a scope failure (%s) on AUTH_REQUIRED, where re-authenticating helps",
-    (reason) => {
-      expect(codeOf(forbidden("Insufficient Permission", reason))).toBe("AUTH_REQUIRED");
-    },
-  );
+  it("keeps a scope failure on AUTH_REQUIRED, where re-authenticating helps", () => {
+    expect(codeOf(forbidden("Insufficient Permission", "insufficientPermissions"))).toBe(
+      "AUTH_REQUIRED",
+    );
+  });
+
+  it("finds the scope reason in details[], where google.rpc.ErrorInfo puts it", () => {
+    // The shape Google actually returns: the legacy reason in errors[], the
+    // ErrorInfo one in details[]. Either alone has to be enough.
+    const detailsOnly = Object.assign(new Error("nope"), {
+      code: 403,
+      response: {
+        data: {
+          error: {
+            details: [
+              {
+                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(codeOf(detailsOnly)).toBe("AUTH_REQUIRED");
+  });
 
   it("reads a scope failure out of the message when the body carries no reason", () => {
     const err = Object.assign(new Error("Request had insufficient authentication scopes."), {

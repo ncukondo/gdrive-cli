@@ -190,7 +190,8 @@ $ gdrive ls --drive "Team Drive"           # the same root, by name
 `--drive <name>` is a convenience for the last form: it names the shared drive
 whose root to list, so it **cannot be combined with a `<folder>` argument** —
 that would be a second answer to the same question, and the combination is
-`INVALID_ARGS`. Address a folder inside a shared drive by its ID instead.
+`INVALID_ARGS`. To name a folder inside a shared drive, put it in the path —
+`gdrive ls "drive:Finance/2026"` — or pass its ID.
 
 The name must match exactly: an unknown one is `NOT_FOUND` and lists the names
 that do exist, and two drives sharing a name are `INVALID_ARGS` listing their

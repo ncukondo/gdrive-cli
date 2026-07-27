@@ -96,4 +96,9 @@ OAuth scope keeps exit 2.
   `insufficientPermissions`. A substring match would have reproduced the bug;
   the exact match handles it correctly on real data.
 - Still unverified: the *scope* branch. Producing it needs a token minted
-  before a scope was added, which no account here has.
+  before a scope was added, which no account here has. Review found the cost of
+  that gap immediately — the first implementation looked for
+  `ACCESS_TOKEN_SCOPE_INSUFFICIENT` in `error.errors[]`, where Google never
+  puts it, and the test that "covered" it built a body shape that does not
+  exist. `errorReasons` now reads `error.details[]` as well, and the test uses
+  the real `google.rpc.ErrorInfo` shape.

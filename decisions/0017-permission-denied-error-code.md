@@ -64,13 +64,24 @@ retry). The whole point of a stable `error.code` is to spare the caller that.
     └ anything else                                                       → PERMISSION_DENIED (1)
 ```
 
-The reason strings come from `response.data.error.errors[].reason` on the
-googleapis error, read defensively: the body is untyped JSON, so a missing or
-reshaped field simply yields no reason and the default applies
+The reason strings are read from **both** places Google writes them, because
+which field carries one depends on the error style answering:
+
+| Field | Style | A scope failure spells it |
+| ----- | ----- | ------------------------- |
+| `response.data.error.errors[].reason` | classic Drive | `insufficientPermissions` |
+| `response.data.error.details[].reason` | `google.rpc.ErrorInfo` | `ACCESS_TOKEN_SCOPE_INSUFFICIENT` |
+
+Reading only `errors[]` would leave the `ErrorInfo` door shut — and that is the
+newer of the two, so it is the one likelier to be left standing alone as the
+legacy array is phased out. (An earlier draft of this record did exactly that,
+and claimed the newer style puts its reason in `errors[]`. Review caught it.)
+
+Both are read defensively: the body is untyped JSON, so a missing or reshaped
+field simply yields no reason and the default applies
 ([0015](0015-no-type-assertions.md) — narrow, never assert). The message check
-is a second door to the same room, because Drive's classic error style spells
-scope failures `Insufficient Permission` in prose while the newer style puts
-`ACCESS_TOKEN_SCOPE_INSUFFICIENT` in `reason`.
+is a third door to the same room, for the prose form Drive's classic style uses
+(`Insufficient Permission` / `Request had insufficient authentication scopes`).
 
 Note that Drive's *file* permission failure is `insufficientFilePermissions` —
 a different string from the scope failure's `insufficientPermissions`. The match
