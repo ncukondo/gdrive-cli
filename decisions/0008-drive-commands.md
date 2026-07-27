@@ -21,7 +21,8 @@ A `<file>` argument accepts either:
   folders.
 
 Resolution rules:
-- An argument matching a Drive ID pattern is treated as an ID first.
+- An argument matching a Drive ID pattern is treated as an ID first. That
+  pattern covers a shared drive's 19-character root ID as well (`0016` §3).
 - Path resolution walks segments from root. If a segment name is **ambiguous**
   (multiple matches), the command errors `INVALID_ARGS` listing the candidate
   IDs; the user disambiguates with an ID.
@@ -36,8 +37,9 @@ deletes it irrecoverably. (There is no interactive confirm in JSON mode.)
 
 | Command | Description | Key options |
 |---------|-------------|-------------|
-| `gdrive ls [<folder>]` | List a folder's children (My Drive root if omitted) | `--type <folder\|doc\|sheet\|file>`, `--trashed`, `-n/--limit`, `--order <name\|modified\|created>`, `--all-drives`, `--drive <name>` |
+| `gdrive ls [<folder>]` | List a folder's children (My Drive root if omitted) | `--type <folder\|doc\|sheet\|file>`, `--trashed`, `-n/--limit`, `--order <name\|modified\|created>`, `--drive <name>` (not with `<folder>`) |
 | `gdrive search <query>` | Search by name / full text | `--type`, `-n/--limit`, `--order`, `--all-drives`, `--drive <name>` |
+| `gdrive drives` | List the account's shared drives with their IDs | |
 | `gdrive info <file>` | Show file metadata | |
 | `gdrive download <file>` | Download binary content, or export a Doc/Sheet | `-o <path>` (stdout if omitted), `--export-as <pdf\|docx\|xlsx\|csv\|md\|txt>` |
 | `gdrive upload <local>` | Upload a local file | `--parent <folder>`, `--name <name>`, `--as-doc`, `--as-sheet` (convert on upload) |
@@ -56,8 +58,9 @@ doc     2026-07-22 09:10  Meeting notes              1DeF...
 sheet   2026-07-23 18:44  Budget 2026                1GhI...
 ```
 
-Quiet `ls`/`search`: one file ID per line. Quiet `upload`/`mkdir`/`cp`: new ID.
-Quiet `rm`: no output. `download` quiet: output path (or nothing when piping).
+Quiet `ls`/`search`/`drives`: one ID per line. Quiet `upload`/`mkdir`/`cp`: new
+ID. Quiet `rm`: no output. `download` quiet: output path (or nothing when
+piping). `drives` carries a `drives` array of `{ id, name }` in JSON.
 
 JSON `data` carries a `files` array (or single `file`) of the File structure:
 

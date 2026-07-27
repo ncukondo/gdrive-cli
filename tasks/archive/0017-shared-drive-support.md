@@ -26,9 +26,9 @@ widened to shared drives on request with `--all-drives` / `--drive <name>`.
 
 ## Scope
 
-- `src/lib/api.ts` — `supportsAllDrives` on all 14 call sites; `ListParams`
-  scope fields; `DriveClient.drives.list`; `listSharedDrives` /
-  `resolveDriveScope`.
+- `src/lib/api.ts` — `supportsAllDrives` on 13 of its 14 call sites (all but
+  `files.export`, see Outcome notes); `ListParams` scope fields;
+  `DriveClient.drives.list`; `listSharedDrives` / `resolveDriveScope`.
 - `src/lib/google-clients.ts` — `drives.list` added to `GeneratedParamChecks`.
 - `src/commands/ls.ts`, `src/commands/search.ts` — `--all-drives` / `--drive`.
 - `src/commands/drive-read.ts` — wiring (resolve the scope before handling).
@@ -77,6 +77,10 @@ widened to shared drives on request with `--all-drives` / `--drive <name>`.
   characters and a shared drive's root id is 19 (`0ANPgz…`), so a drive root id
   cannot be passed as a `<folder>` argument — another reason `--drive <name>`
   defaults to the drive root. Part of the deferred path-resolution work.
+
+**Superseded in part by task 0018**, which review opened after this one was
+archived: the `ls` scope gate and the `looksLikeId` threshold above both broke
+decision 0016 §1, and `resolve-path.ts` turned out to hold a 15th call site.
 
 ## Acceptance criteria
 
