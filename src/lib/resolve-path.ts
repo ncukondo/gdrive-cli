@@ -4,13 +4,25 @@ import { escapeQueryValue, mapDriveError, normalizeFile, type DriveClient } from
 /** The alias Drive accepts for the My Drive root folder. */
 export const ROOT_ID = "root";
 
+const FILE_ID = /^[A-Za-z0-9_-]{20,}$/;
+
+/**
+ * A shared drive's root id is `0A` + 17 characters — 19 in total, one short of
+ * the general rule, and `info` prints it in `parents` (decision 0016). Matching
+ * the exact shape Drive issues, rather than lowering the general threshold to
+ * 19, keeps the false-positive surface where it was: a 19-character slash-free
+ * folder name is already implausible, and one that also starts with `0A` more
+ * so.
+ */
+const SHARED_DRIVE_ROOT_ID = /^0A[A-Za-z0-9_-]{17}$/;
+
 /**
  * Heuristic for "this argument is a Drive file ID, not a path". Drive IDs are
  * long, slash-free, `[A-Za-z0-9_-]` strings; folder names are typically shorter
  * and/or contain spaces. Per decision 0008 an ID-looking argument wins.
  */
 export function looksLikeId(arg: string): boolean {
-  return /^[A-Za-z0-9_-]{20,}$/.test(arg);
+  return FILE_ID.test(arg) || SHARED_DRIVE_ROOT_ID.test(arg);
 }
 
 interface Candidate {
@@ -29,7 +41,12 @@ async function childrenNamed(
     "trashed = false",
   ].join(" and ");
   try {
-    const res = await client.files.list({ q, pageSize: 100, fields: "files(id,name,mimeType)" });
+    const res = await client.files.list({
+      q,
+      pageSize: 100,
+      fields: "files(id,name,mimeType)",
+      supportsAllDrives: true,
+    });
     return (res.data.files ?? []).map((raw) => {
       const f = normalizeFile(raw);
       return { id: f.id, name: f.name };
