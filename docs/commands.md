@@ -52,22 +52,35 @@ Paths are resolved segment by segment; a segment that matches nothing is
 `NOT_FOUND`, and one that matches several files is `INVALID_ARGS`.
 
 An argument that *looks like* an ID — 20 or more characters of
-`[A-Za-z0-9_-]` with no slash — is always treated as an ID, so a file whose
-name happens to match that shape has to be addressed by its real ID.
+`[A-Za-z0-9_-]` with no slash, or a shared drive's 19-character root ID
+(`0A` + 17 characters) — is always treated as an ID, so a file whose name
+happens to match one of those shapes has to be addressed by its real ID.
 
 ### Shared drives
 
-**Every command accepts the ID of a file on a shared drive**, and treats it
-exactly like a My Drive file — `info`, `download`, `upload`, `mv`, `cp`, `rm`,
-`share`, `docs`, and `sheets` alike. Copy the ID out of the Drive URL
-(`https://docs.google.com/document/d/<ID>/edit`) and pass it.
+**Every command that takes a file or folder ID accepts one from a shared
+drive**, and treats it exactly like a My Drive file — `ls`, `info`, `download`,
+`upload`, `mkdir`, `mv`, `cp`, `rm`, `share`, `docs`, and `sheets` alike. Copy
+the ID out of the Drive URL (`https://docs.google.com/document/d/<ID>/edit`)
+and pass it. No flag is involved.
+
+That includes a shared drive's **root** ID, which `gdrive drives` prints and
+`info` reports in `parents`, so you can put a file at the top level of a shared
+drive:
+
+```sh
+gdrive drives                            # names and IDs
+gdrive ls 0ABcDeFgHiJkLmNoPqR            # a shared drive's root
+gdrive mkdir 2027 --parent 0ABcDeFgHiJkLmNoPqR
+```
 
 **Paths cannot reach a shared drive.** Path resolution walks down from My Drive
 root, so `"Team drive/Reports/summary"` is `NOT_FOUND` even when that file
 exists. Address shared-drive files by ID.
 
-`ls` and `search` still look only at My Drive by default; `--all-drives` and
-`--drive <name>` widen them (see below).
+`search` is the one command that still looks only at My Drive by default,
+because it asks an open question rather than following an ID; `--all-drives`
+and `--drive <name>` widen it (see below).
 
 ## The file object
 
@@ -124,8 +137,7 @@ Lists a folder's direct children; My Drive root when the argument is omitted.
 | `--trashed` | List trashed files instead |
 | `-n, --limit <n>` | Cap the number of results |
 | `--order <o>` | `name` \| `modified` \| `created` |
-| `--all-drives` | Include every shared drive as well as My Drive |
-| `--drive <name>` | Limit the listing to one shared drive, by name |
+| `--drive <name>` | List the root of this shared drive (not with `<folder>`) |
 
 ```console
 $ gdrive ls "Reports/2026" --type sheet -n 2 --order modified
@@ -140,19 +152,28 @@ sheet   2026-06-02 11:40  Headcount                  1QwErT...
 
 Quiet: one file ID per line.
 
-Without a scope flag the listing stays inside My Drive — including when
-`<folder>` is a shared-drive folder ID, whose children need `--all-drives` or
-`--drive <name>` to show up. With `--drive <name>` and no folder argument, `ls`
-starts at that shared drive's root:
+A folder ID from a shared drive works with no flag at all — `ls` follows
+whatever folder it is given:
 
 ```console
-$ gdrive ls --drive "Team Drive"              # the shared drive's root
-$ gdrive ls 1FoLdErOnAsHaReDdRiVe --all-drives  # a folder inside one
+$ gdrive ls 1FoLdErOnAsHaReDdRiVe          # a folder inside a shared drive
+$ gdrive ls 0ABcDeFgHiJkLmNoPqR            # a shared drive's root, by ID
+$ gdrive ls --drive "Team Drive"           # the same root, by name
 ```
 
-`--drive` matches the shared drive's name exactly: an unknown name is
-`NOT_FOUND`, and two drives with the same name are `INVALID_ARGS` listing their
-IDs. Passing `--all-drives` and `--drive` together is `INVALID_ARGS`.
+`--drive <name>` is a convenience for the last form: it names the shared drive
+whose root to list, so it **cannot be combined with a `<folder>` argument** —
+that would be a second answer to the same question, and the combination is
+`INVALID_ARGS`. Address a folder inside a shared drive by its ID instead.
+
+The name must match exactly: an unknown one is `NOT_FOUND` and lists the names
+that do exist, and two drives sharing a name are `INVALID_ARGS` listing their
+IDs. Run [`gdrive drives`](#gdrive-drives) to see them.
+
+There is no `--all-drives` on `ls`: every listing is the children of one
+folder, so there is no wider corpus for it to reach. Use
+[`gdrive drives`](#gdrive-drives) to enumerate shared drives, and
+`--all-drives` on `search`.
 
 ### `gdrive search <query>`
 
@@ -161,7 +182,8 @@ Searches file names and full text across My Drive.
 | Option | Description |
 |--------|-------------|
 | `--type <t>`, `-n, --limit <n>`, `--order <o>` | As for `ls` |
-| `--all-drives`, `--drive <name>` | As for `ls` — search shared drives too |
+| `--all-drives` | Search every shared drive as well as My Drive |
+| `--drive <name>` | Search only the shared drive with this name |
 
 ```console
 $ gdrive search budget --type sheet
@@ -180,7 +202,36 @@ Quiet: one file ID per line.
 
 Shared drives are excluded unless you ask for them: on an account with
 organizational drives attached, widening the search is usually noise, so the
-default answers "my files".
+default answers "my files". Both flags together are `INVALID_ARGS`.
+
+### `gdrive drives`
+
+Lists the shared drives this account can see. Takes no arguments and no
+options.
+
+```console
+$ gdrive drives
+Name                            ID
+Team Drive                      0ABcDeFgHiJkLmNoPqR
+Finance                         0AZyXwVuTsRqPoNmLkJ
+```
+
+```json
+{ "drives": [ { "id": "0ABcDeFgHiJkLmNoPqR", "name": "Team Drive" } ] }
+```
+
+Quiet: one drive ID per line.
+
+The ID column answers two things: it is a folder ID like any other, so it goes
+straight into `ls`, `--parent`, `mv`, and `cp`, and the name column is what
+`--drive` matches against.
+
+```sh
+gdrive mkdir 2027 --parent "$(gdrive drives -q | head -1)"
+```
+
+Text output is `No shared drives.` when the account has none; JSON is an empty
+`drives` array.
 
 ### `gdrive info <file>`
 
