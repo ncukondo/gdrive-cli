@@ -1,6 +1,6 @@
 # Task 0023: `docs` writes take Markdown by default
 
-Status: todo
+Status: in-progress
 Depends on: — (decision `0021` is written; nothing else is in flight)
 Parallel: no — one owner for `src/lib/markdown-doc.ts` and all four
 `src/commands/docs/*` write commands.
