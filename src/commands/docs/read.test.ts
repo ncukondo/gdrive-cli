@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleDocsRead, parseRenderAs } from "./read.ts";
+import { handleDocsRead } from "./read.ts";
+import { parseDocsFormat } from "./format.ts";
 import type { DocumentRaw } from "../../lib/docs-api.ts";
 
 function collect() {
@@ -28,15 +29,15 @@ const document: DocumentRaw = {
   },
 };
 
-describe("parseRenderAs", () => {
+describe("parseDocsFormat", () => {
   it("defaults to markdown and accepts text", () => {
-    expect(parseRenderAs(undefined)).toBe("markdown");
-    expect(parseRenderAs("text")).toBe("text");
-    expect(parseRenderAs("markdown")).toBe("markdown");
+    expect(parseDocsFormat(undefined)).toBe("markdown");
+    expect(parseDocsFormat("text")).toBe("text");
+    expect(parseDocsFormat("markdown")).toBe("markdown");
   });
 
   it("rejects unknown formats", () => {
-    expect(() => parseRenderAs("html")).toThrow(/Invalid --as/);
+    expect(() => parseDocsFormat("html")).toThrow(/Invalid --as/);
   });
 });
 

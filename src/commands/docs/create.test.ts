@@ -15,6 +15,8 @@ const baseDeps = () => ({
   resolvePath: vi.fn(async () => "PID"),
   createDocument: vi.fn(async (title: string) => ({ id: "NEW", title })),
   insertText: vi.fn(async (_id: string, _index: number, _text: string) => {}),
+  insertMarkdown: vi.fn(async (_id: string, _index: number, _source: string) => []),
+  warn: vi.fn(),
   moveFile: vi.fn(async (_id: string, _parentId: string) => {}),
   readInput: vi.fn(async (arg: string) => `<${arg}>`),
   title: "Plan",
@@ -35,17 +37,26 @@ describe("handleDocsCreate", () => {
     expect(out.output).toBe("Created Plan (NEW)");
   });
 
-  it("inserts --content at the start of the body", async () => {
+  it("inserts --content as Markdown at the start of the body", async () => {
     const d = baseDeps();
     await handleDocsCreate({ ...d, content: "@notes.md" });
     expect(d.readInput).toHaveBeenCalledWith("@notes.md");
+    expect(d.insertMarkdown).toHaveBeenCalledWith("NEW", 1, "<@notes.md>");
+    expect(d.insertText).not.toHaveBeenCalled();
+  });
+
+  it("--as text inserts --content verbatim", async () => {
+    const d = baseDeps();
+    await handleDocsCreate({ ...d, content: "@notes.md", as: "text" });
     expect(d.insertText).toHaveBeenCalledWith("NEW", 1, "<@notes.md>");
+    expect(d.insertMarkdown).not.toHaveBeenCalled();
   });
 
   it("skips the insert when the content is empty", async () => {
     const d = baseDeps();
     await handleDocsCreate({ ...d, content: "", readInput: vi.fn(async () => "") });
     expect(d.insertText).not.toHaveBeenCalled();
+    expect(d.insertMarkdown).not.toHaveBeenCalled();
   });
 
   it("moves the document into --parent", async () => {

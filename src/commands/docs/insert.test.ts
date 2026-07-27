@@ -22,7 +22,9 @@ const baseDeps = () => ({
   resolvePath: vi.fn(async () => "D1"),
   getDocument: vi.fn(async () => document),
   insertText: vi.fn(async (_id: string, _index: number, _text: string) => {}),
+  insertMarkdown: vi.fn(async (_id: string, _index: number, _source: string) => []),
   readInput: vi.fn(async (arg: string) => arg),
+  warn: vi.fn(),
   file: "Notes",
   text: "hi",
   format: "text" as const,
@@ -50,24 +52,32 @@ describe("resolveInsertIndex", () => {
 });
 
 describe("handleDocsInsert", () => {
-  it("inserts at an explicit index", async () => {
+  it("inserts Markdown at an explicit index by default", async () => {
     const d = baseDeps();
     const out = collect();
     await handleDocsInsert({ ...d, index: "4", write: out.write });
-    expect(d.insertText).toHaveBeenCalledWith("D1", 4, "hi");
+    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 4, "hi");
+    expect(d.insertText).not.toHaveBeenCalled();
     expect(out.output).toBe("Inserted into Meeting notes (D1)");
+  });
+
+  it("--as text inserts the exact bytes", async () => {
+    const d = baseDeps();
+    await handleDocsInsert({ ...d, index: "4", as: "text" });
+    expect(d.insertText).toHaveBeenCalledWith("D1", 4, "hi");
+    expect(d.insertMarkdown).not.toHaveBeenCalled();
   });
 
   it("inserts at the end of the body with --at end", async () => {
     const d = baseDeps();
     await handleDocsInsert({ ...d, at: "end" });
-    expect(d.insertText).toHaveBeenCalledWith("D1", 11, "hi");
+    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 11, "hi");
   });
 
   it("reads the text through the @file/stdin reader and rejects empty text", async () => {
     const d = baseDeps();
     const readInput = vi.fn(async () => "from stdin");
-    await handleDocsInsert({ ...d, text: "-", readInput, at: "start" });
+    await handleDocsInsert({ ...d, text: "-", readInput, at: "start", as: "text" });
     expect(readInput).toHaveBeenCalledWith("-");
     expect(d.insertText).toHaveBeenCalledWith("D1", 1, "from stdin");
 

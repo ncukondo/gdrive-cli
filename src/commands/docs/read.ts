@@ -1,15 +1,8 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
-import { parseChoice } from "../../lib/args.ts";
-import { renderDocument, type DocsRenderFormat, type DocumentRaw } from "../../lib/docs-api.ts";
-
-const VALID_AS: DocsRenderFormat[] = ["markdown", "text"];
-
-/** Validates `--as`, defaulting to `markdown` (decision 0009). */
-export function parseRenderAs(value: string | undefined): DocsRenderFormat {
-  return value === undefined ? "markdown" : parseChoice(VALID_AS, value, "--as");
-}
+import { renderDocument, type DocumentRaw } from "../../lib/docs-api.ts";
+import { parseDocsFormat } from "./format.ts";
 
 export interface DocsReadDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -22,7 +15,7 @@ export interface DocsReadDeps {
 }
 
 export async function handleDocsRead(deps: DocsReadDeps): Promise<CommandResult> {
-  const as = parseRenderAs(deps.as);
+  const as = parseDocsFormat(deps.as);
   const documentId = await deps.resolvePath(deps.file);
   const document = await deps.getDocument(documentId);
   const content = renderDocument(document, as);

@@ -16,6 +16,14 @@ const baseDeps = () => ({
   replaceAllText: vi.fn(
     async (_id: string, _find: string, _replace: string, _matchCase: boolean) => 3,
   ),
+  replaceMarkdown: vi.fn(
+    async (_id: string, _find: string, _replace: string, _matchCase: boolean) => ({
+      replaced: 3,
+      unsupported: [],
+    }),
+  ),
+  readInput: vi.fn(async (arg: string) => arg),
+  warn: vi.fn(),
   file: "Notes",
   find: "old",
   replace: "new",
@@ -25,28 +33,44 @@ const baseDeps = () => ({
 });
 
 describe("handleDocsReplace", () => {
-  it("replaces case-insensitively by default and reports the count", async () => {
+  it("replaces with Markdown structure by default, case-insensitively", async () => {
     const d = baseDeps();
     const out = collect();
     await handleDocsReplace({ ...d, write: out.write });
-    expect(d.replaceAllText).toHaveBeenCalledWith("D1", "old", "new", false);
+    expect(d.replaceMarkdown).toHaveBeenCalledWith("D1", "old", "new", false);
+    expect(d.replaceAllText).not.toHaveBeenCalled();
     expect(out.output).toBe("Replaced 3 occurrences");
+  });
+
+  it("--as text goes back to the one replaceAllText call", async () => {
+    const d = baseDeps();
+    await handleDocsReplace({ ...d, as: "text" });
+    expect(d.replaceAllText).toHaveBeenCalledWith("D1", "old", "new", false);
+    expect(d.replaceMarkdown).not.toHaveBeenCalled();
   });
 
   it("honors --match-case", async () => {
     const d = baseDeps();
     await handleDocsReplace({ ...d, matchCase: true });
-    expect(d.replaceAllText).toHaveBeenCalledWith("D1", "old", "new", true);
+    expect(d.replaceMarkdown).toHaveBeenCalledWith("D1", "old", "new", true);
   });
 
   it("uses the singular form for a single occurrence", async () => {
     const out = collect();
     await handleDocsReplace({
       ...baseDeps(),
-      replaceAllText: vi.fn(async () => 1),
+      replaceMarkdown: vi.fn(async () => ({ replaced: 1, unsupported: [] })),
       write: out.write,
     });
     expect(out.output).toBe("Replaced 1 occurrence");
+  });
+
+  it("reads the replacement through the @file/stdin reader", async () => {
+    const d = baseDeps();
+    const readInput = vi.fn(async () => "# from file");
+    await handleDocsReplace({ ...d, replace: "@draft.md", readInput });
+    expect(readInput).toHaveBeenCalledWith("@draft.md");
+    expect(d.replaceMarkdown).toHaveBeenCalledWith("D1", "old", "# from file", false);
   });
 
   it("rejects an empty --find", async () => {

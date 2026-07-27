@@ -2,6 +2,8 @@ import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
 import { endOfBody, type DocumentRaw } from "../../lib/docs-api.ts";
+import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
+import { parseDocsFormat, reportUnsupported } from "./format.ts";
 
 export interface InsertPosition {
   index?: string;
@@ -41,17 +43,21 @@ export interface DocsInsertDeps {
   resolvePath: (arg: string) => Promise<string>;
   getDocument: (documentId: string) => Promise<DocumentRaw>;
   insertText: (documentId: string, index: number, text: string) => Promise<void>;
+  insertMarkdown: (documentId: string, index: number, source: string) => Promise<UnsupportedNote[]>;
   readInput: (arg: string) => Promise<string>;
   file: string;
   text: string;
   index?: string;
   at?: string;
+  as?: string;
   format: OutputFormat;
   quiet: boolean;
   write: (msg: string) => void;
+  warn: (msg: string) => void;
 }
 
 export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandResult> {
+  const as = parseDocsFormat(deps.as);
   const text = await deps.readInput(deps.text);
   if (text === "") {
     throw new AppError("INVALID_ARGS", "Nothing to insert: the text is empty.");
@@ -66,13 +72,20 @@ export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandRes
     },
     document,
   );
-  await deps.insertText(documentId, index, text);
+  let notes: UnsupportedNote[] = [];
+  if (as === "markdown") notes = await deps.insertMarkdown(documentId, index, text);
+  else await deps.insertText(documentId, index, text);
 
   const title = document.title ?? "";
   deps.write(
     renderSuccess(
       {
-        data: { id: documentId, title, index },
+        data: {
+          id: documentId,
+          title,
+          index,
+          ...reportUnsupported(notes, deps.format, deps.warn),
+        },
         text: `Inserted into ${title} (${documentId})`,
         quiet: documentId,
       },
@@ -85,9 +98,10 @@ export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandRes
 
 export function createDocsInsertCommand(): Command {
   return new Command("insert")
-    .description("Insert text at a position in a document")
+    .description("Insert Markdown (or plain text) at a position in a document")
     .argument("<file>", "Document ID or path")
-    .argument("<text|@file|->", "Text to insert")
+    .argument("<text|@file|->", "Content to insert")
     .option("--index <n>", "1-based character index in the body")
-    .option("--at <where>", "Insert at: start | end");
+    .option("--at <where>", "Insert at: start | end")
+    .option("--as <format>", "Read the content as: markdown | text (default markdown)");
 }

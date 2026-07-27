@@ -7,8 +7,10 @@ import { moveFile, type DriveClient } from "../../lib/api.ts";
 import {
   createDocument,
   getDocument,
+  insertMarkdown,
   insertText,
   replaceAllText,
+  replaceMarkdown,
   type DocsClient,
 } from "../../lib/docs-api.ts";
 import { readInput, readProcessStdin } from "../../lib/input.ts";
@@ -32,6 +34,8 @@ async function buildClients(
 }
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
+/** Notes about content Docs cannot hold go to stderr, so stdout stays pipeable. */
+const stderr = (msg: string) => process.stderr.write(msg + "\n");
 const input = (arg: string) => readInput(arg, { fs: nodeFs, readStdin: readProcessStdin });
 
 export function registerDocs(program: Command): void {
@@ -62,21 +66,24 @@ export function registerDocs(program: Command): void {
   const create = createDocsCreateCommand();
   create.action(async (title: string) => {
     const opts = resolveGlobalOptions(program);
-    const o = create.opts<{ content?: string; parent?: string }>();
+    const o = create.opts<{ content?: string; parent?: string; as?: string }>();
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsCreate({
         resolvePath: (arg) => resolvePath(drive, arg),
         createDocument: (t) => createDocument(docsClient, t),
         insertText: (id, index, text) => insertText(docsClient, id, index, text),
+        insertMarkdown: (id, index, source) => insertMarkdown(docsClient, id, index, source),
         moveFile: (id, parentId) => moveFile(drive, id, parentId),
         readInput: input,
         title,
         format: opts.format,
         quiet: opts.quiet,
         write: stdout,
+        warn: stderr,
         ...(o.content !== undefined ? { content: o.content } : {}),
         ...(o.parent !== undefined ? { parent: o.parent } : {}),
+        ...(o.as !== undefined ? { as: o.as } : {}),
       });
       process.exit(result.exitCode);
     } catch (error) {
@@ -88,18 +95,23 @@ export function registerDocs(program: Command): void {
   const append = createDocsAppendCommand();
   append.action(async (file: string, text: string) => {
     const opts = resolveGlobalOptions(program);
+    const o = append.opts<{ as?: string }>();
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsAppend({
         resolvePath: (arg) => resolvePath(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
         insertText: (id, index, t) => insertText(docsClient, id, index, t),
+        insertMarkdown: (id, index, source, options) =>
+          insertMarkdown(docsClient, id, index, source, options),
         readInput: input,
         file,
         text,
         format: opts.format,
         quiet: opts.quiet,
         write: stdout,
+        warn: stderr,
+        ...(o.as !== undefined ? { as: o.as } : {}),
       });
       process.exit(result.exitCode);
     } catch (error) {
@@ -111,20 +123,25 @@ export function registerDocs(program: Command): void {
   const replace = createDocsReplaceCommand();
   replace.action(async (file: string) => {
     const opts = resolveGlobalOptions(program);
-    const o = replace.opts<{ find: string; replace: string; matchCase?: boolean }>();
+    const o = replace.opts<{ find: string; replace: string; matchCase?: boolean; as?: string }>();
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsReplace({
         resolvePath: (arg) => resolvePath(drive, arg),
         replaceAllText: (id, find, to, matchCase) =>
           replaceAllText(docsClient, id, find, to, matchCase),
+        replaceMarkdown: (id, find, to, matchCase) =>
+          replaceMarkdown(docsClient, id, find, to, matchCase),
+        readInput: input,
         file,
         find: o.find,
         replace: o.replace,
         format: opts.format,
         quiet: opts.quiet,
         write: stdout,
+        warn: stderr,
         ...(o.matchCase ? { matchCase: true } : {}),
+        ...(o.as !== undefined ? { as: o.as } : {}),
       });
       process.exit(result.exitCode);
     } catch (error) {
@@ -136,21 +153,24 @@ export function registerDocs(program: Command): void {
   const insert = createDocsInsertCommand();
   insert.action(async (file: string, text: string) => {
     const opts = resolveGlobalOptions(program);
-    const o = insert.opts<{ index?: string; at?: string }>();
+    const o = insert.opts<{ index?: string; at?: string; as?: string }>();
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsInsert({
         resolvePath: (arg) => resolvePath(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
         insertText: (id, index, t) => insertText(docsClient, id, index, t),
+        insertMarkdown: (id, index, source) => insertMarkdown(docsClient, id, index, source),
         readInput: input,
         file,
         text,
         format: opts.format,
         quiet: opts.quiet,
         write: stdout,
+        warn: stderr,
         ...(o.index !== undefined ? { index: o.index } : {}),
         ...(o.at !== undefined ? { at: o.at } : {}),
+        ...(o.as !== undefined ? { as: o.as } : {}),
       });
       process.exit(result.exitCode);
     } catch (error) {
