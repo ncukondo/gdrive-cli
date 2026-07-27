@@ -30,6 +30,7 @@ instead of restating them.
 | [0015](0015-no-type-assertions.md) | No type assertions: parse at the edges, adapt generated clients |
 | [0016](0016-shared-drive-scope.md) | Shared drives: IDs work everywhere, `search` scope is opt-in |
 | [0017](0017-permission-denied-error-code.md) | 403 → `PERMISSION_DENIED` (exit 1), except a genuine scope failure |
+| [0018](0018-shared-drive-roles.md) | `share add` grants `organizer` / `fileOrganizer` (revises 0011) |
 
 ## Related projects (reference implementations)
 

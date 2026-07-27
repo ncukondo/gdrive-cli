@@ -1,7 +1,8 @@
 # 0011: Sharing & permissions commands
 
 Date: 2026-07-24
-Status: accepted
+Status: accepted — role vocabulary revised by
+[0018](0018-shared-drive-roles.md)
 
 ## Context
 
@@ -61,6 +62,10 @@ JSON `data` carries a `permissions` array (or single `permission`):
 
 - Ownership transfer (`--role owner` / `share transfer`).
 - Shared-drive-specific permission semantics, capabilities, expiration times.
+  **Revised:** [0018](0018-shared-drive-roles.md) moves the two shared-drive
+  *roles* (`organizer`, `fileOrganizer`) into scope for `share add`. The
+  `--role` tables above therefore read reader/commenter/writer only for
+  `share link`; capabilities and expiration remain deferred.
 
 ## Consequences
 
