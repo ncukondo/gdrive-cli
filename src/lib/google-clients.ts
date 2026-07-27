@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import type { docs_v1, drive_v3, sheets_v4 } from "googleapis";
 import type { DriveClient } from "./api.ts";
-import type { DocsClient } from "./docs-api.ts";
+import type { DocsClient, DocsRequest } from "./docs-api.ts";
 import type { SheetsClient } from "./sheets-api.ts";
 
 type OAuth2Client = InstanceType<(typeof google.auth)["OAuth2"]>;
@@ -111,4 +111,28 @@ export type GeneratedParamChecks = [
   AssertNoUnknownParams<
     UnknownParams<SheetsValues["clear"], sheets_v4.Params$Resource$Spreadsheets$Values$Clear>
   >,
+];
+
+/**
+ * `UnknownParams` compares only the top-level keys of a params object, so the
+ * request union we build *inside* `requestBody` is invisible to it. Task 0023
+ * grew that union from two members to seven (decision 0021), and a renamed
+ * field would otherwise reach the API as a request the server ignores.
+ *
+ * Assignability alone would not catch that — a *type* with an extra property is
+ * still assignable, only a fresh object literal is not. So this repeats the
+ * `UnknownParams` trick one level down: every member name must still be a key
+ * of `Schema$Request`, and every field inside it a key of that member's schema.
+ */
+type UnknownRequestKeys<T> = T extends unknown
+  ? {
+      [K in keyof T]-?: K extends keyof docs_v1.Schema$Request
+        ? Exclude<keyof T[K], keyof NonNullable<docs_v1.Schema$Request[K]>>
+        : K;
+    }[keyof T]
+  : never;
+
+export type DocsRequestChecks = [
+  AssertNoUnknownParams<UnknownRequestKeys<DocsRequest>>,
+  DocsRequest extends docs_v1.Schema$Request ? true : never,
 ];

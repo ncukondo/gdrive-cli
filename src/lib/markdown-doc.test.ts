@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "./markdown-doc.ts";
+import { parseMarkdown, planInsert, planTableFills } from "./markdown-doc.ts";
 import { renderDocument, type DocumentRaw, type StructuralElementRaw } from "./docs-api.ts";
 
 describe("parseMarkdown — blocks", () => {
@@ -198,7 +198,12 @@ describe("round trip with renderDocument", () => {
         }),
         ...(options.style ? { paragraphStyle: { namedStyleType: options.style } } : {}),
         ...(options.bullet
-          ? { bullet: { listId: options.bullet.listId, nestingLevel: options.bullet.nestingLevel ?? 0 } }
+          ? {
+              bullet: {
+                listId: options.bullet.listId,
+                nestingLevel: options.bullet.nestingLevel ?? 0,
+              },
+            }
           : {}),
       },
     };
@@ -290,5 +295,179 @@ describe("round trip with renderDocument", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("planInsert — one round trip when nothing is a table", () => {
+  const blocks = parseMarkdown("# Title\nplain **bold**\n- item").blocks;
+
+  it("inserts the whole payload once, then styles it back to front", () => {
+    const { requests, tables } = planInsert(blocks, 1);
+
+    // "Title\n" [1,7)  "plain bold\n" [7,18)  "item\n" [18,23)
+    expect(requests).toEqual([
+      { insertText: { location: { index: 1 }, text: "Title\nplain bold\nitem\n" } },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 18, endIndex: 23 },
+          bulletPreset: "BULLET_DISC_CIRCLE_SQUARE",
+        },
+      },
+      {
+        updateTextStyle: {
+          range: { startIndex: 13, endIndex: 17 },
+          textStyle: { bold: true },
+          fields: "bold",
+        },
+      },
+      {
+        updateParagraphStyle: {
+          range: { startIndex: 1, endIndex: 7 },
+          paragraphStyle: { namedStyleType: "HEADING_1" },
+          fields: "namedStyleType",
+        },
+      },
+    ]);
+    expect(tables).toEqual([]);
+  });
+
+  it("offsets every range by the anchor", () => {
+    const { requests } = planInsert(blocks, 101);
+    expect(requests[0]).toEqual({
+      insertText: { location: { index: 101 }, text: "Title\nplain bold\nitem\n" },
+    });
+    expect(requests[3]).toEqual({
+      updateParagraphStyle: {
+        range: { startIndex: 101, endIndex: 107 },
+        paragraphStyle: { namedStyleType: "HEADING_1" },
+        fields: "namedStyleType",
+      },
+    });
+  });
+
+  it("nests a list with leading tabs and numbers an ordered one", () => {
+    const { requests } = planInsert(parseMarkdown("- top\n  1. deep").blocks, 1);
+    expect(requests[0]).toEqual({
+      insertText: { location: { index: 1 }, text: "top\n\tdeep\n" },
+    });
+    expect(requests[1]).toEqual({
+      createParagraphBullets: {
+        // "\tdeep" plus the newline the paragraph range covers
+        range: { startIndex: 5, endIndex: 11 },
+        bulletPreset: "NUMBERED_DECIMAL_ALPHA_ROMAN",
+      },
+    });
+  });
+
+  it("maps a quote to an indent and code to a monospace run", () => {
+    const { requests } = planInsert(parseMarkdown("> quoted\n\n```\nls\n```").blocks, 1);
+    expect(requests).toEqual([
+      { insertText: { location: { index: 1 }, text: "quoted\nls\n" } },
+      {
+        updateTextStyle: {
+          range: { startIndex: 8, endIndex: 10 },
+          textStyle: { weightedFontFamily: { fontFamily: "Courier New" } },
+          fields: "weightedFontFamily",
+        },
+      },
+      {
+        updateParagraphStyle: {
+          range: { startIndex: 1, endIndex: 8 },
+          paragraphStyle: { indentStart: { magnitude: 36, unit: "PT" } },
+          fields: "indentStart",
+        },
+      },
+    ]);
+  });
+
+  it("carries a link across a styled span", () => {
+    const { requests } = planInsert(parseMarkdown("[**x**](https://e.com)").blocks, 1);
+    expect(requests[1]).toEqual({
+      updateTextStyle: {
+        range: { startIndex: 1, endIndex: 2 },
+        textStyle: { bold: true, link: { url: "https://e.com" } },
+        fields: "bold,link",
+      },
+    });
+  });
+});
+
+describe("planInsert / planTableFills — a table costs a re-read", () => {
+  const blocks = parseMarkdown("intro\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter").blocks;
+
+  it("inserts every segment at the same anchor, last segment first", () => {
+    const { requests, tables } = planInsert(blocks, 5);
+
+    expect(requests).toEqual([
+      { insertText: { location: { index: 5 }, text: "after\n" } },
+      { insertTable: { location: { index: 5 }, rows: 2, columns: 2 } },
+      { insertText: { location: { index: 5 }, text: "intro\n" } },
+    ]);
+    expect(tables).toEqual([
+      [
+        [[{ text: "a" }], [{ text: "b" }]],
+        [[{ text: "1" }], [{ text: "2" }]],
+      ],
+    ]);
+  });
+
+  it("fills the cells the re-read reports, in descending index order", () => {
+    const { tables } = planInsert(blocks, 5);
+    const document: DocumentRaw = {
+      body: {
+        content: [
+          {
+            startIndex: 1,
+            endIndex: 5,
+            paragraph: { elements: [{ textRun: { content: "old\n" } }] },
+          },
+          {
+            startIndex: 5,
+            endIndex: 11,
+            paragraph: { elements: [{ textRun: { content: "intro\n" } }] },
+          },
+          {
+            startIndex: 11,
+            endIndex: 25,
+            table: {
+              tableRows: [
+                {
+                  tableCells: [
+                    { content: [{ startIndex: 14, endIndex: 15 }] },
+                    { content: [{ startIndex: 16, endIndex: 17 }] },
+                  ],
+                },
+                {
+                  tableCells: [
+                    { content: [{ startIndex: 19, endIndex: 20 }] },
+                    { content: [{ startIndex: 21, endIndex: 22 }] },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    expect(planTableFills(document, 5, tables)).toEqual([
+      { insertText: { location: { index: 21 }, text: "2" } },
+      { insertText: { location: { index: 19 }, text: "1" } },
+      { insertText: { location: { index: 16 }, text: "b" } },
+      { insertText: { location: { index: 14 }, text: "a" } },
+    ]);
+  });
+
+  it("ignores tables that were already in the document before the anchor", () => {
+    const before: StructuralElementRaw = {
+      startIndex: 1,
+      table: { tableRows: [{ tableCells: [{ content: [{ startIndex: 3 }] }] }] },
+    };
+    const ours: StructuralElementRaw = {
+      startIndex: 30,
+      table: { tableRows: [{ tableCells: [{ content: [{ startIndex: 33 }] }] }] },
+    };
+    const fills = planTableFills({ body: { content: [before, ours] } }, 20, [[[[{ text: "x" }]]]]);
+    expect(fills).toEqual([{ insertText: { location: { index: 33 }, text: "x" } }]);
   });
 });

@@ -55,6 +55,24 @@ export interface DocumentRaw {
   lists?: Record<string, ListRaw> | null;
 }
 
+export interface DocsRange {
+  startIndex: number;
+  endIndex: number;
+}
+
+/** The write half of a text style; only the fields we set (decision 0021). */
+export interface DocsTextStyleWrite {
+  bold?: boolean;
+  italic?: boolean;
+  link?: { url: string };
+  weightedFontFamily?: { fontFamily: string };
+}
+
+export interface DocsParagraphStyleWrite {
+  namedStyleType?: string;
+  indentStart?: { magnitude: number; unit: "PT" };
+}
+
 export type DocsRequest =
   | { insertText: { location: { index: number }; text: string } }
   | {
@@ -62,7 +80,18 @@ export type DocsRequest =
         containsText: { text: string; matchCase: boolean };
         replaceText: string;
       };
-    };
+    }
+  | { deleteContentRange: { range: DocsRange } }
+  | { insertTable: { location: { index: number }; rows: number; columns: number } }
+  | { updateTextStyle: { range: DocsRange; textStyle: DocsTextStyleWrite; fields: string } }
+  | {
+      updateParagraphStyle: {
+        range: DocsRange;
+        paragraphStyle: DocsParagraphStyleWrite;
+        fields: string;
+      };
+    }
+  | { createParagraphBullets: { range: DocsRange; bulletPreset: string } };
 
 export interface DocsReply {
   replaceAllText?: { occurrencesChanged?: number | null } | null;
