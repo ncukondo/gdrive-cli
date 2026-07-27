@@ -49,7 +49,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0022 `info` names a shared drive root](archive/0022-drive-root-name.md) | — | — | done |
 | [0023 `docs` writes take Markdown by default](archive/0023-markdown-writes.md) | — | — | done |
 | [0024 `insert --before` / `--after <marker>`](archive/0024-insert-at-marker.md) | 0023 | — | done |
-| [0025 List numbering & links](0025-list-numbering-and-links.md) | 0023 | — | todo |
+| [0025 List numbering & links](archive/0025-list-numbering-and-links.md) | 0023 | — | done |
 | [0026 Soft line breaks](0026-soft-line-breaks.md) | 0025 | — | todo |
 
 ## Parallelism notes

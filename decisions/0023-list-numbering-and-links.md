@@ -142,6 +142,13 @@ follow it and link all three.
 
 ## Out of scope (deferred)
 
+- Nesting inside an intervening run. §2's sweep deletes every leading tab in its
+  span, so by the time step 3 re-bullets a bulleted run between two numbered
+  items, the tabs that told it the nesting level are gone and the sub-items come
+  back flat. Restoring them means re-inserting the tabs before step 3 and
+  letting that request consume them, which is index bookkeeping for a shape
+  rarer than the one §1 fixes. Found while implementing this record, and pinned
+  by a test so it is a known cost rather than a surprise.
 - Numbering continued across a table (§4).
 - `startNumber` and `glyphFormat` generally, unless the Docs API grows a request
   for them.

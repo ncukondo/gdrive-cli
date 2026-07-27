@@ -646,6 +646,28 @@ describe("planTextRun", () => {
       expect(length).toBe(13);
     });
 
+    /**
+     * The known cost of 0023 §2's sweep: the span deletes every leading tab in
+     * it, including the ones inside an intervening run, so the request that
+     * re-bullets that run has nothing left to read a nesting level from. The
+     * tab is still sent — it is what the sweep consumes — but the sub-item
+     * comes back flat.
+     */
+    it("flattens a sub-list inside an intervening run, whose tabs the sweep ate", () => {
+      const { requests } = planTextRun(parseMarkdown("1. one\n\n- a\n  - b\n\n2. two").blocks, 1);
+      expect(requests[0]).toEqual({
+        insertText: { location: { index: 1 }, text: "one\na\n\tb\ntwo\n" },
+      });
+      // [5,9) is "a\n" and "b\n" once the tab is gone — the range is right, but
+      // by then nothing distinguishes "b" as nested.
+      expect(requests[3]).toEqual({
+        createParagraphBullets: {
+          range: { startIndex: 5, endIndex: 9 },
+          bulletPreset: "BULLET_DISC_CIRCLE_SQUARE",
+        },
+      });
+    });
+
     it("gives an intervening bulleted run its own list, after taking it out of this one", () => {
       const { requests } = planTextRun(parseMarkdown("1. one\n\n- a\n- b\n\n2. two").blocks, 1);
       expect(requests.slice(1)).toEqual([

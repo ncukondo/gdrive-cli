@@ -1,6 +1,6 @@
 # Task 0025: Ordered lists keep their numbering, and links are links
 
-Status: todo
+Status: done
 Depends on: 0023 — this changes the parser and request builder that task created.
 Parallel: no — same files as 0026, which must land after it.
 
@@ -85,24 +85,54 @@ than as literal text with the angle brackets showing.
 
 ## Acceptance criteria
 
-- [ ] Numbered sections separated by paragraphs keep their numbers
-- [ ] A numbered run survives an intervening heading, quote, code block, or
+- [x] Numbered sections separated by paragraphs keep their numbers
+- [x] A numbered run survives an intervening heading, quote, code block, or
       bulleted list, and the bulleted list stays bulleted
-- [ ] A run that starts at anything but 1 keeps its literal ordinals as text
+- [x] A run that starts at anything but 1 keeps its literal ordinals as text
       rather than being renumbered
-- [ ] `<scheme:…>` autolinks and bare `http(s)` URLs become links; a URL on its
+- [x] `<scheme:…>` autolinks and bare `http(s)` URLs become links; a URL on its
       own line no longer reports `unsupported: html`
-- [ ] `docs read` prints real ordinals
-- [ ] `bun run typecheck` / `lint` / `lint:casts` / `format:check` / `test:unit`
-- [ ] `docs/commands.md` covers the not-starting-at-1 behavior and the `1\.`
+- [x] `docs read` prints real ordinals
+- [x] `bun run typecheck` / `lint` / `lint:casts` / `format:check` / `test:unit`
+- [x] `docs/commands.md` covers the not-starting-at-1 behavior and the `1\.`
       escape; the release notes list the `read` output change as breaking
+      (release notes pending — no release cut yet)
+
+## Outcome notes
+
+- **The sweep's tab deletion reaches the later requests.** 0023 §2 describes the
+  three steps but not their arithmetic: step 1 deletes every leading tab in its
+  span, so the ranges for steps 2 and 3 are wrong unless they are moved back by
+  the tabs that preceded them. `planTextRun` grew an `adjust` for exactly that,
+  and the case is pinned by a test with a nested item ahead of the gap.
+- **Paragraph styles had to move after the bullets.** An intervening heading or
+  quote styled with the rest of its block's requests comes out bare: step 1
+  applies the list's indent over it and step 2 clears it again. `blockRequests`
+  split into `textRequests` (before the bullets — character styles survive them)
+  and `paragraphRequests` (after, in adjusted coordinates). 0023 §2 mentioned
+  that `deleteParagraphBullets` clears the indent; it did not follow that
+  through to the ordering, and this is that consequence.
+- **Nesting inside an intervening run is flattened**, for the same reason: the
+  sweep eats the tabs before step 3 can read them. Recorded in 0023's
+  "Out of scope" and pinned by a test, rather than left to be discovered.
+- The grouping is decided once, in the parser, and carried as `continues`. An
+  earlier plan had `planTextRun` re-derive it, which diverges: parse turns a
+  run that cannot start where it claims into paragraphs, and a second pass over
+  the rewritten blocks reaches different answers about what continues what.
+- A `<mailto:…>` autolink shows the URI as written, scheme included, because
+  that is what CommonMark specifies for the link text.
 
 ## Verification
 
-- `bun run test:unit` — parse, requests, render, round-trip.
-- **Manual, against a real account** — the unit tests cannot see what Docs
-  actually renders, which is where 0023's technique was found in the first
-  place. Write a document with numbered sections separated by paragraphs and by
-  a bulleted list, then confirm with `download --export-as md` (Google's own
-  renderer, not ours) that the numbers read 1, 2, 3 and the bullets are bullets.
-  Confirm a `<https://…>` line is a live link. Trash the document afterwards.
+- `bun run test:unit` — 526 passed; `typecheck`, `lint`, `lint:casts`,
+  `format:check` clean.
+- **Manual, against a real account** — a document written from a draft with
+  sections numbered 1 through 5 separated by paragraphs, a bulleted list, and a
+  heading came back numbered 1 through 5 in Google's own `--export-as md`, with
+  the bullets still bullets. A run starting at `5.` stayed text (Google escapes
+  it as `5\.`, which is how its exporter says "not a list"). `<https://…>` on
+  its own line, one mid-line, and a bare URL were all live links. A nested
+  numbered sub-list kept its nesting and the outer list carried on past the
+  paragraph after it. `docs read` of that document, written to a second document
+  and read again, is byte-identical — including the `5. five` exception, which
+  round-trips as text. Both documents were trashed.
