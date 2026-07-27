@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { looksLikeId, resolvePath, ROOT_ID } from "./resolve-path.ts";
+import type { DriveClient } from "./api.ts";
 import { createTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
+import { callArgs } from "../../tests/helpers/mock.ts";
 
 const FOLDER = "application/vnd.google-apps.folder";
 
@@ -25,6 +27,15 @@ describe("looksLikeId", () => {
     expect(looksLikeId("Reports")).toBe(false);
     expect(looksLikeId("Reports/2026")).toBe(false);
     expect(looksLikeId("My Folder")).toBe(false);
+  });
+  it("accepts a 19-character shared drive root id (decision 0016)", () => {
+    // `info` prints these in `parents`, so they have to be re-addressable.
+    expect("0ANPgzMZtaAa6Uk9PVA").toHaveLength(19);
+    expect(looksLikeId("0ANPgzMZtaAa6Uk9PVA")).toBe(true);
+  });
+  it("still rejects a 19-character name that is not a drive root", () => {
+    expect("Reports-Archive-201").toHaveLength(19);
+    expect(looksLikeId("Reports-Archive-201")).toBe(false);
   });
 });
 
@@ -60,6 +71,14 @@ describe("resolvePath", () => {
     await expect(resolvePath(drive, "Reports")).rejects.toMatchObject({ code: "INVALID_ARGS" });
     await expect(resolvePath(drive, "Reports")).rejects.toThrow(/rep1/);
     await expect(resolvePath(drive, "Reports")).rejects.toThrow(/rep2/);
+  });
+
+  it("declares shared-drive support on its lookup query (decision 0016)", async () => {
+    const tree_ = createTreeDrive(tree);
+    const list = vi.fn(tree_.files.list);
+    const spied: DriveClient = { ...tree_, files: { ...tree_.files, list } };
+    await resolvePath(spied, "Notes");
+    expect(callArgs(list)[0]).toMatchObject({ supportsAllDrives: true });
   });
 
   it("errors NOT_FOUND when a segment does not resolve", async () => {
