@@ -43,6 +43,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0015 Upgrade googleapis (130 → 173)](archive/0015-googleapis-upgrade.md) | 0016 | — | done |
 | [0017 Shared drive support](archive/0017-shared-drive-support.md) | — | — | done |
 | [0018 Shared-drive review fixes](archive/0018-shared-drive-review-fixes.md) | 0017 | — | done |
+| [0019 `PERMISSION_DENIED` for a role-denied 403](archive/0019-permission-denied-error-code.md) | — | — | done |
 
 ## Parallelism notes
 
@@ -59,9 +60,14 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 After v0.1.0 shipped, the plan continues with maintenance work. 0016 removed
 the type assertions that would let a googleapis bump break silently, so it ran
 before 0015 (decision 0015). 0017 fixed shared-drive access (issue #1) under
-decision 0016, and 0018 closed the gaps its review found; the remaining
-follow-up — path resolution across shared drives — stays on the issue until
-someone asks for it. There is no open task right now.
+decision 0016, and 0018 closed the gaps its review found. 0019 then split a
+role-denied 403 out of `AUTH_REQUIRED` (issue #3, decision 0017) — a
+consequence of 0016 §1, since shared-drive requests only started reaching
+Drive's permission checks once `supportsAllDrives` was set. The remaining
+shared-drive follow-ups are tracked as issues #4 (`organizer` /
+`fileOrganizer` in `share add`), #5 (paths across shared drives), and #6
+(`info` on a drive root reports the name `Drive`). There is no open task right
+now.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
