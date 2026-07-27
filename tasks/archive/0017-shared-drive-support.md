@@ -1,6 +1,6 @@
 # Task 0017: Shared drive support (`supportsAllDrives` + `ls`/`search` scope flags)
 
-Status: in-progress (move to `tasks/archive/` when done)
+Status: done
 Depends on: —
 Parallel: no — owns `src/lib/api.ts`, which every command area calls.
 
@@ -64,17 +64,31 @@ widened to shared drives on request with `--all-drives` / `--drive <name>`.
 4. **Refactor** — one `applyScope` helper shared by `listChildren` and
    `searchFiles`; keep `mockDrive` in `api.test.ts` the single fake.
 
+## Outcome notes
+
+- `files.export` has **no** `supportsAllDrives` parameter in Drive v3, contrary
+  to the table in issue #1; `GeneratedParamChecks` caught the attempt. Export
+  works on shared-drive files without it (verified against a real Doc).
+- `ls` with a scope but no folder argument sent `'root' in parents`, which names
+  My Drive whatever `corpora` says — so `ls --drive X` silently listed My Drive.
+  A shared drive's id doubles as its root folder id, so that is now the default
+  start under `--drive`. Found in manual verification, not by the unit tests.
+- `resolve-path.ts` was not touched. Its `looksLikeId` heuristic wants 20+
+  characters and a shared drive's root id is 19 (`0ANPgz…`), so a drive root id
+  cannot be passed as a `<folder>` argument — another reason `--drive <name>`
+  defaults to the drive root. Part of the deferred path-resolution work.
+
 ## Acceptance criteria
 
-- [ ] `gdrive info <shared-drive-id>` returns metadata instead of `NOT_FOUND`
-- [ ] `ls`/`search` results are unchanged when neither flag is given
-- [ ] `--all-drives` and `--drive <name>` widen the scope; both together are
+- [x] `gdrive info <shared-drive-id>` returns metadata instead of `NOT_FOUND`
+- [x] `ls`/`search` results are unchanged when neither flag is given
+- [x] `--all-drives` and `--drive <name>` widen the scope; both together are
       `INVALID_ARGS`; an unknown drive name is `NOT_FOUND`; an ambiguous one is
       `INVALID_ARGS`
-- [ ] No type assertions; `drives.list` is covered by `GeneratedParamChecks`
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run lint:casts`,
+- [x] No type assertions; `drives.list` is covered by `GeneratedParamChecks`
+- [x] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run lint:casts`,
       `bun run format:check` pass
-- [ ] `docs/commands.md` + `README.md` document the flags and state that
+- [x] `docs/commands.md` + `README.md` document the flags and state that
       shared-drive files are addressed by ID, not by path
 
 ## Verification
