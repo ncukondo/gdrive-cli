@@ -446,9 +446,11 @@ $ gdrive share add 0ANPgzMZtaAa6Uk9PVA --to alice@example.com --role organizer
 Granted organizer to alice@example.com (perm-abc)
 ```
 
-On a My Drive file the API rejects both roles; that surfaces as `API_ERROR`
-with Google's message. `--anyone` with either is `INVALID_ARGS` — an
-anyone-with-link permission cannot hold them. See
+`organizer` is drive-level: granting it on a *folder inside* a drive is
+refused by Drive with `PERMISSION_DENIED` — `Organizer role is only valid for
+shared drives.` Use `fileOrganizer` there, or pass the drive root ID.
+`--anyone` with either role is `INVALID_ARGS`, since an anyone-with-link
+permission cannot hold them. See
 [`../decisions/0018`](../decisions/0018-shared-drive-roles.md).
 
 ### `gdrive share remove <file>`

@@ -49,12 +49,19 @@ another route, and it is decidable without a round trip, so it is `INVALID_ARGS`
 too.
 
 The checks stop there. In particular this CLI does **not** pre-verify that the
-target lives on a shared drive, even though `organizer` is meaningless on a My
-Drive file. Knowing would cost a `files.get` on every `share add` to read
-`driveId` — a round trip on the common path to improve the error message on the
-rare one — and Google's own rejection is specific ("Invalid permission role" /
-"Sharing organizer role is not supported for this file"). It surfaces as
-`API_ERROR` with that message.
+target is somewhere `organizer` can be held. Knowing would cost a `files.get` on
+every `share add` to read `driveId` — a round trip on the common path to improve
+the error message on the rare one — and Google's own rejection is specific.
+
+Observed against a real shared drive (task 0020's manual pass): granting
+`organizer` on a *folder inside* a drive returns 403 `Organizer role is only
+valid for shared drives.`, which this CLI reports as `PERMISSION_DENIED`
+(exit 1) carrying that sentence. The role is drive-level only; the folder case
+is the near-miss a user is most likely to try, and the message says so. Note
+that the code is `PERMISSION_DENIED` rather than `API_ERROR` because Google
+answers 403, not 400 ([0017](0017-permission-denied-error-code.md)) — the
+operation cannot be performed and no credential change helps, which is what
+that code means.
 
 `--domain` is likewise left to the API. Whether a domain grant may hold an
 organizer role depends on the drive's sharing settings, which is exactly the

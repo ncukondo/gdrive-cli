@@ -76,9 +76,20 @@ organizer` promotes a shared-drive member, instead of failing `--role` parsing.
 
 - `bun run test:unit` (419 passed), `typecheck`, `lint`, `lint:casts`,
   `format:check`.
-- **Not** verified against a live shared drive: the manual pass would grant a
-  real role to a real address on a real drive, and no disposable grantee was at
-  hand. What that would have caught and the tests do not: whether Drive accepts
-  `organizer` on a drive **root** ID through `permissions.create` the same way
-  it does on a folder inside the drive. The roles themselves are unambiguous;
-  the root-as-file-ID route is the assumption carried from decision 0016 §3.
+- **Verified against a real shared drive** with a disposable grantee: a
+  throwaway folder was created in `専門医部会`, `fileOrganizer` was granted and
+  showed up in `share list`, and the folder was permanently deleted afterwards
+  (which removed the permission with it).
+- The manual pass **corrected the decision**. 0018 §3 predicted an invalid
+  target would surface as `API_ERROR`; Drive actually answers 403 with
+  `Organizer role is only valid for shared drives.`, so it is
+  `PERMISSION_DENIED`. The record and `docs/commands.md` now say that, and note
+  that `organizer` is drive-level — on a folder *inside* a drive, only
+  `fileOrganizer` is grantable.
+- It also found a real defect this task introduced: `fileOrganizer` is 13
+  characters and overran `share list`'s 11-wide role column, running into the
+  next one. Column widths are now floors that grow to fit, which fixes a
+  pre-existing overflow on long addresses too.
+- Still unverified: `organizer` granted on a drive **root** ID. Doing so would
+  add a real drive member; the folder case above is as close as a disposable
+  target allows.

@@ -75,8 +75,6 @@ costs the same one round trip it did before.
 
 - `bun run test:unit` (436 passed), `typecheck`, `lint`, `lint:casts`,
   `format:check`.
-- **Not** verified against a live shared drive. The tests assert the shape of
-  the fix, not the premise: that `files.get` on a root really answers `Drive`
-  is taken from the issue's own console transcript, which was captured against
-  a real account. If the string differs by locale, the substitution silently
-  does nothing — the failure mode is the status quo, not a new bug.
+- **Verified against a real account**: `gdrive info 0ANPgzMZtaAa6Uk9PVA` now
+  prints `専門医部会`, matching what `gdrive drives` reports for that ID, with
+  `type: folder` unchanged.

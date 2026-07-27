@@ -103,7 +103,7 @@ async function sharedDriveHint(client: DriveClient, name: string, path: string):
   try {
     const drives = await listSharedDrives(client);
     if (!drives.some((d) => d.name === name)) return "";
-    return ` A shared drive has that name — did you mean "${DRIVE_PREFIX}${path}"?`;
+    return `. A shared drive has that name — did you mean "${DRIVE_PREFIX}${path}"?`;
   } catch {
     return "";
   }

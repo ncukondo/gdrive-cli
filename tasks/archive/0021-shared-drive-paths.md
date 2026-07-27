@@ -92,10 +92,14 @@ Drive path whose first segment names a shared drive says so instead of a bare
 
 - `bun run test:unit` (432 passed), `typecheck`, `lint`, `lint:casts`,
   `format:check`.
-- **Not** verified against a live shared drive. The unit tests use a tree fake,
-  so what they cannot show is whether Drive really returns children of a folder
-  inside a shared drive for a `'<parent>' in parents` query with
-  `includeItemsFromAllDrives` and no `corpora`. That exact combination is what
-  `listChildren` already does in production (0016 §2, diffed against a real
-  account in task 0018), which is why it was chosen over `corpora: "drive"` —
-  but the reuse is an inference, not an observation.
+- **Verified against the `専門医部会` shared drive**, read-only: `ls drive:名前`,
+  a two- and a three-level walk, `info` by `drive:` path, an unknown drive name
+  (`NOT_FOUND` listing all eight), `drive:` alone (`INVALID_ARGS`), and the
+  hint on a bare path. Bare `ls -q` on My Drive still returns the same 92 IDs
+  task 0018 recorded, so the default is untouched.
+- That settles the inference this task was written on: a `'<parent>' in
+  parents` query with `includeItemsFromAllDrives` and no `corpora` really does
+  return children inside a shared drive. It is now observed, not assumed.
+- The manual pass caught a missing period — the hint read `専門医部会 A shared
+  drive has that name` — which no unit test would have failed on, since they
+  assert `toContain`.

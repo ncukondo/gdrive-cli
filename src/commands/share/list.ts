@@ -2,9 +2,18 @@ import { Command } from "commander";
 import type { CommandResult, DrivePermission, OutputFormat } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
 
+/**
+ * Column floors, not ceilings: `fileOrganizer` (13 characters, decision 0018)
+ * and a long address both overrun the fixed widths this table used, running
+ * into the next column. Each width grows to fit its widest value and otherwise
+ * stays exactly where it was.
+ */
 const ROLE_W = 11;
 const TYPE_W = 8;
 const GRANTEE_W = 24;
+
+const widthOf = (floor: number, values: string[]): number =>
+  Math.max(floor, ...values.map((v) => v.length + 1));
 
 /** Human label for a permission's grantee (decision 0011). */
 export function granteeLabel(permission: DrivePermission): string {
@@ -17,10 +26,19 @@ export function granteeLabel(permission: DrivePermission): string {
 /** Renders permissions as an aligned text table (decision 0011). */
 export function formatPermissionTable(permissions: DrivePermission[]): string {
   if (permissions.length === 0) return "No permissions.";
+  const role = widthOf(
+    ROLE_W,
+    permissions.map((p) => p.role),
+  );
+  const type = widthOf(
+    TYPE_W,
+    permissions.map((p) => p.type),
+  );
+  const grantee = widthOf(GRANTEE_W, permissions.map(granteeLabel));
   const header =
-    "Role".padEnd(ROLE_W) + "Type".padEnd(TYPE_W) + "Grantee".padEnd(GRANTEE_W) + "Permission ID";
+    "Role".padEnd(role) + "Type".padEnd(type) + "Grantee".padEnd(grantee) + "Permission ID";
   const rows = permissions.map(
-    (p) => p.role.padEnd(ROLE_W) + p.type.padEnd(TYPE_W) + granteeLabel(p).padEnd(GRANTEE_W) + p.id,
+    (p) => p.role.padEnd(role) + p.type.padEnd(type) + granteeLabel(p).padEnd(grantee) + p.id,
   );
   return [header, ...rows].join("\n");
 }

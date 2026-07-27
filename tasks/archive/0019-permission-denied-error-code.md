@@ -87,9 +87,13 @@ OAuth scope keeps exit 2.
 
 - `bun run test:unit` (412 passed), `typecheck`, `lint`, `lint:casts`,
   `format:check`. `test:integration` has no files in this repo.
-- **Not** verified against a live shared drive: doing so needs an account
-  holding `reader` on a drive where a write can be attempted, and the only
-  shared drive at hand is one where the account is an organizer. The mapping is
-  carried by the unit tests; the risk left open is whether Google's reason
-  strings are spelled as assumed, and the fallback direction was chosen so that
-  being wrong costs a wrong code, not a wrong instruction.
+- **Verified against a real account**, read-only: `gdrive share list` on a
+  presentation shared with the account as a viewer. `main` answered exit 2 /
+  `AUTH_REQUIRED`; this branch answers exit 1 / `PERMISSION_DENIED`, message
+  `The user does not have sufficient permissions for this file.`
+- That case is the near-miss the design turns on: Drive's reason there is
+  `insufficientFilePermissions`, one word away from the scope failure's
+  `insufficientPermissions`. A substring match would have reproduced the bug;
+  the exact match handles it correctly on real data.
+- Still unverified: the *scope* branch. Producing it needs a token minted
+  before a scope was added, which no account here has.

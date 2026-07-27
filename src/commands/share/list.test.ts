@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleShareList } from "./list.ts";
+import { formatPermissionTable, handleShareList } from "./list.ts";
 import type { DrivePermission } from "../../types/index.ts";
 
 function perm(overrides: Partial<DrivePermission> = {}): DrivePermission {
@@ -98,6 +98,24 @@ describe("handleShareList", () => {
     expect(parsed.data.id).toBe("FID");
     expect(parsed.data.permissions).toHaveLength(3);
     expect(parsed.data.permissions[1]).toEqual(perm());
+  });
+
+  it("keeps columns apart when a value is wider than the column", () => {
+    // fileOrganizer (13) overflows the role column sized for commenter (9),
+    // and a long address overflows the grantee column. Seen on a real drive.
+    const table = formatPermissionTable([
+      perm({ id: "p1", role: "fileOrganizer", email: "takeshi.kondo.gp@example.com" }),
+      perm({ id: "p2", role: "reader", email: "a@b.com" }),
+    ]);
+    const [header, first, second] = table.split("\n");
+    expect(first).toContain(" user");
+    expect(first).toContain(" p1");
+    // Every column still starts at the same offset on every row.
+    for (const label of ["Type", "Grantee", "Permission ID"]) {
+      const at = (header ?? "").indexOf(label);
+      expect(first?.slice(at - 1, at)).toBe(" ");
+      expect(second?.slice(at - 1, at)).toBe(" ");
+    }
   });
 
   it("reports an empty file as having no permissions", async () => {
