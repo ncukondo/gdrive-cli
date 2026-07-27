@@ -281,6 +281,11 @@ Link:      https://docs.google.com/spreadsheets/d/1S6cRd.../edit
 
 Quiet: the file ID.
 
+Given a shared drive's root ID, `info` reports the drive's own name — the same
+one `gdrive drives` prints — and `type: folder`, because that is what a drive
+root behaves as. (Drive's own API answers `Drive` there, identically for every
+drive; see [`../decisions/0020`](../decisions/0020-drive-root-name.md).)
+
 ### `gdrive download <file>`
 
 Downloads binary content, or exports a Google-native file. With no `-o`, the
