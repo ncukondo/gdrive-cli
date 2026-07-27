@@ -89,4 +89,117 @@ describe("resolvePath", () => {
       code: "NOT_FOUND",
     });
   });
+
+  it("issues no drives.list for a plain My Drive path", async () => {
+    // The tree fake's drives.list throws, so a stray lookup fails the test.
+    expect(await resolvePath(createTreeDrive(tree), "Notes")).toBe("note1");
+  });
+});
+
+// A shared drive `Finance` (root FIN) holding 2026/Budget, plus a My Drive
+// folder of the same name, which is the ambiguity `drive:` exists to resolve.
+const driveTree: DriveNode[] = [
+  { id: "myfin", name: "Finance", mimeType: FOLDER, parents: [ROOT_ID] },
+  { id: "y2026", name: "2026", mimeType: FOLDER, parents: ["FIN"] },
+  { id: "bud1", name: "Budget", parents: ["y2026"] },
+];
+const drives = [{ id: "FIN", name: "Finance" }];
+
+describe("resolvePath with a drive: prefix (decision 0019)", () => {
+  it("resolves a bare drive name to its root id without listing files", async () => {
+    const fake = createTreeDrive(driveTree, drives);
+    const list = vi.fn(fake.files.list);
+    const spied: DriveClient = { ...fake, files: { ...fake.files, list } };
+    expect(await resolvePath(spied, "drive:Finance")).toBe("FIN");
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("walks segments from the drive root, not from My Drive", async () => {
+    const fake = createTreeDrive(driveTree, drives);
+    const list = vi.fn(fake.files.list);
+    const spied: DriveClient = { ...fake, files: { ...fake.files, list } };
+    expect(await resolvePath(spied, "drive:Finance/2026/Budget")).toBe("bud1");
+    expect(callArgs(list)[0].q).toContain("'FIN' in parents");
+  });
+
+  it("keeps a same-named My Drive folder reachable without the prefix", async () => {
+    expect(await resolvePath(createTreeDrive(driveTree, drives), "Finance")).toBe("myfin");
+  });
+
+  it("includes shared-drive items in the lookup query", async () => {
+    const fake = createTreeDrive(driveTree, drives);
+    const list = vi.fn(fake.files.list);
+    const spied: DriveClient = { ...fake, files: { ...fake.files, list } };
+    await resolvePath(spied, "drive:Finance/2026");
+    expect(callArgs(list)[0]).toMatchObject({
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+  });
+
+  it("reports an unknown drive name as NOT_FOUND, listing what exists", async () => {
+    await expect(
+      resolvePath(createTreeDrive(driveTree, drives), "drive:Nope/x"),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: expect.stringContaining("Finance"),
+    });
+  });
+
+  it("reports a duplicated drive name as INVALID_ARGS listing the ids", async () => {
+    const dupes = [
+      { id: "FIN", name: "Finance" },
+      { id: "FIN2", name: "Finance" },
+    ];
+    await expect(
+      resolvePath(createTreeDrive(driveTree, dupes), "drive:Finance"),
+    ).rejects.toMatchObject({
+      code: "INVALID_ARGS",
+      message: expect.stringContaining("FIN2"),
+    });
+  });
+
+  it.each([["drive:"], ["drive:/2026"]])("rejects %s, which names no drive", async (arg) => {
+    await expect(resolvePath(createTreeDrive(driveTree, drives), arg)).rejects.toMatchObject({
+      code: "INVALID_ARGS",
+    });
+  });
+});
+
+describe("resolvePath's shared-drive hint", () => {
+  it("points at the drive: form when the first segment names a shared drive", async () => {
+    // No My Drive folder called Finance here — just the shared drive.
+    const onlyShared: DriveNode[] = [{ id: "y2026", name: "2026", parents: ["FIN"] }];
+    await expect(
+      resolvePath(createTreeDrive(onlyShared, drives), "Finance/2026"),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: expect.stringContaining("drive:Finance/2026"),
+    });
+  });
+
+  it("stays quiet when no shared drive has that name", async () => {
+    const message = await resolvePath(createTreeDrive(tree, drives), "Missing/x").catch(
+      (e: Error) => e.message,
+    );
+    expect(message).toBe("No such file or folder: Missing");
+  });
+
+  it("hints only on the first segment", async () => {
+    const clean: DriveNode[] = [
+      { id: "rep1", name: "Reports", mimeType: FOLDER, parents: [ROOT_ID] },
+    ];
+    const message = await resolvePath(createTreeDrive(clean, drives), "Reports/Finance").catch(
+      (e: Error) => e.message,
+    );
+    expect(message).toBe("No such file or folder: Reports/Finance");
+  });
+
+  it("keeps the original NOT_FOUND when the drive lookup itself fails", async () => {
+    // The tree fake without a drives array throws from drives.list.
+    await expect(resolvePath(createTreeDrive(tree), "Missing/x")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: "No such file or folder: Missing",
+    });
+  });
 });

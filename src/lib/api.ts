@@ -361,10 +361,28 @@ function unknownDriveError(name: string, available: SharedDrive[]): AppError {
 }
 
 /**
- * Turns the scope flags into a {@link DriveScope}, resolving a drive *name* to
- * its id. The error rules mirror path resolution (decision 0008): no match is
+ * Resolves a shared drive *name* to the drive itself. Exact and case-sensitive;
+ * the error rules mirror path resolution (decision 0008): no match is
  * `NOT_FOUND`, several matches are `INVALID_ARGS` listing the candidate ids.
+ *
+ * Shared by `--drive` and the `drive:` path prefix (decision 0019 §2) so the
+ * two spellings cannot drift apart.
  */
+export async function resolveDriveByName(
+  client: DriveClient,
+  wanted: string,
+): Promise<SharedDrive> {
+  const available = await listSharedDrives(client);
+  const [match, ...rest] = available.filter((d) => d.name === wanted);
+  if (match === undefined) throw unknownDriveError(wanted, available);
+  if (rest.length > 0) {
+    const ids = [match, ...rest].map((d) => d.id).join(", ");
+    throw new AppError("INVALID_ARGS", `Ambiguous shared drive name "${wanted}"; matches: ${ids}.`);
+  }
+  return match;
+}
+
+/** Turns the scope flags into a {@link DriveScope}, resolving a name to its id. */
 export async function resolveDriveScope(
   client: DriveClient,
   args: DriveScopeArgs,
@@ -375,15 +393,8 @@ export async function resolveDriveScope(
   if (args.allDrives === true) return { kind: "all" };
   if (args.drive === undefined) return undefined;
 
-  const { drive: wanted } = args;
-  const available = await listSharedDrives(client);
-  const [match, ...rest] = available.filter((d) => d.name === wanted);
-  if (match === undefined) throw unknownDriveError(wanted, available);
-  if (rest.length > 0) {
-    const ids = [match, ...rest].map((d) => d.id).join(", ");
-    throw new AppError("INVALID_ARGS", `Ambiguous shared drive name "${wanted}"; matches: ${ids}.`);
-  }
-  return { kind: "drive", driveId: match.id };
+  const drive = await resolveDriveByName(client, args.drive);
+  return { kind: "drive", driveId: drive.id };
 }
 
 // --- Pagination -------------------------------------------------------------

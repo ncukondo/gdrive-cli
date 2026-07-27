@@ -27,8 +27,15 @@ function extractParent(q: string): string | undefined {
  * honors the `name = '…'` and `'…' in parents` clauses used by path resolution
  * and child listing. Other methods throw unless overridden — resolve-path and
  * listing tests only exercise `files.list`.
+ *
+ * `drives` supplies `drives.list`; omitting it leaves that method throwing,
+ * which is itself a case worth testing (a `drive:` lookup the account cannot
+ * make must not swallow the caller's real error).
  */
-export function createTreeDrive(nodes: DriveNode[]): DriveClient {
+export function createTreeDrive(
+  nodes: DriveNode[],
+  drives?: { id: string; name: string }[],
+): DriveClient {
   const toRaw = (n: DriveNode): DriveFileRaw => ({
     id: n.id,
     name: n.name,
@@ -70,7 +77,8 @@ export function createTreeDrive(nodes: DriveNode[]): DriveClient {
     },
     drives: {
       list: async () => {
-        throw new Error("not implemented in tree fake");
+        if (drives === undefined) throw new Error("not implemented in tree fake");
+        return { data: { drives } };
       },
     },
     permissions: {
