@@ -82,6 +82,11 @@ exists. Address shared-drive files by ID.
 because it asks an open question rather than following an ID; `--all-drives`
 and `--drive <name>` widen it (see below).
 
+Sharing works on shared-drive files too, including the two roles only they have:
+[`share add --role organizer | fileOrganizer`](#gdrive-share-add-file). A drive
+root ID as the `<file>` argument makes that a membership change on the drive
+itself.
+
 ## The file object
 
 `ls`, `search`, `info`, `upload`, `mkdir`, `mv`, `cp`, and `rm` all report files
@@ -390,7 +395,7 @@ Exactly one grantee option is required.
 | `--to <email>` | A user, or a group for a `@googlegroups.com` address |
 | `--domain <domain>` | Everyone in a domain |
 | `--anyone` | Anyone with the link |
-| `--role <role>` | `reader` (default) \| `commenter` \| `writer` |
+| `--role <role>` | `reader` (default) \| `commenter` \| `writer` \| `fileOrganizer` \| `organizer` |
 | `--notify` | Send a notification email (off by default) |
 | `--message <text>` | Message included in that email |
 | `--allow-discovery` | Make the file discoverable in search |
@@ -405,6 +410,20 @@ Granted writer to alice@example.com (perm-abc)
 ```
 
 Quiet: the new permission ID. `--role owner` is rejected with `INVALID_ARGS`.
+
+`fileOrganizer` and `organizer` exist only on **shared drives**, spelled as the
+API spells them so `share list` output can be fed straight back. Pass a drive's
+root ID (from `gdrive drives`) as `<file>` to add a member to the drive itself:
+
+```console
+$ gdrive share add 0ANPgzMZtaAa6Uk9PVA --to alice@example.com --role organizer
+Granted organizer to alice@example.com (perm-abc)
+```
+
+On a My Drive file the API rejects both roles; that surfaces as `API_ERROR`
+with Google's message. `--anyone` with either is `INVALID_ARGS` — an
+anyone-with-link permission cannot hold them. See
+[`../decisions/0018`](../decisions/0018-shared-drive-roles.md).
 
 ### `gdrive share remove <file>`
 
@@ -425,7 +444,9 @@ Quiet: prints nothing.
 ### `gdrive share link <file>`
 
 Ensures an "anyone with link" permission and prints the shareable URL. An
-existing one is reused, and upgraded when `--role` differs.
+existing one is reused, and upgraded when `--role` differs. `--role` takes
+`reader` (default), `commenter`, or `writer` only — the shared-drive roles are
+not link roles.
 
 ```console
 $ gdrive share link "Reports/2026/Budget" --role writer
