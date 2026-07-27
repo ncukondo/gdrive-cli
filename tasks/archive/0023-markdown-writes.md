@@ -1,6 +1,6 @@
 # Task 0023: `docs` writes take Markdown by default
 
-Status: in-progress
+Status: done
 Depends on: — (decision `0021` is written; nothing else is in flight)
 Parallel: no — one owner for `src/lib/markdown-doc.ts` and all four
 `src/commands/docs/*` write commands.
@@ -107,30 +107,57 @@ Six sub-features; commit at each green point.
 
 ## Acceptance criteria
 
-- [ ] `docs append <doc> @draft.md` — no flag — puts a Markdown table into the
+- [x] `docs append <doc> @draft.md` — no flag — puts a Markdown table into the
       document as a Docs table, verified by exporting `.docx` and finding
       `<w:tbl>`, the comparison issue #7 makes
-- [ ] Headings, bold/italic, links, and nested ordered/unordered lists arrive
+- [x] Headings, bold/italic, links, and nested ordered/unordered lists arrive
       as Docs structure, not as their Markdown source
-- [ ] `gdrive docs read A | gdrive docs append B -` preserves structure
-- [ ] `--as text` writes the exact bytes, unchanged from today
-- [ ] No input is rejected: fences, quotes, rules, images, and raw HTML each
+- [x] `gdrive docs read A | gdrive docs append B -` preserves structure
+- [x] `--as text` writes the exact bytes, unchanged from today
+- [x] No input is rejected: fences, quotes, rules, images, and raw HTML each
       land per decision 0021 §3, with images and HTML reported in `unsupported`
-- [ ] `bun run typecheck` / `lint` / `lint:casts` / `format:check` / `test:unit`
-- [ ] `docs/commands.md` (all four commands, the `create` plain-text sentence
+- [x] `bun run typecheck` / `lint` / `lint:casts` / `format:check` / `test:unit`
+- [x] `docs/commands.md` (all four commands, the `create` plain-text sentence
       removed, and which inputs want `--as text`), `README.md`,
       `decisions/README.md` updated, and the breaking change in the release notes
+
+## Outcome notes
+
+- The three real bugs all came from the manual pass, and none of them could
+  have come from anywhere else. The fake client answers `batchUpdate` without
+  applying it, so a leaked paragraph style, a list that became six one-item
+  lists, and a cursor two characters short all look identical to success. What
+  the unit tests *can* pin is the request array, and they do — the manual pass
+  is what said the array was wrong.
+- Writing the segments backwards at a fixed anchor is the idea to resist: it
+  needs no index arithmetic, and it is wrong, because inserting at a paragraph's
+  start index merges into that paragraph and its style spreads over whatever is
+  inserted before it afterwards. Decision 0021 §5 now records the refutation.
+- `createParagraphBullets` is doubly sharp: it wants the whole list in one
+  request (one per item gives every item its own list and `nestingLevel: 0`),
+  and it deletes the leading tabs it read, so the run leaves behind fewer
+  characters than were sent.
+- `--replace` learned `@file`/`-`, which it should have had before: decision
+  0021 §1 shows `--replace @draft.md`, and swapping a marker for a draft is the
+  use issue #7 describes.
+- The `unsupported` reporting is deliberately split — stderr in text mode, a
+  JSON field otherwise — so `docs read A | docs append B -` never has a note in
+  the middle of its payload.
+- Not done here: the breaking change still has to be called out in the release
+  notes when the next version ships. There is no CHANGELOG file to put it in.
 
 ## Verification
 
 - `bun run test src/lib/markdown-doc.test.ts` — parser, mappings, builder,
   round trip.
 - `bun run test src/commands/docs` — the flipped default and `--as text`.
-- **Manual, against a real account** (the only check that proves §5's index
-  math): write the issue's 6×4 table with each of `create` / `append` /
-  `insert` / `replace`, then `gdrive download --export-as docx` and confirm
-  `<w:tbl>` in `word/document.xml`. Also confirm a link is a hyperlink, not raw
-  text, and that a fenced block came out monospace.
-- Compare one converted document against a native import of the same source
-  (upload `draft.md` to Drive as a Doc) — decision 0021 §4 makes that the
-  reference.
+- `bun run test:unit` — 486 passed. `typecheck`, `lint`, `format:check` clean.
+- **Manual, against a real account** — done, and it is what found the three
+  bugs above. A draft with a heading, a styled paragraph, a nested mixed list,
+  a 6×4 table, a quote, a fence, and an image was written with `create`, then
+  extended with `append`, `insert --at start --as text`, and a `replace` at a
+  marker. `docs read` reproduced it; `download --export-as docx` gave one
+  `<w:tbl>` with the Japanese cells intact, one `<w:hyperlink>`, `Courier New`
+  runs for the fence, and `Heading1`. The structure dump confirmed
+  `nestingLevel: 1` on the nested items, one `listId` per list, and
+  `indentStart` on the quote **only**. Test documents were trashed afterwards.

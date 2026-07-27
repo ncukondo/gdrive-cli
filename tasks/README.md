@@ -47,7 +47,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0020 `share add` grants the shared-drive roles](archive/0020-shared-drive-roles.md) | — | — | done |
 | [0021 `drive:<name>/<path>` addressing](archive/0021-shared-drive-paths.md) | — | — | done |
 | [0022 `info` names a shared drive root](archive/0022-drive-root-name.md) | — | — | done |
-| [0023 `docs` writes take Markdown by default](0023-markdown-writes.md) | — | — | todo |
+| [0023 `docs` writes take Markdown by default](archive/0023-markdown-writes.md) | — | — | done |
 | [0024 `insert --before` / `--after <marker>`](0024-insert-at-marker.md) | 0023 | — | todo |
 
 ## Parallelism notes
@@ -75,13 +75,17 @@ decision 0019, which supersedes 0016 §3), and 0022 made `info` report a drive
 root's real name (issue #6, decision 0020). That closes the shared-drive
 follow-ups opened after v0.4.0.
 
-0023 and 0024 are the open tasks, both from issue #7 and both extending 0009.
-0023 makes Markdown the format on the write side too — a Markdown table arrives
-as a Docs table instead of a line of pipes — and flips the write default to
-match `read` (decision 0021; breaking, allowed by 0014). 0024 then moves
-marker-relative positioning out of the `replace` workaround and into `insert`
-(decision 0022). They share the marker search and the docs command files, so
-0024 waits for 0023 rather than running beside it.
+0023 and 0024 both come from issue #7 and both extend 0009. 0023 is **done**:
+Markdown is now the format on the write side too — a Markdown table arrives as
+a Docs table instead of a line of pipes — and the write default flipped to match
+`read` (decision 0021; breaking, allowed by 0014). Its manual pass against a
+real account is what found the index bugs a fake client cannot show, and 0021 §5
+records the approach that failed.
+
+0024 is the open task: marker-relative positioning moves out of the `replace`
+workaround and into `insert --before/--after` (decision 0022). It reuses 0023's
+marker search and touches the same command files, so it runs after it rather
+than beside it.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
