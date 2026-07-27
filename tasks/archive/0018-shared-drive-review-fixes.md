@@ -1,6 +1,6 @@
 # Task 0018: Close the shared-drive gaps found in review
 
-Status: in-progress (move to `tasks/archive/` when done)
+Status: done
 Depends on: 0017
 Parallel: no — reopens `src/lib/api.ts` and `src/lib/resolve-path.ts`.
 
@@ -60,16 +60,33 @@ not, plus three smaller mismatches between the docs and the code.
 
 ## Acceptance criteria
 
-- [ ] `gdrive ls <shared-drive folder ID>` lists children with no flag
-- [ ] `gdrive info <shared-drive root ID>` (19 chars) succeeds, and that ID is
+- [x] `gdrive ls <shared-drive folder ID>` lists children with no flag
+- [x] `gdrive info <shared-drive root ID>` (19 chars) succeeds, and that ID is
       accepted anywhere a folder is (`--parent`, `mv`, `cp`)
-- [ ] A folder argument together with `--drive` is `INVALID_ARGS` naming the fix
-- [ ] `gdrive drives` lists name + ID in text / JSON / quiet
-- [ ] An unknown `--drive` name lists the available drives
-- [ ] `gdrive ls` with no arguments is byte-for-byte what it was before
-- [ ] Every `files.list` call site sends `supportsAllDrives`, and the docs say
+- [x] A folder argument together with `--drive` is `INVALID_ARGS` naming the fix
+- [x] `gdrive drives` lists name + ID in text / JSON / quiet
+- [x] An unknown `--drive` name lists the available drives
+- [x] `gdrive ls` with no arguments is byte-for-byte what it was before
+- [x] Every `files.list` call site sends `supportsAllDrives`, and the docs say
       exactly which call does not
-- [ ] `bun run typecheck` / `lint` / `lint:casts` / `format:check` / `test:unit`
+- [x] `bun run typecheck` / `lint` / `lint:casts` / `format:check` / `test:unit`
+
+## Outcome notes
+
+- **`--all-drives` was removed from `ls` rather than documented.** Once
+  `listChildren` includes shared-drive items, the flag had no reachable effect:
+  with a folder argument it is now `INVALID_ARGS`, and without one the query
+  stays `'root' in parents`, which names My Drive whatever `corpora` says. It
+  produced output identical to plain `ls`, byte for byte, on a real account.
+  `search` keeps it, where it genuinely widens the corpus.
+- `looksLikeId` gained the `0A` + 17 shape as a second alternative rather than
+  dropping the general threshold to 19, so a 19-character folder name is still
+  read as a path. Reasoning is in the commit and in decision 0016 §3.
+- `gdrive info <drive root ID>` succeeds but reports the name as `Drive`:
+  `files.get` on a shared drive's root returns the generic folder resource, not
+  the drive's title. Cosmetic, and `gdrive drives` is where the names live.
+- Bare `gdrive ls -q` was diffed against `main` on a real account: 92 IDs,
+  identical. The `ls` default really is untouched.
 
 ## Verification
 
