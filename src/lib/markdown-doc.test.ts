@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdown } from "./markdown-doc.ts";
+import { renderDocument, type DocumentRaw, type StructuralElementRaw } from "./docs-api.ts";
 
 describe("parseMarkdown — blocks", () => {
   it("maps ATX headings to their level", () => {
@@ -165,5 +166,129 @@ describe("parseMarkdown — everything outside the subset still lands (decision 
 
   it("never throws: no input is rejected", () => {
     expect(() => parseMarkdown("| broken |\n> ```\n#\n![](x)")).not.toThrow();
+  });
+});
+
+/**
+ * The contract of decision 0021 §2: whatever `docs read --as markdown` prints
+ * must parse back to the structure it came from. `read`'s output is the
+ * contract, so a mismatch is a bug on whichever side is wrong.
+ */
+describe("round trip with renderDocument", () => {
+  type Run = { text: string; bold?: boolean; italic?: boolean; url?: string };
+
+  function para(
+    runs: (string | Run)[],
+    options: { style?: string; bullet?: { listId: string; nestingLevel?: number } } = {},
+  ): StructuralElementRaw {
+    return {
+      paragraph: {
+        elements: runs.map((r) => {
+          const run: Run = typeof r === "string" ? { text: r } : r;
+          return {
+            textRun: {
+              content: run.text,
+              textStyle: {
+                ...(run.bold ? { bold: true } : {}),
+                ...(run.italic ? { italic: true } : {}),
+                ...(run.url ? { link: { url: run.url } } : {}),
+              },
+            },
+          };
+        }),
+        ...(options.style ? { paragraphStyle: { namedStyleType: options.style } } : {}),
+        ...(options.bullet
+          ? { bullet: { listId: options.bullet.listId, nestingLevel: options.bullet.nestingLevel ?? 0 } }
+          : {}),
+      },
+    };
+  }
+
+  function table(rows: (string | Run)[][][]): StructuralElementRaw {
+    return {
+      table: {
+        tableRows: rows.map((row) => ({
+          tableCells: row.map((cell) => ({ content: [para(cell)] })),
+        })),
+      },
+    };
+  }
+
+  const roundTrip = (document: DocumentRaw) => parseMarkdown(renderDocument(document, "markdown"));
+
+  it("survives a heading and a styled paragraph", () => {
+    const { blocks } = roundTrip({
+      body: {
+        content: [
+          para(["Meeting notes"], { style: "HEADING_1" }),
+          para([
+            "Discussed the ",
+            { text: "budget", bold: true },
+            " and ",
+            { text: "the plan", url: "https://example.com" },
+            ".",
+          ]),
+        ],
+      },
+    });
+
+    expect(blocks).toEqual([
+      { kind: "heading", level: 1, spans: [{ text: "Meeting notes" }] },
+      {
+        kind: "paragraph",
+        spans: [
+          { text: "Discussed the " },
+          { text: "budget", bold: true },
+          { text: " and " },
+          { text: "the plan", link: "https://example.com" },
+          { text: "." },
+        ],
+      },
+    ]);
+  });
+
+  it("survives a nested mixed list", () => {
+    const { blocks } = roundTrip({
+      body: {
+        content: [
+          para(["top"], { bullet: { listId: "L1" } }),
+          para(["nested"], { bullet: { listId: "L1", nestingLevel: 1 } }),
+          para(["one"], { bullet: { listId: "L2" } }),
+        ],
+      },
+      lists: {
+        L1: { listProperties: { nestingLevels: [{ glyphSymbol: "●" }, { glyphSymbol: "○" }] } },
+        L2: { listProperties: { nestingLevels: [{ glyphType: "DECIMAL" }] } },
+      },
+    });
+
+    expect(blocks).toEqual([
+      { kind: "list", ordered: false, level: 0, spans: [{ text: "top" }] },
+      { kind: "list", ordered: false, level: 1, spans: [{ text: "nested" }] },
+      { kind: "list", ordered: true, level: 0, spans: [{ text: "one" }] },
+    ]);
+  });
+
+  it("survives a table whose cells carry inline styles", () => {
+    const { blocks } = roundTrip({
+      body: {
+        content: [
+          table([
+            [[{ text: "枠", bold: true }], [{ text: "企画名" }]],
+            [[{ text: "1" }], [{ text: "Ops", italic: true }]],
+          ]),
+        ],
+      },
+    });
+
+    expect(blocks).toEqual([
+      {
+        kind: "table",
+        rows: [
+          [[{ text: "枠", bold: true }], [{ text: "企画名" }]],
+          [[{ text: "1" }], [{ text: "Ops", italic: true }]],
+        ],
+      },
+    ]);
   });
 });
