@@ -13,8 +13,9 @@ AI-agent use.
 - **Drive** — `ls`, `search`, `info`, `download`, `upload`, `mkdir`, `mv`,
   `cp`, `rm` (trash by default). Files addressed by ID or `Folder/name` path.
 - **Shared drives** — any shared-drive ID works in any command that takes one,
-  with no flag; `gdrive drives` lists the drives and their IDs. Only `search`
-  stays on My Drive by default, widened with `--all-drives` / `--drive <name>`.
+  with no flag, and `drive:<name>/<path>` addresses one by path; `gdrive drives`
+  lists the drives and their IDs. Only `search` stays on My Drive by default,
+  widened with `--all-drives` / `--drive <name>`.
 - **Docs** — `read` (Markdown/text), `create`, `append`, `replace`
   (find & replace), `insert` at a position.
 - **Sheets** — `tabs`, `read` (table/CSV/JSON), `write`, `append`, `clear`,
@@ -68,6 +69,7 @@ gdrive search budget --all-drives    # shared drives too (opt-in)
 gdrive drives                        # shared drive names and IDs
 gdrive info 1AbCdEf...               # any file ID, shared drive or not
 gdrive ls 0ABcDeFgHiJkLmNoPqR        # a shared drive's root, by ID
+gdrive ls "drive:Finance/2026"       # …or by name and path
 
 gdrive docs read "Notes/Meeting"     # Markdown to stdout
 gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:C10" --as csv

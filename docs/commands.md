@@ -40,12 +40,13 @@ The `data` shapes below are what goes in that envelope.
 
 ## Addressing files
 
-Anywhere a command takes `<file>` or `<folder>`, you can pass a Drive **ID** or
-a **path** relative to My Drive root:
+Anywhere a command takes `<file>` or `<folder>`, you can pass a Drive **ID**, a
+**path** relative to My Drive root, or a path on a shared drive:
 
 ```sh
-gdrive info 1AbCdEf...              # by ID
-gdrive info "Reports/2026/summary"  # by path
+gdrive info 1AbCdEf...                    # by ID
+gdrive info "Reports/2026/summary"        # by path, in My Drive
+gdrive info "drive:Finance/2026/Budget"   # by path, on a shared drive
 ```
 
 Paths are resolved segment by segment; a segment that matches nothing is
@@ -74,9 +75,29 @@ gdrive ls 0ABcDeFgHiJkLmNoPqR            # a shared drive's root
 gdrive mkdir 2027 --parent 0ABcDeFgHiJkLmNoPqR
 ```
 
-**Paths cannot reach a shared drive.** Path resolution walks down from My Drive
-root, so `"Team drive/Reports/summary"` is `NOT_FOUND` even when that file
-exists. Address shared-drive files by ID.
+**Paths reach a shared drive through a `drive:` prefix.** A bare path is always
+a My Drive path — `"Finance/2026"` is the My Drive folder even when a shared
+drive is also called `Finance`. Put `drive:<name>/` in front to mean the drive:
+
+```sh
+gdrive ls   "drive:Finance"                   # the drive's root
+gdrive ls   "drive:Finance/2026"              # a folder inside it
+gdrive mv   1AbCdEf... "drive:Finance/2026"   # as a destination, too
+```
+
+The name must match what `gdrive drives` prints, exactly and case-sensitively.
+An unknown name is `NOT_FOUND` listing the ones that exist; a name shared by two
+drives is `INVALID_ARGS` listing their IDs. A drive whose name contains a `/`
+cannot be written this way — use its root ID.
+
+When a plain path fails on its first segment and a shared drive has that name,
+the error says so:
+
+```console
+$ gdrive ls "Finance/2026"
+Error: No such file or folder: Finance. A shared drive has that name — did you
+mean "drive:Finance/2026"?
+```
 
 `search` is the one command that still looks only at My Drive by default,
 because it asks an open question rather than following an ID; `--all-drives`
