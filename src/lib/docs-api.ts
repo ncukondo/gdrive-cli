@@ -100,7 +100,8 @@ export type DocsRequest =
         fields: string;
       };
     }
-  | { createParagraphBullets: { range: DocsRange; bulletPreset: string } };
+  | { createParagraphBullets: { range: DocsRange; bulletPreset: string } }
+  | { deleteParagraphBullets: { range: DocsRange } };
 
 export interface DocsReply {
   replaceAllText?: { occurrencesChanged?: number | null } | null;

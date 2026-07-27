@@ -29,7 +29,16 @@ export type MarkdownBlock =
   | { kind: "paragraph"; spans: InlineSpan[] }
   | { kind: "quote"; spans: InlineSpan[] }
   | { kind: "code"; text: string }
-  | { kind: "list"; ordered: boolean; level: number; spans: InlineSpan[] }
+  | {
+      kind: "list";
+      ordered: boolean;
+      level: number;
+      /** The ordinal the source wrote, for an ordered item (decision 0023 §1). */
+      number?: number;
+      /** Joins the Docs list the previous ordered run opened, rather than starting one. */
+      continues?: true;
+      spans: InlineSpan[];
+    }
   | { kind: "table"; rows: TableRows };
 
 /** Something Docs cannot hold, kept as literal text and reported (0021 §3). */
@@ -53,6 +62,13 @@ const HTML_LINE = /^ {0,3}<[a-zA-Z!/][^>]*>/;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
 const IMAGE = /^!\[(?:[^\]\\]|\\.)*\]\([^)\s]*\)/;
 const LINK = /^\[((?:[^[\]\\]|\\.)*)\]\(([^)\s]*)\)/;
+/** `<scheme:…>` — any scheme, as CommonMark defines an autolink (0023 §6). */
+const AUTOLINK = /^<([a-zA-Z][a-zA-Z0-9+.-]*:[^<>\s]*)>/;
+/** A bare URL, `http(s)` only; the native import links these too (0023 §6). */
+const BARE_URL = /^https?:\/\/[^\s<>]+/;
+/** Sentence punctuation that a bare URL should not swallow. */
+const URL_TAIL = /[.,;:!?]+$/;
+const ORDERED_MARKER = /^(\d+)[.)]$/;
 
 /** True for `| --- | :-: |` — the row that makes the line above it a header. */
 function isSeparatorRow(line: string | undefined): boolean {
@@ -140,6 +156,31 @@ function parseInline(source: string): InlineResult {
       }
     }
 
+    if (char === "<") {
+      const auto = AUTOLINK.exec(rest);
+      if (auto) {
+        const url = auto[1] ?? "";
+        flush();
+        spans.push({ text: url, link: url });
+        i += auto[0].length;
+        continue;
+      }
+    }
+
+    // A bare URL only starts on a word boundary, so `xhttps://…` is not one.
+    if (char === "h" && !/[A-Za-z0-9]/.test(source[i - 1] ?? "")) {
+      const bare = BARE_URL.exec(rest);
+      if (bare) {
+        const url = (bare[0] ?? "").replace(URL_TAIL, "");
+        if (url !== "") {
+          flush();
+          spans.push({ text: url, link: url });
+          i += url.length;
+          continue;
+        }
+      }
+    }
+
     if (char === "*" || char === "_") {
       const strong = rest.startsWith(char.repeat(2));
       const marker = char.repeat(strong ? 2 : 1);
@@ -159,10 +200,94 @@ function parseInline(source: string): InlineResult {
   return { spans, images };
 }
 
+/**
+ * The end of the run starting at `start`: the longest sequence of list blocks
+ * agreeing on `ordered`. This is the unit Docs bullets in one request.
+ */
+function runEnd(blocks: MarkdownBlock[], start: number): number {
+  const first = blocks[start];
+  if (first?.kind !== "list") return start + 1;
+  let end = start + 1;
+  for (;;) {
+    const next = blocks[end];
+    if (next?.kind !== "list" || next.ordered !== first.ordered) break;
+    end += 1;
+  }
+  return end;
+}
+
+/**
+ * Assigns ordered runs to Docs lists (decision 0023 §1) and turns the ones that
+ * cannot start where they claim back into text (§3).
+ *
+ * A run joins the open list when its first ordinal is the one the list has
+ * reached; only level-0 items advance that count, because a sub-list has its
+ * own. Anything but a table may sit between two runs of one list — that is what
+ * the native import does, and 0023 §2 is how it is built. A run starting at
+ * anything but 1 is not expressible at all, so its ordinals are kept as literal
+ * text rather than silently renumbered from 1.
+ */
+function resolveOrderedRuns(
+  blocks: MarkdownBlock[],
+  markers: Map<number, string>,
+): MarkdownBlock[] {
+  const out = [...blocks];
+  let expected: number | null = null;
+
+  let i = 0;
+  while (i < out.length) {
+    const block = out[i];
+    if (block === undefined) {
+      i += 1;
+      continue;
+    }
+    if (block.kind === "table") {
+      expected = null;
+      i += 1;
+      continue;
+    }
+    if (block.kind !== "list") {
+      i += 1;
+      continue;
+    }
+
+    const end = runEnd(out, i);
+    if (!block.ordered) {
+      i = end;
+      continue;
+    }
+
+    let levelZero = 0;
+    for (let k = i; k < end; k += 1) {
+      const item = out[k];
+      if (item?.kind === "list" && item.level === 0) levelZero += 1;
+    }
+    const first = block.number ?? 1;
+
+    if (expected !== null && first === expected) {
+      out[i] = { ...block, continues: true };
+      expected += levelZero;
+    } else if (first === 1) {
+      expected = 1 + levelZero;
+    } else {
+      for (let k = i; k < end; k += 1) {
+        const item = out[k];
+        if (item?.kind !== "list") continue;
+        const marker = markers.get(k) ?? `${item.number ?? 1}.`;
+        out[k] = { kind: "paragraph", spans: [{ text: `${marker} ` }, ...item.spans] };
+      }
+      expected = null;
+    }
+    i = end;
+  }
+  return out;
+}
+
 /** Parses Markdown into blocks Docs can hold. Never throws (decision 0021 §3). */
 export function parseMarkdown(source: string): ParsedMarkdown {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MarkdownBlock[] = [];
+  const markers = new Map<number, string>();
   const unsupported: UnsupportedNote[] = [];
 
   const inline = (text: string, line: number): InlineSpan[] => {
@@ -245,17 +370,21 @@ export function parseMarkdown(source: string): ParsedMarkdown {
     const item = LIST_ITEM.exec(line);
     if (item) {
       const indent = (item[1] ?? "").length;
+      const marker = item[2] ?? "";
+      const ordinal = ORDERED_MARKER.exec(marker);
+      markers.set(blocks.length, marker);
       blocks.push({
         kind: "list",
-        ordered: /^\d/.test(item[2] ?? ""),
+        ordered: ordinal !== null,
         level: Math.floor(indent / 2),
+        ...(ordinal !== null ? { number: Number(ordinal[1]) } : {}),
         spans: inline(item[3] ?? "", number),
       });
       i += 1;
       continue;
     }
 
-    if (HTML_LINE.test(line)) {
+    if (HTML_LINE.test(line) && !AUTOLINK.test(line.trimStart())) {
       unsupported.push({ line: number, kind: "html" });
       blocks.push({ kind: "paragraph", spans: [{ text: line.trim() }] });
       i += 1;
@@ -266,7 +395,7 @@ export function parseMarkdown(source: string): ParsedMarkdown {
     i += 1;
   }
 
-  return { blocks, unsupported };
+  return { blocks: resolveOrderedRuns(blocks, markers), unsupported };
 }
 
 // --- Block model → Docs requests (decision 0021 §5) --------------------------
@@ -335,49 +464,67 @@ function spanRequests(spans: InlineSpan[], start: number): DocsRequest[] {
 }
 
 /**
- * Requests that style one already-inserted block whose text starts at `start`.
- * List bullets are not here: they are planned per contiguous run, because one
- * request per item makes each item its own single-item list and loses the
- * nesting the tabs encode.
+ * Character styles for one already-inserted block. Bulleting does not touch
+ * them, so they are applied before it.
  */
-function blockRequests(block: MarkdownBlock, start: number): DocsRequest[] {
+function textRequests(block: MarkdownBlock, start: number): DocsRequest[] {
   const text = blockText(block);
-  const paragraph: DocsRange = { startIndex: start, endIndex: start + text.length + 1 };
-  const requests: DocsRequest[] = [];
-
   if (block.kind === "code") {
-    if (text !== "") {
-      requests.push({
+    if (text === "") return [];
+    return [
+      {
         updateTextStyle: {
           range: { startIndex: start, endIndex: start + text.length },
           textStyle: { weightedFontFamily: { fontFamily: MONOSPACE } },
           fields: "weightedFontFamily",
         },
-      });
-    }
-  } else if (block.kind !== "table") {
-    requests.push(...spanRequests(block.spans, start + tabs(block).length));
-  }
-
-  if (block.kind === "heading") {
-    requests.push({
-      updateParagraphStyle: {
-        range: paragraph,
-        paragraphStyle: { namedStyleType: `HEADING_${block.level}` },
-        fields: "namedStyleType",
       },
-    });
+    ];
+  }
+  if (block.kind === "table") return [];
+  return spanRequests(block.spans, start + tabs(block).length);
+}
+
+/**
+ * Paragraph styles for one already-inserted block. Inside a list run these go
+ * last: `createParagraphBullets` applies its own indent over the whole span and
+ * `deleteParagraphBullets` clears it again, so anything applied earlier is lost.
+ */
+function paragraphRequests(block: MarkdownBlock, start: number): DocsRequest[] {
+  const paragraph: DocsRange = { startIndex: start, endIndex: start + blockText(block).length + 1 };
+  if (block.kind === "heading") {
+    return [
+      {
+        updateParagraphStyle: {
+          range: paragraph,
+          paragraphStyle: { namedStyleType: `HEADING_${block.level}` },
+          fields: "namedStyleType",
+        },
+      },
+    ];
   }
   if (block.kind === "quote") {
-    requests.push({
-      updateParagraphStyle: {
-        range: paragraph,
-        paragraphStyle: { indentStart: { magnitude: QUOTE_INDENT_PT, unit: "PT" } },
-        fields: "indentStart",
+    return [
+      {
+        updateParagraphStyle: {
+          range: paragraph,
+          paragraphStyle: { indentStart: { magnitude: QUOTE_INDENT_PT, unit: "PT" } },
+          fields: "indentStart",
+        },
       },
-    });
+    ];
   }
-  return requests;
+  return [];
+}
+
+/**
+ * Requests that style one already-inserted block whose text starts at `start`.
+ * List bullets are not here: they are planned per Docs list, because one
+ * request per item makes each item its own single-item list and loses both the
+ * nesting the tabs encode and the numbering that continues across a run.
+ */
+function blockRequests(block: MarkdownBlock, start: number): DocsRequest[] {
+  return [...textRequests(block, start), ...paragraphRequests(block, start)];
 }
 
 export type Segment =
@@ -439,8 +586,12 @@ export function planTextRun(
     offset += line.length;
   }
 
-  // One unit per block, except that a run of same-kind list items is one unit:
-  // its bullets request has to span the whole list for the nesting to land.
+  const preset = (ordered: boolean) =>
+    ordered ? BULLET_PRESET.ordered : BULLET_PRESET.unordered;
+
+  // One unit per block, except that everything belonging to one Docs list is a
+  // single unit: its bullets request has to span the whole list for the nesting
+  // and the numbering to land (decision 0023 §2).
   const units: { requests: DocsRequest[] }[] = [];
   let i = 0;
   while (i < blocks.length) {
@@ -456,32 +607,97 @@ export function planTextRun(
       continue;
     }
 
-    let last = i;
-    for (;;) {
-      const next = blocks[last + 1];
-      if (next?.kind !== "list" || next.ordered !== block.ordered) break;
-      last += 1;
-    }
-    const requests: DocsRequest[] = [];
-    for (let k = i; k <= last; k += 1) {
-      const item = blocks[k];
-      const itemStart = starts[k];
-      if (item !== undefined && itemStart !== undefined) {
-        requests.push(...blockRequests(item, itemStart));
+    // The runs of one Docs list, and the runs of other content between them.
+    let end = runEnd(blocks, i);
+    const gaps: [number, number][] = [];
+    if (block.ordered) {
+      let pending: [number, number][] = [];
+      let j = end;
+      while (j < blocks.length) {
+        const next = blocks[j];
+        if (next === undefined) break;
+        if (next.kind === "list" && next.ordered) {
+          if (next.continues !== true) break;
+          gaps.push(...pending);
+          pending = [];
+          end = runEnd(blocks, j);
+          j = end;
+          continue;
+        }
+        const gapEnd = next.kind === "list" ? runEnd(blocks, j) : j + 1;
+        pending.push([j, gapEnd]);
+        j = gapEnd;
       }
     }
-    const lastItem = blocks[last];
-    const lastStart = starts[last];
+
+    /** Where `position` lands once the span's leading tabs are gone. */
+    const adjust = (position: number): number => {
+      let removed = 0;
+      for (let k = i; k < end; k += 1) {
+        const member = blocks[k];
+        const memberStart = starts[k];
+        if (member === undefined || memberStart === undefined || memberStart >= position) break;
+        removed += tabs(member).length;
+      }
+      return position - removed;
+    };
+    /** The end of the run `[from, to)`, in post-bullet coordinates. */
+    const gapRange = (from: number, to: number): DocsRange | null => {
+      const first = starts[from];
+      const lastBlock = blocks[to - 1];
+      const lastStart = starts[to - 1];
+      if (first === undefined || lastBlock === undefined || lastStart === undefined) return null;
+      return {
+        startIndex: adjust(first),
+        endIndex: adjust(paragraphEnd(lastBlock, lastStart)),
+      };
+    };
+
+    const requests: DocsRequest[] = [];
+    for (let k = i; k < end; k += 1) {
+      const member = blocks[k];
+      const memberStart = starts[k];
+      if (member !== undefined && memberStart !== undefined) {
+        requests.push(...textRequests(member, memberStart));
+      }
+    }
+
+    const lastItem = blocks[end - 1];
+    const lastStart = starts[end - 1];
     if (lastItem !== undefined && lastStart !== undefined) {
       requests.push({
         createParagraphBullets: {
           range: { startIndex: blockStart, endIndex: paragraphEnd(lastItem, lastStart) },
-          bulletPreset: block.ordered ? BULLET_PRESET.ordered : BULLET_PRESET.unordered,
+          bulletPreset: preset(block.ordered),
         },
       });
     }
+
+    // The span above swept the interleaved content into the list. Take it back
+    // out, then give a run that is itself a list one of its own.
+    for (const [from, to] of gaps) {
+      const range = gapRange(from, to);
+      if (range !== null) requests.push({ deleteParagraphBullets: { range } });
+    }
+    for (const [from, to] of gaps) {
+      const first = blocks[from];
+      const range = first?.kind === "list" ? gapRange(from, to) : null;
+      if (first?.kind === "list" && range !== null) {
+        requests.push({ createParagraphBullets: { range, bulletPreset: preset(first.ordered) } });
+      }
+    }
+    for (const [from, to] of gaps) {
+      for (let k = from; k < to; k += 1) {
+        const member = blocks[k];
+        const memberStart = starts[k];
+        if (member !== undefined && memberStart !== undefined) {
+          requests.push(...paragraphRequests(member, adjust(memberStart)));
+        }
+      }
+    }
+
     units.push({ requests });
-    i = last + 1;
+    i = end;
   }
 
   const requests: DocsRequest[] = [{ insertText: { location: { index: start }, text } }];

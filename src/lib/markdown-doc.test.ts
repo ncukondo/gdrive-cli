@@ -32,8 +32,8 @@ describe("parseMarkdown — blocks", () => {
     expect(blocks).toEqual([
       { kind: "list", ordered: false, level: 0, spans: [{ text: "top" }] },
       { kind: "list", ordered: false, level: 1, spans: [{ text: "nested" }] },
-      { kind: "list", ordered: true, level: 0, spans: [{ text: "one" }] },
-      { kind: "list", ordered: true, level: 1, spans: [{ text: "two" }] },
+      { kind: "list", ordered: true, level: 0, number: 1, spans: [{ text: "one" }] },
+      { kind: "list", ordered: true, level: 1, number: 2, spans: [{ text: "two" }] },
     ]);
   });
 
@@ -56,6 +56,109 @@ describe("parseMarkdown — blocks", () => {
     expect(blocks).toEqual([
       { kind: "paragraph", spans: [{ text: "| a | b |" }] },
       { kind: "paragraph", spans: [{ text: "not a table" }] },
+    ]);
+  });
+});
+
+/**
+ * Decision 0023 §1: ordered items separated by non-list blocks belong to one
+ * Docs list when their numbers continue. `continues` marks the item that joins
+ * the list the previous run opened, so nothing downstream has to re-derive it.
+ */
+describe("parseMarkdown — ordered runs continue across other blocks (0023 §1)", () => {
+  const numbers = (source: string) =>
+    parseMarkdown(source).blocks.map((b) =>
+      b.kind === "list" ? `${b.number ?? "-"}${b.continues === true ? "+" : ""}` : b.kind,
+    );
+
+  it("joins numbered sections separated by their body paragraphs", () => {
+    expect(numbers("1. one\n\nbody one\n\n2. two\n\nbody two\n\n3. three")).toEqual([
+      "1",
+      "paragraph",
+      "2+",
+      "paragraph",
+      "3+",
+    ]);
+  });
+
+  it("continues across a heading, a quote, and a code block", () => {
+    expect(numbers("1. one\n\n## head\n\n2. two\n\n> quoted\n\n3. three\n\n```\nls\n```\n\n4. four")).toEqual(
+      ["1", "heading", "2+", "quote", "3+", "code", "4+"],
+    );
+  });
+
+  it("continues across a bulleted list, which stays its own list", () => {
+    expect(numbers("1. one\n\n- a\n- b\n\n2. two")).toEqual(["1", "-", "-", "2+"]);
+  });
+
+  it("counts the items of a contiguous run, so the next number is the one after it", () => {
+    expect(numbers("1. one\n2. two\n\nbody\n\n3. three")).toEqual(["1", "2", "paragraph", "3+"]);
+  });
+
+  it("counts only level-0 items, so a sub-list does not consume a number", () => {
+    expect(numbers("1. one\n  1. sub\n  2. sub\n\nbody\n\n2. two")).toEqual([
+      "1",
+      "1",
+      "2",
+      "paragraph",
+      "2+",
+    ]);
+  });
+
+  it("starts a new list when the numbering restarts at 1", () => {
+    expect(numbers("1. one\n\nbody\n\n1. one again")).toEqual(["1", "paragraph", "1"]);
+  });
+
+  it("ends the run at a table (0023 §4)", () => {
+    expect(numbers("1. one\n\n| a |\n| --- |\n| b |\n\n2. two")).toEqual([
+      "1",
+      "table",
+      "paragraph",
+    ]);
+  });
+});
+
+/**
+ * Decision 0023 §3: a run that starts at anything but 1 is not expressible —
+ * `startNumber` is read-only — so it keeps its ordinals as literal text rather
+ * than being silently renumbered from 1.
+ */
+describe("parseMarkdown — a run that does not start at 1 stays text (0023 §3)", () => {
+  it("keeps the ordinals of a run starting at 5", () => {
+    const { blocks } = parseMarkdown("5. five\n6. six\n7. seven");
+    expect(blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "5. " }, { text: "five" }] },
+      { kind: "paragraph", spans: [{ text: "6. " }, { text: "six" }] },
+      { kind: "paragraph", spans: [{ text: "7. " }, { text: "seven" }] },
+    ]);
+  });
+
+  it("keeps the inline styling of an item it turns back into text", () => {
+    const { blocks } = parseMarkdown("2. a **bold** word");
+    expect(blocks).toEqual([
+      {
+        kind: "paragraph",
+        spans: [{ text: "2. " }, { text: "a " }, { text: "bold", bold: true }, { text: " word" }],
+      },
+    ]);
+  });
+
+  it("keeps the delimiter it was written with", () => {
+    expect(parseMarkdown("2) two").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "2) " }, { text: "two" }] },
+    ]);
+  });
+
+  it("makes a run starting at 1) an ordinary list, losing only the delimiter", () => {
+    expect(parseMarkdown("1) one\n2) two").blocks).toEqual([
+      { kind: "list", ordered: true, level: 0, number: 1, spans: [{ text: "one" }] },
+      { kind: "list", ordered: true, level: 0, number: 2, spans: [{ text: "two" }] },
+    ]);
+  });
+
+  it("treats 0 as not starting at 1, so its ordinals survive too", () => {
+    expect(parseMarkdown("0. zero").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "0. " }, { text: "zero" }] },
     ]);
   });
 });
@@ -106,6 +209,84 @@ describe("parseMarkdown — inline", () => {
     expect(blocks).toEqual([
       { kind: "table", rows: [[[{ text: "a", bold: true }], [{ text: "b" }]]] },
     ]);
+  });
+
+  /** Decision 0023 §6: the native import links all three of these, so we do. */
+  describe("links (0023 §6)", () => {
+    it("reads an autolink on its own line, and no longer calls it raw HTML", () => {
+      const { blocks, unsupported } = parseMarkdown("<https://meet.example.com/abc>");
+      expect(blocks).toEqual([
+        {
+          kind: "paragraph",
+          spans: [{ text: "https://meet.example.com/abc", link: "https://meet.example.com/abc" }],
+        },
+      ]);
+      expect(unsupported).toEqual([]);
+    });
+
+    it("reads an autolink mid-line", () => {
+      const { blocks } = parseMarkdown("会議場所：<https://meet.example.com/abc> です");
+      expect(blocks).toEqual([
+        {
+          kind: "paragraph",
+          spans: [
+            { text: "会議場所：" },
+            { text: "https://meet.example.com/abc", link: "https://meet.example.com/abc" },
+            { text: " です" },
+          ],
+        },
+      ]);
+    });
+
+    it("takes any scheme inside angle brackets, and shows the URI as written", () => {
+      const { blocks } = parseMarkdown("<mailto:a@example.com>");
+      expect(blocks).toEqual([
+        {
+          kind: "paragraph",
+          spans: [{ text: "mailto:a@example.com", link: "mailto:a@example.com" }],
+        },
+      ]);
+    });
+
+    it("links a bare http(s) URL, and only those", () => {
+      expect(parseMarkdown("see https://example.com/x now").blocks).toEqual([
+        {
+          kind: "paragraph",
+          spans: [
+            { text: "see " },
+            { text: "https://example.com/x", link: "https://example.com/x" },
+            { text: " now" },
+          ],
+        },
+      ]);
+      expect(parseMarkdown("see ftp://example.com/x now").blocks).toEqual([
+        { kind: "paragraph", spans: [{ text: "see ftp://example.com/x now" }] },
+      ]);
+    });
+
+    it("leaves trailing sentence punctuation out of a bare URL", () => {
+      expect(parseMarkdown("at https://example.com/x.").blocks).toEqual([
+        {
+          kind: "paragraph",
+          spans: [
+            { text: "at " },
+            { text: "https://example.com/x", link: "https://example.com/x" },
+            { text: "." },
+          ],
+        },
+      ]);
+    });
+
+    it("does not re-link the URL inside an ordinary link", () => {
+      expect(parseMarkdown("[text](https://example.com)").blocks).toEqual([
+        { kind: "paragraph", spans: [{ text: "text", link: "https://example.com" }] },
+      ]);
+    });
+
+    it("still reports a real HTML tag at the start of a line", () => {
+      const { unsupported } = parseMarkdown('<div class="x">');
+      expect(unsupported).toEqual([{ line: 1, kind: "html" }]);
+    });
   });
 });
 
@@ -276,7 +457,7 @@ describe("round trip with renderDocument", () => {
     expect(blocks).toEqual([
       { kind: "list", ordered: false, level: 0, spans: [{ text: "top" }] },
       { kind: "list", ordered: false, level: 1, spans: [{ text: "nested" }] },
-      { kind: "list", ordered: true, level: 0, spans: [{ text: "one" }] },
+      { kind: "list", ordered: true, level: 0, number: 1, spans: [{ text: "one" }] },
     ]);
   });
 
@@ -378,6 +559,91 @@ describe("planTextRun", () => {
       "createParagraphBullets" in r ? [r.createParagraphBullets.bulletPreset] : [],
     );
     expect(presets).toEqual(["NUMBERED_DECIMAL_ALPHA_ROMAN", "BULLET_DISC_CIRCLE_SQUARE"]);
+  });
+
+  /**
+   * Decision 0023 §2. `startNumber` is read-only, so one list across
+   * interleaved content is built by bulleting the whole span and then taking
+   * the intervening runs back out. Step 3 cannot replace step 2: a second
+   * preset applied to a sub-range restyles the whole list.
+   */
+  describe("one list across interleaved content (0023 §2)", () => {
+    it("bullets the whole span, then unbullets the paragraph between the items", () => {
+      const { requests, length } = planTextRun(
+        parseMarkdown("1. one\n\nbody\n\n2. two").blocks,
+        1,
+      );
+      expect(requests).toEqual([
+        { insertText: { location: { index: 1 }, text: "one\nbody\ntwo\n" } },
+        {
+          createParagraphBullets: {
+            range: { startIndex: 1, endIndex: 14 },
+            bulletPreset: "NUMBERED_DECIMAL_ALPHA_ROMAN",
+          },
+        },
+        { deleteParagraphBullets: { range: { startIndex: 5, endIndex: 10 } } },
+      ]);
+      expect(length).toBe(13);
+    });
+
+    it("gives an intervening bulleted run its own list, after taking it out of this one", () => {
+      const { requests } = planTextRun(parseMarkdown("1. one\n\n- a\n- b\n\n2. two").blocks, 1);
+      expect(requests.slice(1)).toEqual([
+        {
+          createParagraphBullets: {
+            range: { startIndex: 1, endIndex: 13 },
+            bulletPreset: "NUMBERED_DECIMAL_ALPHA_ROMAN",
+          },
+        },
+        { deleteParagraphBullets: { range: { startIndex: 5, endIndex: 9 } } },
+        {
+          createParagraphBullets: {
+            range: { startIndex: 5, endIndex: 9 },
+            bulletPreset: "BULLET_DISC_CIRCLE_SQUARE",
+          },
+        },
+      ]);
+    });
+
+    it("restyles an intervening heading after the bullets, which would have wiped it", () => {
+      const { requests } = planTextRun(parseMarkdown("1. one\n\n## head\n\n2. two").blocks, 1);
+      expect(requests.slice(1)).toEqual([
+        {
+          createParagraphBullets: {
+            range: { startIndex: 1, endIndex: 14 },
+            bulletPreset: "NUMBERED_DECIMAL_ALPHA_ROMAN",
+          },
+        },
+        { deleteParagraphBullets: { range: { startIndex: 5, endIndex: 10 } } },
+        {
+          updateParagraphStyle: {
+            range: { startIndex: 5, endIndex: 10 },
+            paragraphStyle: { namedStyleType: "HEADING_2" },
+            fields: "namedStyleType",
+          },
+        },
+      ]);
+    });
+
+    it("moves the later ranges back by the tabs the first request deletes", () => {
+      const { requests, length } = planTextRun(
+        parseMarkdown("1. one\n  1. sub\n\nbody\n\n2. two").blocks,
+        1,
+      );
+      expect(requests[0]).toEqual({
+        insertText: { location: { index: 1 }, text: "one\n\tsub\nbody\ntwo\n" },
+      });
+      // "body\n" sits at [10,15) as sent, and at [9,14) once the tab is gone.
+      expect(requests[2]).toEqual({
+        deleteParagraphBullets: { range: { startIndex: 9, endIndex: 14 } },
+      });
+      expect(length).toBe(17);
+    });
+
+    it("leaves a lone run exactly as it was, with no unbulleting", () => {
+      const { requests } = planTextRun(parseMarkdown("1. one\n2. two").blocks, 1);
+      expect(requests.some((r) => "deleteParagraphBullets" in r)).toBe(false);
+    });
   });
 
   it("maps a quote to an indent and code to a monospace run", () => {
