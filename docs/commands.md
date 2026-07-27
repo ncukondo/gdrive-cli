@@ -142,10 +142,12 @@ Quiet: one file ID per line.
 
 Without a scope flag the listing stays inside My Drive — including when
 `<folder>` is a shared-drive folder ID, whose children need `--all-drives` or
-`--drive <name>` to show up:
+`--drive <name>` to show up. With `--drive <name>` and no folder argument, `ls`
+starts at that shared drive's root:
 
 ```console
-$ gdrive ls 1FoLdErOnAsHaReDdRiVe --all-drives
+$ gdrive ls --drive "Team Drive"              # the shared drive's root
+$ gdrive ls 1FoLdErOnAsHaReDdRiVe --all-drives  # a folder inside one
 ```
 
 `--drive` matches the shared drive's name exactly: an unknown name is

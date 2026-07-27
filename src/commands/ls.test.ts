@@ -162,6 +162,48 @@ describe("handleLs", () => {
     expect(callArgs(listChildren)[1]).toEqual({ scope: { kind: "drive", driveId: "D1" } });
   });
 
+  it("defaults to the shared drive's root when --drive is given without a folder", async () => {
+    const resolvePath = vi.fn();
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    await handleLs({
+      resolvePath,
+      listChildren,
+      format: "text",
+      quiet: false,
+      write: () => {},
+      scope: { kind: "drive", driveId: "D1" },
+    });
+    expect(resolvePath).not.toHaveBeenCalled();
+    expect(callArgs(listChildren)[0]).toBe("D1");
+  });
+
+  it("still resolves an explicit folder under --drive", async () => {
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    await handleLs({
+      resolvePath: vi.fn(async () => "FID"),
+      listChildren,
+      format: "text",
+      quiet: false,
+      write: () => {},
+      folder: "Reports",
+      scope: { kind: "drive", driveId: "D1" },
+    });
+    expect(callArgs(listChildren)[0]).toBe("FID");
+  });
+
+  it("keeps My Drive root as the default under --all-drives", async () => {
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    await handleLs({
+      resolvePath: vi.fn(),
+      listChildren,
+      format: "text",
+      quiet: false,
+      write: () => {},
+      scope: { kind: "all" },
+    });
+    expect(callArgs(listChildren)[0]).toBe("root");
+  });
+
   it("sends no scope when neither flag is given", async () => {
     const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
     await handleLs({

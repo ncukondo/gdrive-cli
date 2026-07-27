@@ -46,8 +46,17 @@ export interface LsDeps {
   scope?: DriveScope;
 }
 
+/**
+ * Where `ls` starts when no folder is named. A shared drive's id doubles as its
+ * root folder id, so `--drive X` on its own means "the root of X" — without
+ * this it would send `'root' in parents`, which still names My Drive.
+ */
+function defaultFolderId(scope?: DriveScope): string {
+  return scope !== undefined && scope.kind === "drive" ? scope.driveId : "root";
+}
+
 export async function handleLs(deps: LsDeps): Promise<CommandResult> {
-  const folderId = deps.folder ? await deps.resolvePath(deps.folder) : "root";
+  const folderId = deps.folder ? await deps.resolvePath(deps.folder) : defaultFolderId(deps.scope);
   const options: ListOptions = {};
   if (deps.type !== undefined) options.type = deps.type;
   if (deps.trashed !== undefined) options.trashed = deps.trashed;
