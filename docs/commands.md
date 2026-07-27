@@ -497,6 +497,40 @@ Quiet: just the URL.
 Text arguments accept a literal string, `@file` to read a local file, or `-` to
 read stdin.
 
+**Markdown is the format in both directions.** `read` renders a document as
+Markdown, and `create --content`, `append`, `insert`, and `replace` parse their
+content as Markdown, so a heading arrives as a heading and a pipe table as a
+real table. Every one of them takes `--as <markdown|text>`, defaulting to
+`markdown`, which makes the obvious pipe do the obvious thing:
+
+```console
+$ gdrive docs read A | gdrive docs append B -    # structure survives
+```
+
+Use `--as text` for content that was never meant as Markdown — logs, code,
+anything machine-generated — where a line starting `# `, `- `, or `1. ` should
+stay literal:
+
+```console
+$ gdrive docs append "Notes/Ops" @server.log --as text
+```
+
+Nothing is rejected. Headings, bold, italic, links, bulleted and numbered lists
+(two spaces per nesting level), and pipe tables become Docs structure; a fenced
+or indented code block and inline `` `code` `` become monospace; a block quote
+becomes an indented paragraph; a horizontal rule is dropped. Images and raw HTML
+have no Docs equivalent, so they stay literal and are reported — one line on
+stderr in text mode, an `unsupported` array in JSON:
+
+```console
+$ gdrive docs append "Notes/Meeting" @draft.md
+Kept as plain text: image (line 12)
+Appended to Meeting notes (1BzqpK...)
+```
+
+One source line is one paragraph, matching what `read` prints — Markdown's rule
+that consecutive lines join into one paragraph does not apply.
+
 ### `gdrive docs read <file>`
 
 `--as markdown` (default) maps headings, bold/italic, links, bulleted and
@@ -525,6 +559,7 @@ Discussed the **budget** and [the plan](https://example.com).
 |--------|-------------|
 | `--content <text\|@file\|->` | Initial body content |
 | `--parent <folder>` | Parent folder ID or path |
+| `--as <format>` | `markdown` (default) \| `text` |
 
 The Docs API always creates in My Drive, so `--parent` is applied as a move
 right after creation.
@@ -538,12 +573,12 @@ Created Meeting notes (1BzqpK...)
 { "id": "1BzqpK...", "title": "Meeting notes", "parent_id": "1FoLdEr..." }
 ```
 
-Content is inserted as plain text — Markdown in the input is not converted to
-Docs formatting. Quiet: the new document ID.
+Quiet: the new document ID.
 
 ### `gdrive docs append <file> <text|@file|->`
 
-Appends the text as a new paragraph at the end of the body.
+Appends the content as new paragraphs at the end of the body. `--as text`
+appends it verbatim instead.
 
 ```console
 $ echo "decided: ship on Friday" | gdrive docs append "Notes/Meeting" -
@@ -559,8 +594,23 @@ Quiet: the document ID.
 ### `gdrive docs replace <file>`
 
 Replaces every match and reports how many. `--find` and `--replace` are
-required; matching is case-insensitive unless `--match-case` is given. `--all`
-is accepted for clarity but changes nothing — all matches are always replaced.
+required; `--replace` takes `@file` and `-` like any other content argument.
+Matching is case-insensitive unless `--match-case` is given. `--all` is accepted
+for clarity but changes nothing — all matches are always replaced.
+
+With the default `--as markdown` the marker is deleted and the replacement is
+written as structure, occurrence by occurrence from the last to the first. A
+marker inside a table cell is not matched, because the replacement may itself be
+a table and Docs cannot nest one. `--as text` is the plain substitution, in one
+API call.
+
+This is how you fill a placeholder without computing an index — replace the
+marker with the content plus the marker to keep it for next time:
+
+```console
+$ gdrive docs replace "Notes/Meeting" --find "<!-- schedule -->" --replace @table.md
+Replaced 1 occurrence
+```
 
 ```console
 $ gdrive docs replace "Notes/Meeting" --find Q3 --replace Q4 --match-case
@@ -576,7 +626,8 @@ Quiet: the document ID.
 ### `gdrive docs insert <file> <text|@file|->`
 
 Exactly one position is required: `--index <n>` (Docs' 1-based character index
-in the body) or `--at start|end`.
+in the body) or `--at start|end`. The content is Markdown unless `--as text`
+says otherwise.
 
 ```console
 $ gdrive docs insert "Notes/Meeting" "DRAFT — " --at start

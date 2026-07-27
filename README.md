@@ -16,8 +16,9 @@ AI-agent use.
   with no flag, and `drive:<name>/<path>` addresses one by path; `gdrive drives`
   lists the drives and their IDs. Only `search` stays on My Drive by default,
   widened with `--all-drives` / `--drive <name>`.
-- **Docs** — `read` (Markdown/text), `create`, `append`, `replace`
-  (find & replace), `insert` at a position.
+- **Docs** — Markdown in both directions: `read` renders it, and `create`,
+  `append`, `insert`, and `replace` write it back as real headings, tables,
+  lists, and links. `--as text` writes the exact bytes instead.
 - **Sheets** — `tabs`, `read` (table/CSV/JSON), `write`, `append`, `clear`,
   `create`.
 - **Sharing** — `share list / add / remove / link` to manage permissions.
@@ -72,6 +73,7 @@ gdrive ls 0ABcDeFgHiJkLmNoPqR        # a shared drive's root, by ID
 gdrive ls "drive:Finance/2026"       # …or by name and path
 
 gdrive docs read "Notes/Meeting"     # Markdown to stdout
+gdrive docs append "Notes/Meeting" @draft.md   # …and Markdown back in
 gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:C10" --as csv
 gdrive share link "Reports/2026/Budget"
 ```

@@ -100,21 +100,39 @@ the bug. That settles §3's mapping table by appeal to an existing contract
 instead of to taste, and it means a document written by this CLI is
 indistinguishable from one imported by hand.
 
-### 5. Requests are built text-first, and tables force a re-read
+### 5. Requests are built text-first and forward, and tables force a re-read
 
 Indices inside a `batchUpdate` refer to the document *as of the preceding
 request*, so a naive request-per-element list is wrong the moment anything
 before it grows.
 
-- **No table in the payload** — one `insertText` places the whole rendered text
-  at the anchor, then `updateParagraphStyle` / `updateTextStyle` /
-  `createParagraphBullets` apply over ranges computed from that text. The
-  offsets are known before the call, and one round trip does it.
-- **A table in the payload** — the payload splits at table boundaries. One
-  `batchUpdate` inserts the text segments and the `insertTable`s; then
-  `documents.get` reads back the cells' real indices; then a second
-  `batchUpdate` fills the cells and applies styles, emitting its requests in
-  **descending index order** so no request shifts a later one's target.
+- **No table in the payload** — one `insertText` places the whole rendered text,
+  then `updateParagraphStyle` / `updateTextStyle` / `createParagraphBullets`
+  apply over ranges computed from that text. The offsets are known before the
+  call, and one round trip does it.
+- **A table in the payload** — the payload splits at table boundaries and the
+  segments are written **forward**, each at the cursor the previous one left.
+  After a table is created, `documents.get` reads back its cells' real indices
+  and a second batch fills them in **descending index order**, so no request
+  shifts a later one's target.
+
+Writing the segments *backwards at a fixed anchor* would need no arithmetic at
+all — every insertion at the same index pushes its predecessors right and lands
+in the correct order — and it was tried. It is wrong for anything
+paragraph-scoped: inserting at a paragraph's start index merges into that
+paragraph, so a quote's indent (or a heading, or a bullet) spreads over
+everything inserted before it afterwards. That failure is invisible to a fake
+client and obvious in a real document, which is where it was found.
+
+Two consequences of the same tab trick, both tested. Blocks within a run are
+styled back to front, because `createParagraphBullets` deletes the leading tabs
+that told it the nesting level and moves everything after them. And the cursor
+advances by *fewer* characters than were sent, by exactly the number of those
+tabs — miss that and the next `insertTable` lands past the end of the body.
+
+Bullets are one request per contiguous run of same-kind items, never one per
+item: a request per item makes each item its own single-item list, which reports
+`nestingLevel: 0` and reads back flat.
 
 The re-read is deliberate. A table's internal index geometry is derivable from
 the row/column counts, but it is a detail of Docs' model rather than a
@@ -149,9 +167,9 @@ counting occurrences, so the JSON shape is unchanged apart from §3's optional
 ## Consequences
 
 - A new `src/lib/markdown-doc.ts` owns parse (Markdown → block model) and
-  build (block model → `DocsRequest[]`). `lib/docs-api.ts` keeps the port and
-  the renderer; the two sit either side of the same block vocabulary, and the
-  round-trip test in §2 is what keeps them honest.
+  build (block model → `DocsRequest[]`). `lib/docs-api.ts` keeps the port, the
+  renderer, and the call sequencing §5 needs; the two sit either side of the
+  same block vocabulary, and the round-trip test in §2 keeps them honest.
 - `DocsRequest` grows `insertTable`, `updateTextStyle`, `updateParagraphStyle`,
   `createParagraphBullets`, and `deleteContentRange`. Each is checked against
   `docs_v1.Schema$Request` under [0015](0015-no-type-assertions.md), like every
