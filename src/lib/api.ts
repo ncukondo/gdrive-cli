@@ -5,6 +5,7 @@ import {
   type DrivePermission,
   type FileType,
   type GranteeType,
+  type SharedDrive,
   type ShareRole,
 } from "../types/index.ts";
 
@@ -62,11 +63,6 @@ export interface SharedDriveRaw {
   name?: string | null;
 }
 
-export interface SharedDrive {
-  id: string;
-  name: string;
-}
-
 export interface FileCreateBody {
   name?: string;
   mimeType?: string;
@@ -99,7 +95,8 @@ export interface PermissionBody {
  * `supportsAllDrives` appears on every method Drive accepts it on — it declares
  * that this client understands shared-drive semantics, without which any
  * shared-drive file ID answers `NOT_FOUND` (decision 0016). `files.export` is
- * the one exception: the API defines no such parameter for it.
+ * the one exception: the API defines no such parameter for it. Every caller
+ * sends it, including the `files.list` in `resolve-path.ts`.
  */
 export interface DriveClient {
   files: {
@@ -272,11 +269,9 @@ export interface DriveScopeArgs {
   drive?: string;
 }
 
-/** Applies a {@link DriveScope} to `files.list` parameters. */
+/** Applies an explicit {@link DriveScope} to `files.list` parameters. */
 function applyScope(params: ListParams, scope?: DriveScope): void {
   if (scope === undefined) return;
-  // Google requires this to travel with `supportsAllDrives`, which every list
-  // already sends; on its own it is what pulls shared-drive items in.
   params.includeItemsFromAllDrives = true;
   if (scope.kind === "all") {
     params.corpora = "allDrives";
@@ -300,7 +295,9 @@ export async function listSharedDrives(client: DriveClient): Promise<SharedDrive
       if (pageToken !== undefined) params.pageToken = pageToken;
       const res = await client.drives.list(params);
       for (const raw of res.data.drives ?? []) {
-        drives.push({ id: raw.id ?? "", name: raw.name ?? "" });
+        // An id-less entry cannot be addressed, and passing "" as a driveId
+        // would quietly widen the very scope the caller asked to narrow.
+        if (raw.id) drives.push({ id: raw.id, name: raw.name ?? "" });
       }
       pageToken = res.data.nextPageToken ?? undefined;
       pages += 1;
@@ -309,6 +306,21 @@ export async function listSharedDrives(client: DriveClient): Promise<SharedDrive
     mapDriveError(error);
   }
   return drives;
+}
+
+/** `No such shared drive` plus whatever the account can actually name. */
+function unknownDriveError(name: string, available: SharedDrive[]): AppError {
+  if (available.length === 0) {
+    return new AppError(
+      "NOT_FOUND",
+      `No such shared drive: "${name}". This account has no shared drives.`,
+    );
+  }
+  const names = available.map((d) => d.name).join(", ");
+  return new AppError(
+    "NOT_FOUND",
+    `No such shared drive: "${name}". Available: ${names}. See \`gdrive drives\`.`,
+  );
 }
 
 /**
@@ -326,20 +338,13 @@ export async function resolveDriveScope(
   if (args.allDrives === true) return { kind: "all" };
   if (args.drive === undefined) return undefined;
 
-  const matches = (await listSharedDrives(client)).filter((d) => d.name === args.drive);
-  if (matches.length === 0) {
-    throw new AppError("NOT_FOUND", `No such shared drive: ${args.drive}`);
-  }
-  if (matches.length > 1) {
-    const ids = matches.map((d) => d.id).join(", ");
-    throw new AppError(
-      "INVALID_ARGS",
-      `Ambiguous shared drive name "${args.drive}"; matches: ${ids}.`,
-    );
-  }
-  const [match] = matches;
-  if (match === undefined) {
-    throw new AppError("NOT_FOUND", `No such shared drive: ${args.drive}`);
+  const { drive: wanted } = args;
+  const available = await listSharedDrives(client);
+  const [match, ...rest] = available.filter((d) => d.name === wanted);
+  if (match === undefined) throw unknownDriveError(wanted, available);
+  if (rest.length > 0) {
+    const ids = [match, ...rest].map((d) => d.id).join(", ");
+    throw new AppError("INVALID_ARGS", `Ambiguous shared drive name "${wanted}"; matches: ${ids}.`);
   }
   return { kind: "drive", driveId: match.id };
 }
@@ -387,7 +392,15 @@ export interface ListOptions {
   scope?: DriveScope;
 }
 
-/** Lists the direct children of a folder (decision 0008). */
+/**
+ * Lists the direct children of a folder (decision 0008).
+ *
+ * `includeItemsFromAllDrives` is unconditional here, unlike in
+ * {@link searchFiles}: the query always pins a single parent, so the corpus is
+ * already closed and nothing extra can appear. Without it a shared-drive folder
+ * id lists as empty with exit 0 — a wrong answer rather than an error
+ * (decision 0016 §2).
+ */
 export async function listChildren(
   client: DriveClient,
   folderId: string,
@@ -399,7 +412,11 @@ export async function listChildren(
   ];
   const typeClause = typeFilterClause(options.type);
   if (typeClause) clauses.push(typeClause);
-  const params: ListParams = { q: clauses.join(" and "), pageSize: 100 };
+  const params: ListParams = {
+    q: clauses.join(" and "),
+    pageSize: 100,
+    includeItemsFromAllDrives: true,
+  };
   const orderBy = orderByClause(options.order);
   if (orderBy) params.orderBy = orderBy;
   applyScope(params, options.scope);
