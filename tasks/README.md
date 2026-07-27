@@ -49,6 +49,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0022 `info` names a shared drive root](archive/0022-drive-root-name.md) | — | — | done |
 | [0023 `docs` writes take Markdown by default](archive/0023-markdown-writes.md) | — | — | done |
 | [0024 `insert --before` / `--after <marker>`](archive/0024-insert-at-marker.md) | 0023 | — | done |
+| [0025 List numbering & links](0025-list-numbering-and-links.md) | 0023 | — | todo |
+| [0026 Soft line breaks](0026-soft-line-breaks.md) | 0025 | — | todo |
 
 ## Parallelism notes
 
@@ -84,8 +86,18 @@ records the approach that failed.
 
 0024 then moved marker-relative positioning out of the `replace` workaround and
 into `insert --before/--after` (decision 0022), reusing 0023's marker search so
-the two commands cannot disagree on what "found" means. That closes issue #7;
-there is no open task right now.
+the two commands cannot disagree on what "found" means. That closes issue #7.
+
+0025 and 0026 are the follow-ups v0.6.0 left: transcribing a real document
+found that a numbered document is silently renumbered and that `<https://…>`
+stays literal (issue #8, decision 0023), and measuring that turned up a second,
+independent bug — `read` emits a raw `U+000B` where the document has a line
+break inside a paragraph (issue #9, decision 0024). Both decisions are written
+from measurements against Drive's native `text/markdown` import and the Docs
+API, which is what 0021 §4 asks for; the numbers are reachable through the API
+even though `startNumber` is read-only, and 0023 §2 records the three-step
+sequence that gets there. The two tasks run in order because they change the
+same parser and the same round-trip test.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
