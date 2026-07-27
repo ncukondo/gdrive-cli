@@ -81,12 +81,13 @@ describe("resolveInsertIndex", () => {
 
   it("is INVALID_ARGS with the count when the marker is ambiguous", () => {
     // case-insensitively, "HERE" also matches the "here" in "tail here"
+    const resolve = () => resolveInsertIndex({ before: "HERE" }, marked);
+    expect(resolve).toThrow(/matches 2 times/);
+    expect(resolve).toThrow(/--match-case/);
     try {
-      resolveInsertIndex({ before: "HERE" }, marked);
-      expect.unreachable();
+      resolve();
     } catch (error) {
       expect(error).toMatchObject({ code: "INVALID_ARGS" });
-      expect((error as Error).message).toMatch(/2 times/);
     }
   });
 
