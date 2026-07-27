@@ -44,6 +44,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0017 Shared drive support](archive/0017-shared-drive-support.md) | — | — | done |
 | [0018 Shared-drive review fixes](archive/0018-shared-drive-review-fixes.md) | 0017 | — | done |
 | [0019 `PERMISSION_DENIED` for a role-denied 403](archive/0019-permission-denied-error-code.md) | — | — | done |
+| [0020 `share add` grants the shared-drive roles](archive/0020-shared-drive-roles.md) | — | — | done |
 
 ## Parallelism notes
 
@@ -64,10 +65,10 @@ decision 0016, and 0018 closed the gaps its review found. 0019 then split a
 role-denied 403 out of `AUTH_REQUIRED` (issue #3, decision 0017) — a
 consequence of 0016 §1, since shared-drive requests only started reaching
 Drive's permission checks once `supportsAllDrives` was set. The remaining
-shared-drive follow-ups are tracked as issues #4 (`organizer` /
-`fileOrganizer` in `share add`), #5 (paths across shared drives), and #6
-(`info` on a drive root reports the name `Drive`). There is no open task right
-now.
+0020 widened `share add` to the shared-drive roles (issue #4, decision 0018,
+which revises 0011). The remaining shared-drive follow-ups are issues #5 (paths
+across shared drives) and #6 (`info` on a drive root reports the name `Drive`).
+There is no open task right now.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
