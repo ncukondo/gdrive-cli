@@ -28,6 +28,7 @@ instead of restating them.
 | [0013](0013-architecture.md) | Source-tree map & command-registration contract |
 | [0014](0014-pre-1.0-compatibility.md) | Pre-1.0: breaking input/output changes allowed until 1.0 or a first user |
 | [0015](0015-no-type-assertions.md) | No type assertions: parse at the edges, adapt generated clients |
+| [0016](0016-shared-drive-scope.md) | Shared drives: IDs work everywhere, `ls`/`search` scope is opt-in |
 
 ## Related projects (reference implementations)
 
