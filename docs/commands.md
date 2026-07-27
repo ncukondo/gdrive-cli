@@ -604,13 +604,13 @@ marker inside a table cell is not matched, because the replacement may itself be
 a table and Docs cannot nest one. `--as text` is the plain substitution, in one
 API call.
 
-This is how you fill a placeholder without computing an index — replace the
-marker with the content plus the marker to keep it for next time:
-
 ```console
 $ gdrive docs replace "Notes/Meeting" --find "<!-- schedule -->" --replace @table.md
 Replaced 1 occurrence
 ```
+
+To keep the marker for next time, insert next to it instead of replacing it —
+see [`insert --before`](#gdrive-docs-insert-file-textfile-).
 
 ```console
 $ gdrive docs replace "Notes/Meeting" --find Q3 --replace Q4 --match-case
@@ -625,14 +625,34 @@ Quiet: the document ID.
 
 ### `gdrive docs insert <file> <text|@file|->`
 
-Exactly one position is required: `--index <n>` (Docs' 1-based character index
-in the body) or `--at start|end`. The content is Markdown unless `--as text`
-says otherwise.
+Exactly one position is required:
+
+| Option | Where the content goes |
+|--------|------------------------|
+| `--index <n>` | Docs' 1-based character index in the body |
+| `--at <start\|end>` | The beginning or the end of the body |
+| `--before <marker>` | In front of a marker |
+| `--after <marker>` | Just after a marker |
+
+The content is Markdown unless `--as text` says otherwise.
 
 ```console
 $ gdrive docs insert "Notes/Meeting" "DRAFT — " --at start
 Inserted into Meeting notes (1BzqpK...)
+
+$ gdrive docs insert "Notes/Meeting" @table.md --before "<!-- schedule -->"
+Inserted into Meeting notes (1BzqpK...)
 ```
+
+A marker must match **exactly once**. No match is `NOT_FOUND`; two or more is
+`INVALID_ARGS` reporting the count, and `--match-case` is usually the way to
+narrow it (matching is case-insensitive by default, as in `replace`). Use
+`replace` when you do want every occurrence.
+
+The marker is matched against the document's **text**, not against Markdown:
+a heading written `## 次回` is the text `次回` in the document, so that is what
+`--after` takes. A marker inside a table cell is never matched, because the
+content may itself be a table and Docs cannot nest one.
 
 ```json
 { "id": "1BzqpK...", "title": "Meeting notes", "index": 1 }

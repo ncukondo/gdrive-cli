@@ -62,10 +62,13 @@ two cannot drift on what "found" means.
 ## Consequences
 
 - `resolveInsertIndex` in `src/commands/docs/insert.ts` gains the two options
-  and becomes async, since resolving a marker means reading the document — which
-  the command already does for `--at end`.
-- The marker search moves to a shared helper in `lib/docs-api.ts` alongside the
-  one 0021 §6 adds for `replace`.
+  and stays synchronous: the command already fetched the document for `--at
+  end`, and `findMarkerRanges` is a pure function over it.
+- That search is `replace`'s, exported from `lib/docs-api.ts` by 0021 §6, so
+  neither command can drift on what "found" means.
+- A marker is document text, not Markdown source: `--after "## 次回"` finds
+  nothing, because the document holds `次回` with a heading style. The docs say
+  so; there is no un-rendering step and there should not be one.
 - `docs/commands.md`'s `insert` section gains the two options and the
   exactly-once rule; the "`replace` is the only way to insert at a marker"
   workaround stops being worth documenting.
