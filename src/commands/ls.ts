@@ -42,7 +42,7 @@ export interface LsDeps {
   trashed?: boolean;
   limit?: number;
   order?: OrderKey;
-  /** Widened listing scope from `--all-drives` / `--drive` (decision 0016). */
+  /** Listing scope from `--drive <name>` (decision 0016). */
   scope?: DriveScope;
 }
 
@@ -55,7 +55,23 @@ function defaultFolderId(scope?: DriveScope): string {
   return scope !== undefined && scope.kind === "drive" ? scope.driveId : "root";
 }
 
+/**
+ * `--drive` picks the starting folder, so a folder argument would be a second,
+ * conflicting answer to the same question. It used to resolve against My Drive
+ * with the scope silently ignored, which returned the wrong folder's contents
+ * rather than an error (decision 0016 §2).
+ */
+function rejectFolderWithScope(deps: LsDeps): void {
+  if (deps.folder === undefined || deps.scope === undefined) return;
+  throw new AppError(
+    "INVALID_ARGS",
+    "--drive cannot be combined with a folder argument. " +
+      "A folder inside a shared drive is addressed by its ID alone: `gdrive ls <folder-ID>`.",
+  );
+}
+
 export async function handleLs(deps: LsDeps): Promise<CommandResult> {
+  rejectFolderWithScope(deps);
   const folderId = deps.folder ? await deps.resolvePath(deps.folder) : defaultFolderId(deps.scope);
   const options: ListOptions = {};
   if (deps.type !== undefined) options.type = deps.type;
@@ -84,6 +100,5 @@ export function createLsCommand(): Command {
     .option("--trashed", "List trashed files")
     .option("-n, --limit <n>", "Maximum number of files")
     .option("--order <order>", "Sort: name | modified | created")
-    .option("--all-drives", "Include every shared drive as well as My Drive")
-    .option("--drive <name>", "Limit to the shared drive with this name");
+    .option("--drive <name>", "List the root of this shared drive (see `gdrive drives`)");
 }
