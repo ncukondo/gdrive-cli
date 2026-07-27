@@ -47,7 +47,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0020 `share add` grants the shared-drive roles](archive/0020-shared-drive-roles.md) | — | — | done |
 | [0021 `drive:<name>/<path>` addressing](archive/0021-shared-drive-paths.md) | — | — | done |
 | [0022 `info` names a shared drive root](archive/0022-drive-root-name.md) | — | — | done |
-| [0023 `--as markdown` writes structure](0023-markdown-writes.md) | — | — | todo |
+| [0023 `docs` writes take Markdown by default](0023-markdown-writes.md) | — | — | todo |
+| [0024 `insert --before` / `--after <marker>`](0024-insert-at-marker.md) | 0023 | — | todo |
 
 ## Parallelism notes
 
@@ -74,10 +75,13 @@ decision 0019, which supersedes 0016 §3), and 0022 made `info` report a drive
 root's real name (issue #6, decision 0020). That closes the shared-drive
 follow-ups opened after v0.4.0.
 
-0023 is the open task: `docs` writes gain `--as markdown` so a Markdown table
-arrives as a Docs table instead of a line of pipes (issue #7, decision 0021,
-which extends 0009). It touches the four docs write commands and adds a
-Markdown parser, so nothing else should run in its file scope.
+0023 and 0024 are the open tasks, both from issue #7 and both extending 0009.
+0023 makes Markdown the format on the write side too — a Markdown table arrives
+as a Docs table instead of a line of pipes — and flips the write default to
+match `read` (decision 0021; breaking, allowed by 0014). 0024 then moves
+marker-relative positioning out of the `replace` workaround and into `insert`
+(decision 0022). They share the marker search and the docs command files, so
+0024 waits for 0023 rather than running beside it.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
