@@ -82,9 +82,9 @@ describe("parseMarkdown — ordered runs continue across other blocks (0023 §1)
   });
 
   it("continues across a heading, a quote, and a code block", () => {
-    expect(numbers("1. one\n\n## head\n\n2. two\n\n> quoted\n\n3. three\n\n```\nls\n```\n\n4. four")).toEqual(
-      ["1", "heading", "2+", "quote", "3+", "code", "4+"],
-    );
+    expect(
+      numbers("1. one\n\n## head\n\n2. two\n\n> quoted\n\n3. three\n\n```\nls\n```\n\n4. four"),
+    ).toEqual(["1", "heading", "2+", "quote", "3+", "code", "4+"]);
   });
 
   it("continues across a bulleted list, which stays its own list", () => {
@@ -461,6 +461,69 @@ describe("round trip with renderDocument", () => {
     ]);
   });
 
+  it("survives one numbered list whose items are separated by paragraphs", () => {
+    const { blocks } = roundTrip({
+      body: {
+        content: [
+          para(["one"], { bullet: { listId: "L1" } }),
+          para(["body of one"]),
+          para(["two"], { bullet: { listId: "L1" } }),
+          para(["body of two"]),
+          para(["three"], { bullet: { listId: "L1" } }),
+        ],
+      },
+      lists: { L1: { listProperties: { nestingLevels: [{ glyphType: "DECIMAL" }] } } },
+    });
+
+    expect(blocks).toEqual([
+      { kind: "list", ordered: true, level: 0, number: 1, spans: [{ text: "one" }] },
+      { kind: "paragraph", spans: [{ text: "body of one" }] },
+      {
+        kind: "list",
+        ordered: true,
+        level: 0,
+        number: 2,
+        continues: true,
+        spans: [{ text: "two" }],
+      },
+      { kind: "paragraph", spans: [{ text: "body of two" }] },
+      {
+        kind: "list",
+        ordered: true,
+        level: 0,
+        number: 3,
+        continues: true,
+        spans: [{ text: "three" }],
+      },
+    ]);
+  });
+
+  /**
+   * The one construct 0021 §2 cannot hold, recorded as decision 0023 §3 rather
+   * than left to be discovered. `startNumber` is read-only, so a list that
+   * starts at 5 reads back as `5. …` and parses to paragraphs: the Markdown
+   * round-trips, the Docs structure does not.
+   */
+  it("does not round-trip a list that starts at 5 — the documented exception", () => {
+    const document: DocumentRaw = {
+      body: {
+        content: [
+          para(["five"], { bullet: { listId: "L1" } }),
+          para(["six"], { bullet: { listId: "L1" } }),
+        ],
+      },
+      lists: {
+        L1: { listProperties: { nestingLevels: [{ glyphType: "DECIMAL", startNumber: 5 }] } },
+      },
+    };
+
+    expect(renderDocument(document, "markdown")).toBe("5. five\n6. six");
+    expect(parseMarkdown(renderDocument(document, "markdown")).blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "5. " }, { text: "five" }] },
+      { kind: "paragraph", spans: [{ text: "6. " }, { text: "six" }] },
+    ]);
+  });
+
   it("survives a table whose cells carry inline styles", () => {
     const { blocks } = roundTrip({
       body: {
@@ -569,10 +632,7 @@ describe("planTextRun", () => {
    */
   describe("one list across interleaved content (0023 §2)", () => {
     it("bullets the whole span, then unbullets the paragraph between the items", () => {
-      const { requests, length } = planTextRun(
-        parseMarkdown("1. one\n\nbody\n\n2. two").blocks,
-        1,
-      );
+      const { requests, length } = planTextRun(parseMarkdown("1. one\n\nbody\n\n2. two").blocks, 1);
       expect(requests).toEqual([
         { insertText: { location: { index: 1 }, text: "one\nbody\ntwo\n" } },
         {

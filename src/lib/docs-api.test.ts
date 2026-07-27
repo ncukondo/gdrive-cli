@@ -143,6 +143,111 @@ describe("renderDocument --as markdown", () => {
     expect(md).toBe("1. numbered\n- bulleted\n- unknown");
   });
 
+  /**
+   * Decision 0023 §5. Printing `1.` for every item hid the bug that record
+   * fixes, and made a list that continues across other content look identical
+   * to twelve separate lists.
+   */
+  describe("numbered items carry their real ordinal (0023 §5)", () => {
+    const numbered = (start?: number) => ({
+      lists: {
+        L1: {
+          listProperties: {
+            nestingLevels: [
+              { glyphType: "DECIMAL", ...(start === undefined ? {} : { startNumber: start }) },
+              { glyphType: "DECIMAL" },
+            ],
+          },
+        },
+      },
+    });
+
+    it("counts through content interleaved between the items", () => {
+      const md = renderDocument(
+        doc(
+          [
+            para(["one\n"], { bullet: { listId: "L1" } }),
+            para(["body\n"]),
+            para(["two\n"], { bullet: { listId: "L1" } }),
+            para(["three\n"], { bullet: { listId: "L1" } }),
+          ],
+          numbered(),
+        ),
+        "markdown",
+      );
+      expect(md).toBe("1. one\nbody\n2. two\n3. three");
+    });
+
+    it("starts where the list says it starts", () => {
+      const md = renderDocument(
+        doc(
+          [
+            para(["five\n"], { bullet: { listId: "L1" } }),
+            para(["six\n"], { bullet: { listId: "L1" } }),
+          ],
+          numbered(5),
+        ),
+        "markdown",
+      );
+      expect(md).toBe("5. five\n6. six");
+    });
+
+    it("treats a start of 0 as 1, as the API says it does", () => {
+      const md = renderDocument(
+        doc([para(["zero\n"], { bullet: { listId: "L1" } })], numbered(0)),
+        "markdown",
+      );
+      expect(md).toBe("1. zero");
+    });
+
+    it("counts each nesting level on its own, restarting a deeper one", () => {
+      const md = renderDocument(
+        doc(
+          [
+            para(["outer\n"], { bullet: { listId: "L1" } }),
+            para(["inner\n"], { bullet: { listId: "L1", nestingLevel: 1 } }),
+            para(["inner\n"], { bullet: { listId: "L1", nestingLevel: 1 } }),
+            para(["outer\n"], { bullet: { listId: "L1" } }),
+            para(["inner\n"], { bullet: { listId: "L1", nestingLevel: 1 } }),
+          ],
+          numbered(),
+        ),
+        "markdown",
+      );
+      expect(md).toBe("1. outer\n  1. inner\n  2. inner\n2. outer\n  1. inner");
+    });
+
+    it("counts two lists separately", () => {
+      const md = renderDocument(
+        doc(
+          [
+            para(["a\n"], { bullet: { listId: "L1" } }),
+            para(["b\n"], { bullet: { listId: "L2" } }),
+            para(["c\n"], { bullet: { listId: "L1" } }),
+          ],
+          {
+            lists: {
+              L1: { listProperties: { nestingLevels: [{ glyphType: "DECIMAL" }] } },
+              L2: { listProperties: { nestingLevels: [{ glyphType: "DECIMAL" }] } },
+            },
+          },
+        ),
+        "markdown",
+      );
+      expect(md).toBe("1. a\n1. b\n2. c");
+    });
+
+    it("leaves bulleted items alone", () => {
+      const md = renderDocument(
+        doc([para(["x\n"], { bullet: { listId: "L1" } })], {
+          lists: { L1: { listProperties: { nestingLevels: [{ glyphSymbol: "●" }] } } },
+        }),
+        "markdown",
+      );
+      expect(md).toBe("- x");
+    });
+  });
+
   it("renders tables as pipe rows with a header separator", () => {
     const table: StructuralElementRaw = {
       table: {

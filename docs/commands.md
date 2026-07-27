@@ -531,15 +531,47 @@ Appended to Meeting notes (1BzqpK...)
 One source line is one paragraph, matching what `read` prints — Markdown's rule
 that consecutive lines join into one paragraph does not apply.
 
+`<https://…>` and a bare `https://…` both become links, as does `[text](url)`.
+
+#### Numbered lists
+
+A numbered list keeps counting across whatever sits between its items, so a
+document whose sections are numbered `1.` through `12.` — each followed by its
+own paragraphs, headings, or bullets — arrives numbered 1 through 12 rather
+than `1.` twelve times. The numbering continues while the ordinals do; writing
+`1.` again starts a new list.
+
+A run that starts at anything but `1.` cannot be a Docs list: the API has no way
+to set a list's starting number. Rather than renumber it from 1 and lose what
+you wrote, those lines stay ordinary paragraphs with their ordinals as text.
+
+```console
+$ printf '5. five\n6. six\n' | gdrive docs append "Notes/Ops" -   # text, not a list
+```
+
+The same applies to `2)`: a run starting at `1)` becomes a list, rendered `1.`,
+because Docs cannot render the parenthesis form either. A table between two
+items also ends the run.
+
+When a line only looks like a list, escape the marker with a backslash:
+
+```console
+$ printf '1\\. not a list item\n' | gdrive docs append "Notes/Ops" -
+```
+
 ### `gdrive docs read <file>`
 
 `--as markdown` (default) maps headings, bold/italic, links, bulleted and
 numbered lists, and — best effort — tables. `--as text` emits plain paragraph
 text. Both print the body to stdout, in quiet mode too.
 
-Rendering is best effort: a numbered list becomes `1.` only when Docs reports
-its glyph, and documents converted from HTML report no glyph information, so
-their numbered lists come back as `-`.
+A numbered item prints its real ordinal — its position in its list, from
+wherever that list starts — so a list that continues across intervening
+paragraphs reads 1, 2, 3 rather than `1.` three times.
+
+Rendering is best effort: a list is numbered only when Docs reports its glyph,
+and documents converted from HTML report no glyph information, so their numbered
+lists come back as `-`.
 
 ```console
 $ gdrive docs read "Notes/Meeting"

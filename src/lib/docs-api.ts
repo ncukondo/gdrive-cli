@@ -51,6 +51,8 @@ export interface NestingLevelRaw {
   glyphType?: string | null;
   glyphFormat?: string | null;
   glyphSymbol?: string | null;
+  /** Where an ordered level starts counting; read-only in the API (0023 §3). */
+  startNumber?: number | null;
 }
 
 export interface ListRaw {
@@ -176,13 +178,42 @@ function isOrderedLevel(level: NestingLevelRaw | undefined): boolean {
     : false;
 }
 
+/**
+ * Counts the items of each ordered list as they are rendered (decision 0023
+ * §5). A numbered item's ordinal is its position within its list, so the count
+ * has to be kept while walking the body; printing `1.` for every item is what
+ * made a list continued across other content indistinguishable from a series of
+ * separate ones. A deeper level restarts whenever a shallower item advances,
+ * which is how Docs numbers a sub-list.
+ */
+function makeOrdinals(): (listId: string, level: number, from: number) => number {
+  const counters = new Map<string, (number | undefined)[]>();
+  return (listId, level, from) => {
+    const levels = counters.get(listId) ?? [];
+    const current = levels[level];
+    const value = current === undefined ? from : current + 1;
+    levels[level] = value;
+    for (let deeper = level + 1; deeper < levels.length; deeper += 1) levels[deeper] = undefined;
+    counters.set(listId, levels);
+    return value;
+  };
+}
+
 /** Heading / list marker for a paragraph, or "" for body text. */
-function paragraphPrefix(paragraph: ParagraphRaw, lists: Record<string, ListRaw>): string {
+function paragraphPrefix(
+  paragraph: ParagraphRaw,
+  lists: Record<string, ListRaw>,
+  ordinal: (listId: string, level: number, from: number) => number,
+): string {
   const bullet = paragraph.bullet;
   if (bullet) {
     const level = bullet.nestingLevel ?? 0;
-    const nesting = lists[bullet.listId ?? ""]?.listProperties?.nestingLevels?.[level];
-    return "  ".repeat(level) + (isOrderedLevel(nesting) ? "1. " : "- ");
+    const listId = bullet.listId ?? "";
+    const nesting = lists[listId]?.listProperties?.nestingLevels?.[level];
+    if (!isOrderedLevel(nesting)) return `${"  ".repeat(level)}- `;
+    // The API treats a start of 0 as 1.
+    const start = nesting?.startNumber ?? 1;
+    return `${"  ".repeat(level)}${ordinal(listId, level, start > 0 ? start : 1)}. `;
   }
   const style = paragraph.paragraphStyle?.namedStyleType ?? "";
   const heading = /^HEADING_([1-6])$/.exec(style);
@@ -229,11 +260,14 @@ export function renderDocument(document: DocumentRaw, as: DocsRenderFormat): str
   if (as === "text") return plainText(content).replace(/\n+$/, "");
 
   const lists = document.lists ?? {};
+  const ordinal = makeOrdinals();
   const blocks: string[] = [];
   for (const element of content) {
     if (element.paragraph) {
       const paragraph = element.paragraph;
-      blocks.push(paragraphPrefix(paragraph, lists) + inlineMarkdown(paragraph.elements ?? []));
+      blocks.push(
+        paragraphPrefix(paragraph, lists, ordinal) + inlineMarkdown(paragraph.elements ?? []),
+      );
     } else if (element.table) {
       blocks.push(markdownTable(element.table));
     }
