@@ -8,7 +8,7 @@ import {
 } from "../types/index.ts";
 import { renderSuccess } from "../lib/output.ts";
 import { parseChoice } from "../lib/args.ts";
-import type { ListOptions, OrderKey } from "../lib/api.ts";
+import type { DriveScope, ListOptions, OrderKey } from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
 
 const VALID_TYPES: FileType[] = ["folder", "doc", "sheet", "slides", "file"];
@@ -42,6 +42,8 @@ export interface LsDeps {
   trashed?: boolean;
   limit?: number;
   order?: OrderKey;
+  /** Widened listing scope from `--all-drives` / `--drive` (decision 0016). */
+  scope?: DriveScope;
 }
 
 export async function handleLs(deps: LsDeps): Promise<CommandResult> {
@@ -51,6 +53,7 @@ export async function handleLs(deps: LsDeps): Promise<CommandResult> {
   if (deps.trashed !== undefined) options.trashed = deps.trashed;
   if (deps.limit !== undefined) options.limit = deps.limit;
   if (deps.order !== undefined) options.order = deps.order;
+  if (deps.scope !== undefined) options.scope = deps.scope;
 
   const files = await deps.listChildren(folderId, options);
 
@@ -71,5 +74,7 @@ export function createLsCommand(): Command {
     .option("--type <type>", "Filter by type: folder | doc | sheet | slides | file")
     .option("--trashed", "List trashed files")
     .option("-n, --limit <n>", "Maximum number of files")
-    .option("--order <order>", "Sort: name | modified | created");
+    .option("--order <order>", "Sort: name | modified | created")
+    .option("--all-drives", "Include every shared drive as well as My Drive")
+    .option("--drive <name>", "Limit to the shared drive with this name");
 }

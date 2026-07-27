@@ -10,6 +10,7 @@ import {
   exportFile,
   getFile,
   listChildren,
+  resolveDriveScope,
   searchFiles,
   type DriveClient,
 } from "../lib/api.ts";
@@ -38,16 +39,25 @@ function toBuffer(content: unknown): Buffer {
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
 
+/** The `--all-drives` / `--drive <name>` pair as commander hands them over. */
+interface ScopeOptions {
+  allDrives?: boolean;
+  drive?: string;
+}
+
 export function registerDriveRead(program: Command): void {
   const ls = createLsCommand();
   ls.action(async (folder: string | undefined) => {
     const opts = resolveGlobalOptions(program);
-    const o = ls.opts<{ type?: string; trashed?: boolean; limit?: string; order?: string }>();
+    const o = ls.opts<
+      { type?: string; trashed?: boolean; limit?: string; order?: string } & ScopeOptions
+    >();
     try {
       const type = parseType(o.type);
       const limit = parseLimit(o.limit);
       const order = parseOrder(o.order);
       const drive = await buildDrive(opts);
+      const scope = await resolveDriveScope(drive, o);
       const result = await handleLs({
         resolvePath: (arg) => resolvePath(drive, arg),
         listChildren: (id, options) => listChildren(drive, id, options),
@@ -59,6 +69,7 @@ export function registerDriveRead(program: Command): void {
         ...(o.trashed ? { trashed: true } : {}),
         ...(limit !== undefined ? { limit } : {}),
         ...(order !== undefined ? { order } : {}),
+        ...(scope !== undefined ? { scope } : {}),
       });
       process.exit(result.exitCode);
     } catch (error) {
@@ -70,12 +81,13 @@ export function registerDriveRead(program: Command): void {
   const search = createSearchCommand();
   search.action(async (query: string) => {
     const opts = resolveGlobalOptions(program);
-    const o = search.opts<{ type?: string; limit?: string; order?: string }>();
+    const o = search.opts<{ type?: string; limit?: string; order?: string } & ScopeOptions>();
     try {
       const type = parseType(o.type);
       const limit = parseLimit(o.limit);
       const order = parseOrder(o.order);
       const drive = await buildDrive(opts);
+      const scope = await resolveDriveScope(drive, o);
       const result = await handleSearch({
         searchFiles: (q, options) => searchFiles(drive, q, options),
         query,
@@ -85,6 +97,7 @@ export function registerDriveRead(program: Command): void {
         ...(type !== undefined ? { type } : {}),
         ...(limit !== undefined ? { limit } : {}),
         ...(order !== undefined ? { order } : {}),
+        ...(scope !== undefined ? { scope } : {}),
       });
       process.exit(result.exitCode);
     } catch (error) {

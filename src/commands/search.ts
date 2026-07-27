@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import type { CommandResult, DriveFile, FileType, OutputFormat } from "../types/index.ts";
 import { renderSuccess } from "../lib/output.ts";
-import type { ListOptions, OrderKey } from "../lib/api.ts";
+import type { DriveScope, ListOptions, OrderKey } from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
 
 export interface SearchDeps {
@@ -13,6 +13,8 @@ export interface SearchDeps {
   type?: FileType;
   limit?: number;
   order?: OrderKey;
+  /** Widened search scope from `--all-drives` / `--drive` (decision 0016). */
+  scope?: DriveScope;
 }
 
 export async function handleSearch(deps: SearchDeps): Promise<CommandResult> {
@@ -20,6 +22,7 @@ export async function handleSearch(deps: SearchDeps): Promise<CommandResult> {
   if (deps.type !== undefined) options.type = deps.type;
   if (deps.limit !== undefined) options.limit = deps.limit;
   if (deps.order !== undefined) options.order = deps.order;
+  if (deps.scope !== undefined) options.scope = deps.scope;
 
   const files = await deps.searchFiles(deps.query, options);
 
@@ -42,5 +45,7 @@ export function createSearchCommand(): Command {
     .argument("<query>", "Search query")
     .option("--type <type>", "Filter by type: folder | doc | sheet | slides | file")
     .option("-n, --limit <n>", "Maximum number of files")
-    .option("--order <order>", "Sort: name | modified | created");
+    .option("--order <order>", "Sort: name | modified | created")
+    .option("--all-drives", "Search every shared drive as well as My Drive")
+    .option("--drive <name>", "Search only the shared drive with this name");
 }
