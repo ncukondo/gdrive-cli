@@ -73,8 +73,11 @@ export interface SharedDrive {
 /** Grantee kinds a permission can target (decision 0011). */
 export type GranteeType = "user" | "group" | "domain" | "anyone";
 
-/** Roles this CLI grants; `owner` (transfer) is out of scope (decision 0011). */
-export type ShareRole = "reader" | "commenter" | "writer";
+/**
+ * Roles this CLI grants; `owner` (transfer) is out of scope (decision 0011).
+ * The last two exist only on shared drives (decision 0018).
+ */
+export type ShareRole = "reader" | "commenter" | "writer" | "fileOrganizer" | "organizer";
 
 /** Normalized Drive permission (decision 0011). */
 export interface DrivePermission {

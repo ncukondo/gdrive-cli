@@ -8,7 +8,7 @@ import type {
 } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
 import type { PermissionCreateInput } from "../../lib/api.ts";
-import { parseRole } from "./add.ts";
+import { parseLinkRole } from "./add.ts";
 
 export interface ShareLinkDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -33,7 +33,7 @@ function shareableUrl(file: DriveFile): string {
 }
 
 export async function handleShareLink(deps: ShareLinkDeps): Promise<CommandResult> {
-  const role = parseRole(deps.role);
+  const role = parseLinkRole(deps.role);
   const fileId = await deps.resolvePath(deps.file);
 
   const existing = (await deps.listPermissions(fileId)).find((p) => p.type === "anyone");

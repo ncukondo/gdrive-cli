@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleShareAdd, parseRole } from "./add.ts";
+import { handleShareAdd, parseShareRole } from "./add.ts";
 import type { DrivePermission } from "../../types/index.ts";
 import type { PermissionCreateInput } from "../../lib/api.ts";
 
@@ -27,16 +27,25 @@ function collect() {
   };
 }
 
-describe("parseRole", () => {
+describe("parseShareRole", () => {
   it("defaults to reader and accepts commenter/writer", () => {
-    expect(parseRole(undefined)).toBe("reader");
-    expect(parseRole("commenter")).toBe("commenter");
-    expect(parseRole("writer")).toBe("writer");
+    expect(parseShareRole(undefined)).toBe("reader");
+    expect(parseShareRole("commenter")).toBe("commenter");
+    expect(parseShareRole("writer")).toBe("writer");
+  });
+
+  it("accepts the shared-drive roles as the API spells them (decision 0018)", () => {
+    expect(parseShareRole("organizer")).toBe("organizer");
+    expect(parseShareRole("fileOrganizer")).toBe("fileOrganizer");
   });
 
   it("rejects owner (out of scope) and unknown roles", () => {
-    expect(() => parseRole("owner")).toThrow(/owner/i);
-    expect(() => parseRole("editor")).toThrow(/Invalid --role/);
+    expect(() => parseShareRole("owner")).toThrow(/owner/i);
+    expect(() => parseShareRole("editor")).toThrow(/Invalid --role/);
+  });
+
+  it("does not accept a miscased fileOrganizer, which share list never prints", () => {
+    expect(() => parseShareRole("fileorganizer")).toThrow(/Invalid --role/);
   });
 });
 
@@ -126,6 +135,50 @@ describe("handleShareAdd", () => {
     expect(createPermission.mock.calls[0]?.[1]).toEqual({ type: "anyone", role: "reader" });
     expect(out.output).toBe("Granted reader to anyone with the link (perm-abc)");
   });
+
+  it("grants an organizer to a shared-drive member", async () => {
+    const createPermission = vi.fn(async (_id: string, _i: PermissionCreateInput) =>
+      perm({ role: "organizer" }),
+    );
+    const out = collect();
+    await handleShareAdd({
+      resolvePath: async () => "0ANPgzMZtaAa6Uk9PVA",
+      createPermission,
+      file: "0ANPgzMZtaAa6Uk9PVA",
+      to: "alice@example.com",
+      role: "organizer",
+      format: "text",
+      quiet: false,
+      write: out.write,
+    });
+    expect(createPermission.mock.calls[0]?.[1]).toEqual({
+      type: "user",
+      role: "organizer",
+      emailAddress: "alice@example.com",
+    });
+    expect(out.output).toBe("Granted organizer to alice@example.com (perm-abc)");
+  });
+
+  it.each([["organizer"], ["fileOrganizer"]])(
+    "rejects --anyone with %s locally rather than letting Google 400 it",
+    async (role) => {
+      await expect(
+        handleShareAdd({
+          resolvePath: async () => "FID",
+          createPermission: async () => perm(),
+          file: "F",
+          anyone: true,
+          role,
+          format: "text",
+          quiet: false,
+          write: () => {},
+        }),
+      ).rejects.toMatchObject({
+        code: "INVALID_ARGS",
+        message: expect.stringContaining("reader"),
+      });
+    },
+  );
 
   it("rejects missing or conflicting grantees with INVALID_ARGS", async () => {
     const base = {

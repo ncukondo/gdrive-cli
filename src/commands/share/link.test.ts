@@ -115,4 +115,15 @@ describe("handleShareLink", () => {
       code: "INVALID_ARGS",
     });
   });
+
+  it.each([["organizer"], ["fileOrganizer"]])(
+    "rejects %s: an anyone-with-link permission cannot hold it (decision 0018)",
+    async (role) => {
+      const d = deps();
+      await expect(handleShareLink({ ...d, role })).rejects.toMatchObject({
+        code: "INVALID_ARGS",
+        message: expect.stringContaining("commenter"),
+      });
+    },
+  );
 });

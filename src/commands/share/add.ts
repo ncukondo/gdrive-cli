@@ -10,15 +10,33 @@ import { renderSuccess } from "../../lib/output.ts";
 import { parseChoice } from "../../lib/args.ts";
 import { inferGrantee, type PermissionCreateInput } from "../../lib/api.ts";
 
-const VALID_ROLES: ShareRole[] = ["reader", "commenter", "writer"];
+const SHARE_ROLES: ShareRole[] = ["reader", "commenter", "writer", "fileOrganizer", "organizer"];
 
-/** Validates `--role`, defaulting to `reader`. `owner` is out of scope (0011). */
-export function parseRole(value: string | undefined): ShareRole {
-  if (value === undefined) return "reader";
+/** Roles an anyone-with-link permission can hold (decision 0018 §2). */
+export const LINK_ROLES: ShareRole[] = ["reader", "commenter", "writer"];
+
+function rejectOwner(value: string): void {
   if (value === "owner") {
     throw new AppError("INVALID_ARGS", "Ownership transfer (--role owner) is not supported.");
   }
-  return parseChoice(VALID_ROLES, value, "--role");
+}
+
+/**
+ * Validates `share add --role`, defaulting to `reader`. `owner` is out of
+ * scope (0011); `organizer` / `fileOrganizer` are spelled as the API spells
+ * them, so `share list` output round-trips (0018).
+ */
+export function parseShareRole(value: string | undefined): ShareRole {
+  if (value === undefined) return "reader";
+  rejectOwner(value);
+  return parseChoice(SHARE_ROLES, value, "--role");
+}
+
+/** Validates `share link --role`: the shared-drive roles are not link roles. */
+export function parseLinkRole(value: string | undefined): ShareRole {
+  if (value === undefined) return "reader";
+  rejectOwner(value);
+  return parseChoice(LINK_ROLES, value, "--role");
 }
 
 export interface ShareAddDeps {
@@ -42,12 +60,21 @@ function grantTarget(input: PermissionCreateInput): string {
 }
 
 export async function handleShareAdd(deps: ShareAddDeps): Promise<CommandResult> {
-  const role = parseRole(deps.role);
+  const role = parseShareRole(deps.role);
   const grantee = inferGrantee({
     ...(deps.to !== undefined ? { to: deps.to } : {}),
     ...(deps.domain !== undefined ? { domain: deps.domain } : {}),
     ...(deps.anyone ? { anyone: true } : {}),
   });
+
+  // Decidable without a round trip, unlike "is this file on a shared drive?",
+  // which decision 0018 §3 leaves to Google.
+  if (grantee.type === "anyone" && !LINK_ROLES.includes(role)) {
+    throw new AppError(
+      "INVALID_ARGS",
+      `--anyone cannot hold the ${role} role. Use: ${LINK_ROLES.join(", ")}.`,
+    );
+  }
 
   const input: PermissionCreateInput = { type: grantee.type, role };
   if (grantee.emailAddress !== undefined) input.emailAddress = grantee.emailAddress;
@@ -80,7 +107,10 @@ export function createShareAddCommand(): Command {
     .option("--to <email>", "Grant to a user or group email address")
     .option("--domain <domain>", "Grant to everyone in a domain")
     .option("--anyone", "Grant to anyone with the link")
-    .option("--role <role>", "Role: reader | commenter | writer (default reader)")
+    .option(
+      "--role <role>",
+      "Role: reader | commenter | writer | fileOrganizer | organizer (default reader; the last two are shared-drive only)",
+    )
     .option("--notify", "Send a notification email to the grantee")
     .option("--message <text>", "Message included in the notification email")
     .option("--allow-discovery", "Make the file discoverable in search (domain/anyone)");
