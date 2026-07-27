@@ -48,7 +48,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0021 `drive:<name>/<path>` addressing](archive/0021-shared-drive-paths.md) | — | — | done |
 | [0022 `info` names a shared drive root](archive/0022-drive-root-name.md) | — | — | done |
 | [0023 `docs` writes take Markdown by default](archive/0023-markdown-writes.md) | — | — | done |
-| [0024 `insert --before` / `--after <marker>`](0024-insert-at-marker.md) | 0023 | — | todo |
+| [0024 `insert --before` / `--after <marker>`](archive/0024-insert-at-marker.md) | 0023 | — | done |
 
 ## Parallelism notes
 
@@ -82,10 +82,10 @@ a Docs table instead of a line of pipes — and the write default flipped to mat
 real account is what found the index bugs a fake client cannot show, and 0021 §5
 records the approach that failed.
 
-0024 is the open task: marker-relative positioning moves out of the `replace`
-workaround and into `insert --before/--after` (decision 0022). It reuses 0023's
-marker search and touches the same command files, so it runs after it rather
-than beside it.
+0024 then moved marker-relative positioning out of the `replace` workaround and
+into `insert --before/--after` (decision 0022), reusing 0023's marker search so
+the two commands cannot disagree on what "found" means. That closes issue #7;
+there is no open task right now.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and

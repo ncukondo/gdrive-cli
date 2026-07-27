@@ -1,6 +1,6 @@
 # Task 0024: `docs insert --before` / `--after <marker>`
 
-Status: todo
+Status: done
 Depends on: 0023 — the marker search is the helper 0023 builds for
 `replace --as markdown` (decision 0022 §3); starting earlier would write it
 twice.
@@ -56,17 +56,37 @@ without the `replace`-with-the-marker-repeated trick.
 
 ## Acceptance criteria
 
-- [ ] `insert --before` / `--after` place content at a marker, with Markdown
+- [x] `insert --before` / `--after` place content at a marker, with Markdown
       structure (0023) intact
-- [ ] Ambiguous and missing markers are distinct, actionable errors
-- [ ] The existing three positions and their errors are unchanged
-- [ ] `bun run typecheck` / `lint` / `lint:casts` / `format:check` / `test:unit`
-- [ ] `docs/commands.md` documents the two options and the exactly-once rule,
+- [x] Ambiguous and missing markers are distinct, actionable errors
+- [x] The existing three positions and their errors are unchanged
+- [x] `bun run typecheck` / `lint` / `lint:casts` / `format:check` / `test:unit`
+- [x] `docs/commands.md` documents the two options and the exactly-once rule,
       and drops the `replace`-as-insertion workaround note
+
+## Outcome notes
+
+- `resolveInsertIndex` stayed synchronous. The task and decision 0022 both
+  expected it to go async for the document read; it did not need to, because
+  the command already fetches the document for `--at end` and `findMarkerRanges`
+  is a pure function over it. Decision 0022's consequence is corrected.
+- The manual pass found the one thing the unit tests could not have: **a marker
+  is document text, not Markdown source.** `--after "## 次回"` finds nothing,
+  because the document holds `次回` carrying a heading style. Documented next to
+  the options.
+- The fixture used for the tests deliberately makes `HERE` ambiguous
+  case-insensitively (a cell holding `HERE`, and a `here` in a later paragraph),
+  which is what pins both the ambiguity error and the table-cell exclusion.
+- `--match-case` is named in the ambiguity message only when it is not already
+  on, so the suggestion is never one the caller has already taken.
 
 ## Verification
 
-- `bun run test src/commands/docs/insert.test.ts`.
-- **Manual**: insert the issue's table at a `<!-- schedule -->` placeholder in a
-  real document, then `docs read` and confirm the table sits where the marker
-  was and the marker is still there.
+- `bun run test:unit` — 490 passed; `typecheck`, `lint`, `format:check` clean.
+- **Manual, against a real account**: a document with a `<!-- schedule -->`
+  placeholder took a Markdown table via `insert --before`; `docs read` showed the
+  table in front of the marker with the marker intact, and `--after "次回"`
+  appended to a heading in place. The error paths were exercised live too — a
+  missing marker exits 1 with `No such marker in the document: "…"`, an
+  ambiguous one exits 3 with `matches 2 times`, and `--before` with `--at` exits
+  3. The test document was trashed afterwards.
