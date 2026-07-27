@@ -332,13 +332,25 @@ describe("supportsAllDrives", () => {
 });
 
 describe("list scope (decision 0016)", () => {
-  it("stays on My Drive when no scope is given", async () => {
+  it("lets listChildren see a shared-drive folder's children with no flag", async () => {
+    // The parent filter already pins the corpus, so including shared-drive
+    // items costs nothing and is the difference between `ls <shared folder id>`
+    // working and silently printing nothing.
     const list = vi.fn(async (_p: ListParams) => ({ data: { files: [] } }));
     await listChildren(mockDrive({ list }), "F");
     const params = callArgs(list)[0];
+    expect(params.includeItemsFromAllDrives).toBe(true);
     expect(params.corpora).toBeUndefined();
     expect(params.driveId).toBeUndefined();
+  });
+
+  it("keeps searchFiles on My Drive when no scope is given", async () => {
+    const list = vi.fn(async (_p: ListParams) => ({ data: { files: [] } }));
+    await searchFiles(mockDrive({ list }), "budget");
+    const params = callArgs(list)[0];
     expect(params.includeItemsFromAllDrives).toBeUndefined();
+    expect(params.corpora).toBeUndefined();
+    expect(params.driveId).toBeUndefined();
   });
 
   it("widens listChildren to every shared drive", async () => {
@@ -415,11 +427,47 @@ describe("listSharedDrives / resolveDriveScope", () => {
     ).rejects.toMatchObject({ code: "INVALID_ARGS" });
   });
 
-  it("reports an unknown drive name as NOT_FOUND", async () => {
-    const list = driveList({ "": { drives: [{ id: "D1", name: "Team" }] } });
+  it("skips shared drives the API returns without an id", async () => {
+    const list = driveList({ "": { drives: [{ name: "Broken" }, { id: "D1", name: "Team" }] } });
+    expect(await listSharedDrives(mockDrive({}, {}, { list }))).toEqual([
+      { id: "D1", name: "Team" },
+    ]);
+  });
+
+  it("maps a listSharedDrives failure like every other Drive call", async () => {
+    const list = vi.fn(async (_p: SharedDriveListParams) => {
+      throw Object.assign(new Error("denied"), { code: 403 });
+    });
+    await expect(listSharedDrives(mockDrive({}, {}, { list }))).rejects.toMatchObject({
+      code: "AUTH_REQUIRED",
+    });
+  });
+
+  it("reports an unknown drive name as NOT_FOUND, listing what is available", async () => {
+    const list = driveList({
+      "": {
+        drives: [
+          { id: "D1", name: "Team" },
+          { id: "D2", name: "Ops" },
+        ],
+      },
+    });
     await expect(
       resolveDriveScope(mockDrive({}, {}, { list }), { drive: "Nope" }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: expect.stringContaining("Team, Ops"),
+    });
+  });
+
+  it("says so plainly when the account has no shared drives at all", async () => {
+    const list = driveList({});
+    await expect(
+      resolveDriveScope(mockDrive({}, {}, { list }), { drive: "Nope" }),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: expect.stringContaining("no shared drives"),
+    });
   });
 
   it("reports an ambiguous drive name as INVALID_ARGS listing the ids", async () => {

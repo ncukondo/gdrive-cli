@@ -63,6 +63,12 @@ export interface DriveFile {
   owners: string[];
 }
 
+/** A shared drive, as `gdrive drives` reports it (decision 0016). */
+export interface SharedDrive {
+  id: string;
+  name: string;
+}
+
 /** Grantee kinds a permission can target (decision 0011). */
 export type GranteeType = "user" | "group" | "domain" | "anyone";
 
