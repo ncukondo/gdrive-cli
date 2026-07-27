@@ -153,7 +153,14 @@ export function registerDocs(program: Command): void {
   const insert = createDocsInsertCommand();
   insert.action(async (file: string, text: string) => {
     const opts = resolveGlobalOptions(program);
-    const o = insert.opts<{ index?: string; at?: string; as?: string }>();
+    const o = insert.opts<{
+      index?: string;
+      at?: string;
+      before?: string;
+      after?: string;
+      matchCase?: boolean;
+      as?: string;
+    }>();
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsInsert({
@@ -170,6 +177,9 @@ export function registerDocs(program: Command): void {
         warn: stderr,
         ...(o.index !== undefined ? { index: o.index } : {}),
         ...(o.at !== undefined ? { at: o.at } : {}),
+        ...(o.before !== undefined ? { before: o.before } : {}),
+        ...(o.after !== undefined ? { after: o.after } : {}),
+        ...(o.matchCase ? { matchCase: true } : {}),
         ...(o.as !== undefined ? { as: o.as } : {}),
       });
       process.exit(result.exitCode);
