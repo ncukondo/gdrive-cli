@@ -19,6 +19,8 @@ A `<file>` argument accepts either:
 - A **path** relative to the account's My Drive root — e.g.
   `"Reports/2026/summary"`. Path segments are resolved by name against parent
   folders.
+- A **shared-drive path**, `drive:<name>/<segments>` — e.g.
+  `"drive:Finance/2026/Budget"` ([`0019`](0019-shared-drive-paths.md)).
 
 Resolution rules:
 - An argument matching a Drive ID pattern is treated as an ID first. That
@@ -79,11 +81,14 @@ JSON `data` carries a `files` array (or single `file`) of the File structure:
   [`0011`](0011-sharing-commands.md).
 - Shared drives are addressed by **ID** in every command;
   [`0016`](0016-shared-drive-scope.md) covers that and the `ls`/`search` scope
-  flags. Path resolution above remains My Drive–only.
+  flags. A path can also name one through the `drive:` prefix
+  ([`0019`](0019-shared-drive-paths.md)).
 
 ## Out of scope (deferred)
 
-- Multiple-parent management, revisions, and shared-drive *paths* (see 0016).
+- Multiple-parent management and revisions. (Shared-drive *paths* were
+  deferred here and to 0016; [`0019`](0019-shared-drive-paths.md) delivers
+  them.)
 
 ## Consequences
 

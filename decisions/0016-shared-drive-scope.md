@@ -125,6 +125,11 @@ change through the back door. Sending it from `ls` is not, per §2.
 
 ### 3. Path resolution stays My Drive–only, but ID passthrough covers drive roots
 
+> **Superseded by [0019](0019-shared-drive-paths.md)** (2026-07-27), which adds
+> the `drive:<name>/<path>` syntax this paragraph called for. The rest of §3 —
+> ID passthrough and the `looksLikeId` shape — still stands, and is what makes
+> `drive:<name>` with no segments resolve to a usable root ID.
+
 `src/lib/resolve-path.ts` walks segments from the My Drive root, so a path like
 `専門医部会/部門用フォルダ/…` still cannot name a shared-drive file. Supporting it
 needs a syntax for "the root of drive X" and a drive-name lookup per segment

@@ -31,6 +31,7 @@ instead of restating them.
 | [0016](0016-shared-drive-scope.md) | Shared drives: IDs work everywhere, `search` scope is opt-in |
 | [0017](0017-permission-denied-error-code.md) | 403 → `PERMISSION_DENIED` (exit 1), except a genuine scope failure |
 | [0018](0018-shared-drive-roles.md) | `share add` grants `organizer` / `fileOrganizer` (revises 0011) |
+| [0019](0019-shared-drive-paths.md) | `drive:<name>/<path>` reaches a shared drive by path (revises 0016 §3) |
 
 ## Related projects (reference implementations)
 
