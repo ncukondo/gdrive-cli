@@ -52,6 +52,7 @@ type UnknownParams<M, Generated> = Exclude<keyof ParamsOf<M>, keyof Generated>;
 type AssertNoUnknownParams<K extends never> = K;
 
 type DriveFiles = DriveClient["files"];
+type DriveDrives = DriveClient["drives"];
 type DrivePermissions = DriveClient["permissions"];
 type SheetsValues = SheetsClient["spreadsheets"]["values"];
 
@@ -63,6 +64,7 @@ export type GeneratedParamChecks = [
   AssertNoUnknownParams<UnknownParams<DriveFiles["update"], drive_v3.Params$Resource$Files$Update>>,
   AssertNoUnknownParams<UnknownParams<DriveFiles["delete"], drive_v3.Params$Resource$Files$Delete>>,
   AssertNoUnknownParams<UnknownParams<DriveFiles["export"], drive_v3.Params$Resource$Files$Export>>,
+  AssertNoUnknownParams<UnknownParams<DriveDrives["list"], drive_v3.Params$Resource$Drives$List>>,
   AssertNoUnknownParams<
     UnknownParams<DrivePermissions["list"], drive_v3.Params$Resource$Permissions$List>
   >,
