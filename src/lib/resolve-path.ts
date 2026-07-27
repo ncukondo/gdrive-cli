@@ -5,6 +5,7 @@ import {
   mapDriveError,
   normalizeFile,
   resolveDriveByName,
+  SHARED_DRIVE_ROOT_ID,
   type DriveClient,
 } from "./api.ts";
 
@@ -17,16 +18,12 @@ export const DRIVE_PREFIX = "drive:";
 const FILE_ID = /^[A-Za-z0-9_-]{20,}$/;
 
 /**
- * A shared drive's root id is `0A` + 17 characters — 19 in total, one short of
- * the general rule, and `info` prints it in `parents` (decision 0016). Matching
- * the exact shape Drive issues, rather than lowering the general threshold to
- * 19, keeps the false-positive surface where it was: a 19-character slash-free
- * folder name is already implausible, and one that also starts with `0A` more
- * so.
- */
-const SHARED_DRIVE_ROOT_ID = /^0A[A-Za-z0-9_-]{17}$/;
-
-/**
+ * Matching the exact shape Drive issues for a drive root (`SHARED_DRIVE_ROOT_ID`
+ * in `api.ts`), rather than lowering the general threshold to 19, keeps the
+ * false-positive surface where it was: a 19-character slash-free folder name is
+ * already implausible, and one that also starts with `0A` more so
+ * (decision 0016 §3).
+ *
  * Heuristic for "this argument is a Drive file ID, not a path". Drive IDs are
  * long, slash-free, `[A-Za-z0-9_-]` strings; folder names are typically shorter
  * and/or contain spaces. Per decision 0008 an ID-looking argument wins.

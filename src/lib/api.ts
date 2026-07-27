@@ -137,6 +137,7 @@ export interface DriveClient {
     list: (params: SharedDriveListParams) => Promise<{
       data: { drives?: SharedDriveRaw[]; nextPageToken?: string | null };
     }>;
+    get: (params: { driveId: string; fields?: string }) => Promise<{ data: SharedDriveRaw }>;
   };
   permissions: {
     list: (params: {
@@ -227,6 +228,13 @@ export function mapDriveError(error: unknown): never {
 }
 
 // --- Normalization ----------------------------------------------------------
+
+/**
+ * A shared drive's root id: `0A` + 17 characters, 19 in all. Lives here because
+ * both `getFile` (decision 0020) and `looksLikeId` in `resolve-path.ts`
+ * (decision 0016 §3) recognize this exact shape.
+ */
+export const SHARED_DRIVE_ROOT_ID = /^0A[A-Za-z0-9_-]{17}$/;
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const MIME_TYPE_MAP: Record<string, FileType> = {
@@ -492,17 +500,41 @@ export async function searchFiles(
 }
 
 /** Fetches and normalizes a single file's metadata. */
+/** The literal `files.get` gives every shared drive root instead of its name. */
+const GENERIC_DRIVE_NAME = "Drive";
+
+/**
+ * `files.get` on a shared drive's root returns a generic folder resource named
+ * `Drive`, identically for every drive (decision 0020). Both the name and the
+ * root-id shape have to match: the name alone would fire on a file someone
+ * called "Drive", the shape alone on a response Google may one day get right.
+ *
+ * A failed lookup keeps the generic name — the label is a nicety, and losing a
+ * good `info` over it would be the worse trade.
+ */
+async function driveRootName(client: DriveClient, file: DriveFile): Promise<string> {
+  if (file.name !== GENERIC_DRIVE_NAME || !SHARED_DRIVE_ROOT_ID.test(file.id)) return file.name;
+  try {
+    const res = await client.drives.get({ driveId: file.id, fields: "id,name" });
+    return res.data.name ?? file.name;
+  } catch {
+    return file.name;
+  }
+}
+
 export async function getFile(client: DriveClient, fileId: string): Promise<DriveFile> {
+  let file: DriveFile;
   try {
     const res = await client.files.get({ fileId, fields: FILE_FIELDS, supportsAllDrives: true });
     const parsed = DriveFileRawSchema.safeParse(res.data);
     if (!parsed.success) {
       throw new AppError("API_ERROR", `Unexpected response from Drive for ${fileId}.`);
     }
-    return normalizeFile(parsed.data);
+    file = normalizeFile(parsed.data);
   } catch (error) {
     mapDriveError(error);
   }
+  return { ...file, name: await driveRootName(client, file) };
 }
 
 /** Creates a folder, optionally under `parentId`. */

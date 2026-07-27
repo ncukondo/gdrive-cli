@@ -80,6 +80,11 @@ export function createTreeDrive(
         if (drives === undefined) throw new Error("not implemented in tree fake");
         return { data: { drives } };
       },
+      get: async ({ driveId }: { driveId: string }) => {
+        const match = (drives ?? []).find((d) => d.id === driveId);
+        if (match === undefined) throw new Error(`no such drive in tree fake: ${driveId}`);
+        return { data: match };
+      },
     },
     permissions: {
       list: async () => {

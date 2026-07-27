@@ -65,6 +65,7 @@ export type GeneratedParamChecks = [
   AssertNoUnknownParams<UnknownParams<DriveFiles["delete"], drive_v3.Params$Resource$Files$Delete>>,
   AssertNoUnknownParams<UnknownParams<DriveFiles["export"], drive_v3.Params$Resource$Files$Export>>,
   AssertNoUnknownParams<UnknownParams<DriveDrives["list"], drive_v3.Params$Resource$Drives$List>>,
+  AssertNoUnknownParams<UnknownParams<DriveDrives["get"], drive_v3.Params$Resource$Drives$Get>>,
   AssertNoUnknownParams<
     UnknownParams<DrivePermissions["list"], drive_v3.Params$Resource$Permissions$List>
   >,

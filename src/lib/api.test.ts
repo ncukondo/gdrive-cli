@@ -41,6 +41,7 @@ type CreateParam = Parameters<DriveClient["files"]["create"]>[0];
 type CopyParam = Parameters<DriveClient["files"]["copy"]>[0];
 type UpdateParam = Parameters<DriveClient["files"]["update"]>[0];
 type DeleteParam = Parameters<DriveClient["files"]["delete"]>[0];
+type DriveGetParam = Parameters<DriveClient["drives"]["get"]>[0];
 type ExportParam = Parameters<DriveClient["files"]["export"]>[0];
 
 /** A DriveClient whose methods are vi mocks; override per test. */
@@ -52,6 +53,7 @@ function mockDrive(
   return {
     drives: {
       list: vi.fn(async () => ({ data: { drives: [] } })),
+      get: vi.fn(async () => ({ data: { id: "D1", name: "Team" } })),
       ...driveOverrides,
     },
     files: {
@@ -182,6 +184,51 @@ describe("metadata & mutations", () => {
   it("getFile normalizes the response", async () => {
     const get = vi.fn(async () => ({ data: raw({ id: "g", name: "doc" }) }));
     expect((await getFile(mockDrive({ get }), "g")).name).toBe("doc");
+  });
+
+  it('getFile names a shared drive root after the drive, not "Drive" (decision 0020)', async () => {
+    const ROOT = "0ANPgzMZtaAa6Uk9PVA";
+    const get = vi.fn(async () => ({
+      data: raw({ id: ROOT, name: "Drive", mimeType: "application/vnd.google-apps.folder" }),
+    }));
+    const drivesGet = vi.fn(async (_p: DriveGetParam) => ({
+      data: { id: ROOT, name: "専門医部会" },
+    }));
+    const file = await getFile(mockDrive({ get }, {}, { get: drivesGet }), ROOT);
+    expect(file.name).toBe("専門医部会");
+    expect(file.type).toBe("folder");
+    expect(callArgs(drivesGet)[0]).toMatchObject({ driveId: ROOT });
+  });
+
+  it("getFile leaves a drive root alone once Google names it correctly", async () => {
+    const ROOT = "0ANPgzMZtaAa6Uk9PVA";
+    const get = vi.fn(async () => ({
+      data: raw({ id: ROOT, name: "専門医部会", mimeType: "application/vnd.google-apps.folder" }),
+    }));
+    const drivesGet = vi.fn(async (_p: DriveGetParam) => ({ data: { id: ROOT, name: "other" } }));
+    expect((await getFile(mockDrive({ get }, {}, { get: drivesGet }), ROOT)).name).toBe(
+      "専門医部会",
+    );
+    expect(drivesGet).not.toHaveBeenCalled();
+  });
+
+  it("getFile does not second-guess an ordinary file that is named Drive", async () => {
+    const get = vi.fn(async () => ({ data: raw({ id: "1AbCdEfGhIjKlMnOpQrSt", name: "Drive" }) }));
+    const drivesGet = vi.fn(async (_p: DriveGetParam) => ({ data: { id: "x", name: "nope" } }));
+    const file = await getFile(mockDrive({ get }, {}, { get: drivesGet }), "1AbCdEfGhIjKlMnOpQrSt");
+    expect(file.name).toBe("Drive");
+    expect(drivesGet).not.toHaveBeenCalled();
+  });
+
+  it("getFile keeps the generic name when the drive lookup fails", async () => {
+    const ROOT = "0ANPgzMZtaAa6Uk9PVA";
+    const get = vi.fn(async () => ({
+      data: raw({ id: ROOT, name: "Drive", mimeType: "application/vnd.google-apps.folder" }),
+    }));
+    const drivesGet = vi.fn(async (_p: DriveGetParam) => {
+      throw Object.assign(new Error("denied"), { code: 403 });
+    });
+    expect((await getFile(mockDrive({ get }, {}, { get: drivesGet }), ROOT)).name).toBe("Drive");
   });
 
   it("getFile rejects a response that is not a file object", async () => {
