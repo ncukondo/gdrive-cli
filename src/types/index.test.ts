@@ -4,6 +4,7 @@ import { AppError, ExitCode, errorToCode, errorToExit } from "./index.ts";
 describe("errorToCode", () => {
   it("returns an AppError's own code", () => {
     expect(errorToCode(new AppError("AUTH_EXPIRED", "x"))).toBe("AUTH_EXPIRED");
+    expect(errorToCode(new AppError("PERMISSION_DENIED", "x"))).toBe("PERMISSION_DENIED");
   });
 
   it("falls back to API_ERROR for a non-ErrorCode string code", () => {
@@ -33,5 +34,9 @@ describe("errorToExit", () => {
     expect(errorToExit("AUTH_REQUIRED")).toBe(ExitCode.AUTH);
     expect(errorToExit("INVALID_ARGS")).toBe(ExitCode.ARGUMENT);
     expect(errorToExit("API_ERROR")).toBe(ExitCode.GENERAL);
+  });
+
+  it("keeps PERMISSION_DENIED out of the re-authenticate family (decision 0017)", () => {
+    expect(errorToExit("PERMISSION_DENIED")).toBe(ExitCode.GENERAL);
   });
 });

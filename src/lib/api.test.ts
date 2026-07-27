@@ -439,7 +439,7 @@ describe("listSharedDrives / resolveDriveScope", () => {
       throw Object.assign(new Error("denied"), { code: 403 });
     });
     await expect(listSharedDrives(mockDrive({}, {}, { list }))).rejects.toMatchObject({
-      code: "AUTH_REQUIRED",
+      code: "PERMISSION_DENIED",
     });
   });
 
@@ -486,20 +486,76 @@ describe("listSharedDrives / resolveDriveScope", () => {
 });
 
 describe("mapDriveError", () => {
+  const codeOf = (error: unknown): string | undefined => {
+    try {
+      mapDriveError(error);
+    } catch (e) {
+      if (e instanceof AppError) return e.code;
+    }
+    return undefined;
+  };
+
+  /** A googleapis 403 carrying Drive's untyped error body. */
+  const forbidden = (message: string, reason?: unknown) =>
+    Object.assign(new Error(message), {
+      code: 403,
+      response: { data: { error: { errors: reason === undefined ? [] : [{ reason }] } } },
+    });
+
   it.each([
     [401, "AUTH_EXPIRED"],
-    [403, "AUTH_REQUIRED"],
+    [403, "PERMISSION_DENIED"],
     [404, "NOT_FOUND"],
     [500, "API_ERROR"],
   ])("maps HTTP %i to %s", (httpCode, expected) => {
     const err = Object.assign(new Error("boom"), { code: httpCode });
-    let code: string | undefined;
-    try {
-      mapDriveError(err);
-    } catch (e) {
-      if (e instanceof AppError) code = e.code;
-    }
-    expect(code).toBe(expected);
+    expect(codeOf(err)).toBe(expected);
+  });
+
+  it.each([["ACCESS_TOKEN_SCOPE_INSUFFICIENT"], ["insufficientPermissions"]])(
+    "keeps a scope failure (%s) on AUTH_REQUIRED, where re-authenticating helps",
+    (reason) => {
+      expect(codeOf(forbidden("Insufficient Permission", reason))).toBe("AUTH_REQUIRED");
+    },
+  );
+
+  it("reads a scope failure out of the message when the body carries no reason", () => {
+    const err = Object.assign(new Error("Request had insufficient authentication scopes."), {
+      code: 403,
+    });
+    expect(codeOf(err)).toBe("AUTH_REQUIRED");
+  });
+
+  it("does not mistake insufficientFilePermissions for a scope failure", () => {
+    expect(codeOf(forbidden("The user does not have sufficient permissions for this file."))).toBe(
+      "PERMISSION_DENIED",
+    );
+    expect(
+      codeOf(
+        forbidden(
+          "The user does not have sufficient permissions for this file.",
+          "insufficientFilePermissions",
+        ),
+      ),
+    ).toBe("PERMISSION_DENIED");
+  });
+
+  it("treats a rate-limit 403 as PERMISSION_DENIED rather than an auth problem", () => {
+    expect(codeOf(forbidden("Rate Limit Exceeded", "userRateLimitExceeded"))).toBe(
+      "PERMISSION_DENIED",
+    );
+  });
+
+  it.each([
+    ["a string body", { response: { data: "<html>nope</html>" } }],
+    ["no response at all", {}],
+    ["errors that is not an array", { response: { data: { error: { errors: { reason: "x" } } } } }],
+    ["a numeric reason", { response: { data: { error: { errors: [{ reason: 7 }] } } } }],
+    ["a null error member", { response: { data: { error: null } } }],
+  ])("falls back to PERMISSION_DENIED for %s", (_label, extra) => {
+    expect(codeOf(Object.assign(new Error("denied"), { code: 403 }, extra))).toBe(
+      "PERMISSION_DENIED",
+    );
   });
 
   it("surfaces mapped errors through wrapper functions", async () => {

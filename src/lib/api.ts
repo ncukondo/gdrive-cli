@@ -177,11 +177,48 @@ function isGoogleApiError(error: unknown): error is Error & { code: number } {
   return error instanceof Error && "code" in error && typeof error.code === "number";
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? { ...value }
+    : undefined;
+}
+
+/**
+ * The `reason` strings from a googleapis error body
+ * (`response.data.error.errors[]`). The body is untyped JSON, so every hop is
+ * narrowed and a reshaped payload simply yields nothing (decision 0015).
+ */
+function errorReasons(error: unknown): string[] {
+  const errors = record(record(record(record(error)?.response)?.data)?.error)?.errors;
+  if (!Array.isArray(errors)) return [];
+  return errors.flatMap((entry) => {
+    const reason = record(entry)?.reason;
+    return typeof reason === "string" ? [reason] : [];
+  });
+}
+
+/**
+ * Reasons Google gives for a 403 that a fresh consent really would fix. Exact
+ * matches: Drive spells a *file* permission failure `insufficientFilePermissions`,
+ * and reading that as a scope failure is the bug this guards (decision 0017).
+ */
+const SCOPE_REASONS = ["ACCESS_TOKEN_SCOPE_INSUFFICIENT", "insufficientPermissions"];
+
+function isScopeFailure(error: Error): boolean {
+  if (errorReasons(error).some((reason) => SCOPE_REASONS.includes(reason))) return true;
+  return error.message.toLowerCase().includes("insufficient authentication scopes");
+}
+
 /** Translates a googleapis error into an {@link AppError}; re-throws anything else. */
 export function mapDriveError(error: unknown): never {
   if (isGoogleApiError(error)) {
     if (error.code === 401) throw new AppError("AUTH_EXPIRED", error.message);
-    if (error.code === 403) throw new AppError("AUTH_REQUIRED", error.message);
+    if (error.code === 403) {
+      // Signed in but not allowed is not an auth problem: exit 1, not 2 —
+      // unless the token itself lacks the scope (decision 0017).
+      const code = isScopeFailure(error) ? "AUTH_REQUIRED" : "PERMISSION_DENIED";
+      throw new AppError(code, error.message);
+    }
     if (error.code === 404) throw new AppError("NOT_FOUND", error.message);
     throw new AppError("API_ERROR", error.message);
   }
