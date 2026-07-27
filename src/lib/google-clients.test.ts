@@ -21,6 +21,7 @@ describe("buildDriveClient", () => {
     for (const method of ["list", "create", "update", "delete"] as const) {
       expect(typeof drive.permissions[method]).toBe("function");
     }
+    expect(typeof drive.drives.list).toBe("function");
   });
 });
 

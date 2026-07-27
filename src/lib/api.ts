@@ -44,6 +44,27 @@ export interface ListParams {
   orderBy?: string;
   fields?: string;
   spaces?: string;
+  corpora?: string;
+  driveId?: string;
+  includeItemsFromAllDrives?: boolean;
+  supportsAllDrives?: boolean;
+}
+
+export interface SharedDriveListParams {
+  pageSize?: number;
+  pageToken?: string;
+  fields?: string;
+}
+
+/** The subset of Drive's shared-drive resource we read. */
+export interface SharedDriveRaw {
+  id?: string | null;
+  name?: string | null;
+}
+
+export interface SharedDrive {
+  id: string;
+  name: string;
 }
 
 export interface FileCreateBody {
@@ -72,8 +93,13 @@ export interface PermissionBody {
 }
 
 /**
- * Minimal abstraction over `google.drive({version:"v3"}).files` for testability
+ * Minimal abstraction over `google.drive({version:"v3"})` for testability
  * (decision 0012). Unit tests pass a hand-written fake exposing only these.
+ *
+ * `supportsAllDrives` appears on every method Drive accepts it on — it declares
+ * that this client understands shared-drive semantics, without which any
+ * shared-drive file ID answers `NOT_FOUND` (decision 0016). `files.export` is
+ * the one exception: the API defines no such parameter for it.
  */
 export interface DriveClient {
   files: {
@@ -81,18 +107,20 @@ export interface DriveClient {
       data: { files?: DriveFileRaw[]; nextPageToken?: string | null };
     }>;
     get: (
-      params: { fileId: string; fields?: string; alt?: string },
+      params: { fileId: string; fields?: string; alt?: string; supportsAllDrives?: boolean },
       options?: { responseType?: "arraybuffer" },
     ) => Promise<{ data: unknown }>;
     create: (params: {
       requestBody: FileCreateBody;
       media?: { mimeType?: string; body: unknown };
       fields?: string;
+      supportsAllDrives?: boolean;
     }) => Promise<{ data: DriveFileRaw }>;
     copy: (params: {
       fileId: string;
       requestBody: FileCreateBody;
       fields?: string;
+      supportsAllDrives?: boolean;
     }) => Promise<{ data: DriveFileRaw }>;
     update: (params: {
       fileId: string;
@@ -100,12 +128,18 @@ export interface DriveClient {
       removeParents?: string;
       requestBody?: { trashed?: boolean; name?: string };
       fields?: string;
+      supportsAllDrives?: boolean;
     }) => Promise<{ data: DriveFileRaw }>;
-    delete: (params: { fileId: string }) => Promise<unknown>;
+    delete: (params: { fileId: string; supportsAllDrives?: boolean }) => Promise<unknown>;
     export: (
       params: { fileId: string; mimeType: string },
       options?: { responseType?: "arraybuffer" },
     ) => Promise<{ data: unknown }>;
+  };
+  drives: {
+    list: (params: SharedDriveListParams) => Promise<{
+      data: { drives?: SharedDriveRaw[]; nextPageToken?: string | null };
+    }>;
   };
   permissions: {
     list: (params: {
@@ -113,6 +147,7 @@ export interface DriveClient {
       fields?: string;
       pageSize?: number;
       pageToken?: string;
+      supportsAllDrives?: boolean;
     }) => Promise<{
       data: { permissions?: PermissionRaw[]; nextPageToken?: string | null };
     }>;
@@ -122,14 +157,20 @@ export interface DriveClient {
       sendNotificationEmail?: boolean;
       emailMessage?: string;
       fields?: string;
+      supportsAllDrives?: boolean;
     }) => Promise<{ data: PermissionRaw }>;
     update: (params: {
       fileId: string;
       permissionId: string;
       requestBody: PermissionBody;
       fields?: string;
+      supportsAllDrives?: boolean;
     }) => Promise<{ data: PermissionRaw }>;
-    delete: (params: { fileId: string; permissionId: string }) => Promise<unknown>;
+    delete: (params: {
+      fileId: string;
+      permissionId: string;
+      supportsAllDrives?: boolean;
+    }) => Promise<unknown>;
   };
 }
 
@@ -216,6 +257,93 @@ export function typeFilterClause(type?: FileType): string | null {
   return `mimeType != '${FOLDER_MIME}'`;
 }
 
+// --- Shared drives (decision 0016) ------------------------------------------
+
+/**
+ * How wide a listing reaches. Absent means Drive's default corpus — the user's
+ * own files — which is deliberately *not* widened without an explicit flag
+ * (decision 0016).
+ */
+export type DriveScope = { kind: "all" } | { kind: "drive"; driveId: string };
+
+/** The `--all-drives` / `--drive <name>` pair, before resolution. */
+export interface DriveScopeArgs {
+  allDrives?: boolean;
+  drive?: string;
+}
+
+/** Applies a {@link DriveScope} to `files.list` parameters. */
+function applyScope(params: ListParams, scope?: DriveScope): void {
+  if (scope === undefined) return;
+  // Google requires this to travel with `supportsAllDrives`, which every list
+  // already sends; on its own it is what pulls shared-drive items in.
+  params.includeItemsFromAllDrives = true;
+  if (scope.kind === "all") {
+    params.corpora = "allDrives";
+    return;
+  }
+  params.corpora = "drive";
+  params.driveId = scope.driveId;
+}
+
+/** Lists every shared drive the account can see, following pages. */
+export async function listSharedDrives(client: DriveClient): Promise<SharedDrive[]> {
+  const drives: SharedDrive[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+  try {
+    do {
+      const params: SharedDriveListParams = {
+        pageSize: 100,
+        fields: "nextPageToken,drives(id,name)",
+      };
+      if (pageToken !== undefined) params.pageToken = pageToken;
+      const res = await client.drives.list(params);
+      for (const raw of res.data.drives ?? []) {
+        drives.push({ id: raw.id ?? "", name: raw.name ?? "" });
+      }
+      pageToken = res.data.nextPageToken ?? undefined;
+      pages += 1;
+    } while (pageToken !== undefined && pages < MAX_PAGES);
+  } catch (error) {
+    mapDriveError(error);
+  }
+  return drives;
+}
+
+/**
+ * Turns the scope flags into a {@link DriveScope}, resolving a drive *name* to
+ * its id. The error rules mirror path resolution (decision 0008): no match is
+ * `NOT_FOUND`, several matches are `INVALID_ARGS` listing the candidate ids.
+ */
+export async function resolveDriveScope(
+  client: DriveClient,
+  args: DriveScopeArgs,
+): Promise<DriveScope | undefined> {
+  if (args.allDrives === true && args.drive !== undefined) {
+    throw new AppError("INVALID_ARGS", "Use only one of --all-drives or --drive.");
+  }
+  if (args.allDrives === true) return { kind: "all" };
+  if (args.drive === undefined) return undefined;
+
+  const matches = (await listSharedDrives(client)).filter((d) => d.name === args.drive);
+  if (matches.length === 0) {
+    throw new AppError("NOT_FOUND", `No such shared drive: ${args.drive}`);
+  }
+  if (matches.length > 1) {
+    const ids = matches.map((d) => d.id).join(", ");
+    throw new AppError(
+      "INVALID_ARGS",
+      `Ambiguous shared drive name "${args.drive}"; matches: ${ids}.`,
+    );
+  }
+  const [match] = matches;
+  if (match === undefined) {
+    throw new AppError("NOT_FOUND", `No such shared drive: ${args.drive}`);
+  }
+  return { kind: "drive", driveId: match.id };
+}
+
 // --- Pagination -------------------------------------------------------------
 
 async function collectPages(
@@ -228,7 +356,12 @@ async function collectPages(
   let pages = 0;
   try {
     do {
-      const params: ListParams = { ...baseParams, fields: LIST_FIELDS, spaces: "drive" };
+      const params: ListParams = {
+        ...baseParams,
+        fields: LIST_FIELDS,
+        spaces: "drive",
+        supportsAllDrives: true,
+      };
       if (pageToken !== undefined) params.pageToken = pageToken;
       const res = await client.files.list(params);
       for (const raw of res.data.files ?? []) {
@@ -251,6 +384,7 @@ export interface ListOptions {
   trashed?: boolean;
   limit?: number;
   order?: OrderKey;
+  scope?: DriveScope;
 }
 
 /** Lists the direct children of a folder (decision 0008). */
@@ -268,6 +402,7 @@ export async function listChildren(
   const params: ListParams = { q: clauses.join(" and "), pageSize: 100 };
   const orderBy = orderByClause(options.order);
   if (orderBy) params.orderBy = orderBy;
+  applyScope(params, options.scope);
   return collectPages(client, params, options.limit);
 }
 
@@ -287,13 +422,14 @@ export async function searchFiles(
   const params: ListParams = { q: clauses.join(" and "), pageSize: 100 };
   const orderBy = orderByClause(options.order);
   if (orderBy) params.orderBy = orderBy;
+  applyScope(params, options.scope);
   return collectPages(client, params, options.limit);
 }
 
 /** Fetches and normalizes a single file's metadata. */
 export async function getFile(client: DriveClient, fileId: string): Promise<DriveFile> {
   try {
-    const res = await client.files.get({ fileId, fields: FILE_FIELDS });
+    const res = await client.files.get({ fileId, fields: FILE_FIELDS, supportsAllDrives: true });
     const parsed = DriveFileRawSchema.safeParse(res.data);
     if (!parsed.success) {
       throw new AppError("API_ERROR", `Unexpected response from Drive for ${fileId}.`);
@@ -313,7 +449,11 @@ export async function createFolder(
   const requestBody: FileCreateBody = { name, mimeType: FOLDER_MIME };
   if (parentId) requestBody.parents = [parentId];
   try {
-    const res = await client.files.create({ requestBody, fields: FILE_FIELDS });
+    const res = await client.files.create({
+      requestBody,
+      fields: FILE_FIELDS,
+      supportsAllDrives: true,
+    });
     return normalizeFile(res.data);
   } catch (error) {
     mapDriveError(error);
@@ -330,7 +470,12 @@ export async function copyFile(
   const requestBody: FileCreateBody = { parents: [parentId] };
   if (name) requestBody.name = name;
   try {
-    const res = await client.files.copy({ fileId, requestBody, fields: FILE_FIELDS });
+    const res = await client.files.copy({
+      fileId,
+      requestBody,
+      fields: FILE_FIELDS,
+      supportsAllDrives: true,
+    });
     return normalizeFile(res.data);
   } catch (error) {
     mapDriveError(error);
@@ -350,7 +495,8 @@ export async function moveFile(
       addParents: string;
       removeParents?: string;
       fields: string;
-    } = { fileId, addParents: newParentId, fields: FILE_FIELDS };
+      supportsAllDrives: boolean;
+    } = { fileId, addParents: newParentId, fields: FILE_FIELDS, supportsAllDrives: true };
     if (current.parents.length > 0) params.removeParents = current.parents.join(",");
     const res = await client.files.update(params);
     return normalizeFile(res.data);
@@ -366,6 +512,7 @@ export async function trashFile(client: DriveClient, fileId: string): Promise<Dr
       fileId,
       requestBody: { trashed: true },
       fields: FILE_FIELDS,
+      supportsAllDrives: true,
     });
     return normalizeFile(res.data);
   } catch (error) {
@@ -376,7 +523,7 @@ export async function trashFile(client: DriveClient, fileId: string): Promise<Dr
 /** Permanently deletes a file. */
 export async function deleteFile(client: DriveClient, fileId: string): Promise<void> {
   try {
-    await client.files.delete({ fileId });
+    await client.files.delete({ fileId, supportsAllDrives: true });
   } catch (error) {
     mapDriveError(error);
   }
@@ -401,6 +548,7 @@ export async function uploadMedia(client: DriveClient, input: UploadInput): Prom
       requestBody,
       media: { mimeType: input.mimeType, body: input.body },
       fields: FILE_FIELDS,
+      supportsAllDrives: true,
     });
     return normalizeFile(res.data);
   } catch (error) {
@@ -411,7 +559,10 @@ export async function uploadMedia(client: DriveClient, input: UploadInput): Prom
 /** Downloads raw binary content (alt=media). Returns the client's data payload. */
 export async function downloadMedia(client: DriveClient, fileId: string): Promise<unknown> {
   try {
-    const res = await client.files.get({ fileId, alt: "media" }, { responseType: "arraybuffer" });
+    const res = await client.files.get(
+      { fileId, alt: "media", supportsAllDrives: true },
+      { responseType: "arraybuffer" },
+    );
     return res.data;
   } catch (error) {
     mapDriveError(error);
@@ -511,10 +662,17 @@ export async function listPermissions(
   let pages = 0;
   try {
     do {
-      const params: { fileId: string; fields: string; pageSize: number; pageToken?: string } = {
+      const params: {
+        fileId: string;
+        fields: string;
+        pageSize: number;
+        pageToken?: string;
+        supportsAllDrives: boolean;
+      } = {
         fileId,
         fields: PERMISSION_LIST_FIELDS,
         pageSize: 100,
+        supportsAllDrives: true,
       };
       if (pageToken !== undefined) params.pageToken = pageToken;
       const res = await client.permissions.list(params);
@@ -556,6 +714,7 @@ export async function createPermission(
     requestBody,
     sendNotificationEmail: input.sendNotificationEmail ?? false,
     fields: PERMISSION_FIELDS,
+    supportsAllDrives: true,
   };
   if (input.emailMessage !== undefined) params.emailMessage = input.emailMessage;
 
@@ -580,6 +739,7 @@ export async function updatePermissionRole(
       permissionId,
       requestBody: { role },
       fields: PERMISSION_FIELDS,
+      supportsAllDrives: true,
     });
     return normalizePermission(res.data);
   } catch (error) {
@@ -594,7 +754,7 @@ export async function deletePermission(
   permissionId: string,
 ): Promise<void> {
   try {
-    await client.permissions.delete({ fileId, permissionId });
+    await client.permissions.delete({ fileId, permissionId, supportsAllDrives: true });
   } catch (error) {
     mapDriveError(error);
   }

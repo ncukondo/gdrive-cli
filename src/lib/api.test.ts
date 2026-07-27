@@ -20,11 +20,14 @@ import {
   deletePermission,
   inferGrantee,
   listPermissions,
+  listSharedDrives,
   normalizePermission,
+  resolveDriveScope,
   updatePermissionRole,
   type DriveClient,
   type DriveFileRaw,
   type ListParams,
+  type SharedDriveListParams,
 } from "./api.ts";
 import { AppError } from "../types/index.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
@@ -33,16 +36,24 @@ function raw(overrides: Partial<DriveFileRaw> = {}): DriveFileRaw {
   return { id: "id1", name: "File", mimeType: "text/plain", ...overrides };
 }
 
+type GetParam = Parameters<DriveClient["files"]["get"]>[0];
 type CreateParam = Parameters<DriveClient["files"]["create"]>[0];
 type CopyParam = Parameters<DriveClient["files"]["copy"]>[0];
 type UpdateParam = Parameters<DriveClient["files"]["update"]>[0];
+type DeleteParam = Parameters<DriveClient["files"]["delete"]>[0];
+type ExportParam = Parameters<DriveClient["files"]["export"]>[0];
 
 /** A DriveClient whose methods are vi mocks; override per test. */
 function mockDrive(
   overrides: Partial<DriveClient["files"]> = {},
   permissionOverrides: Partial<DriveClient["permissions"]> = {},
+  driveOverrides: Partial<DriveClient["drives"]> = {},
 ): DriveClient {
   return {
+    drives: {
+      list: vi.fn(async () => ({ data: { drives: [] } })),
+      ...driveOverrides,
+    },
     files: {
       list: vi.fn(async () => ({ data: { files: [] } })),
       get: vi.fn(async () => ({ data: raw() })),
@@ -229,9 +240,9 @@ describe("metadata & mutations", () => {
   });
 
   it("deleteFile calls delete", async () => {
-    const del = vi.fn(async () => ({}));
+    const del = vi.fn(async (_params: DeleteParam) => ({}));
     await deleteFile(mockDrive({ delete: del }), "d");
-    expect(del).toHaveBeenCalledWith({ fileId: "d" });
+    expect(callArgs(del)[0]).toMatchObject({ fileId: "d" });
   });
 
   it("uploadMedia sends media and optional conversion type", async () => {
@@ -257,6 +268,172 @@ describe("metadata & mutations", () => {
     expect(await downloadMedia(mockDrive({ get }), "f")).toBe("binary");
     const exp = vi.fn(async () => ({ data: "pdf-bytes" }));
     expect(await exportFile(mockDrive({ export: exp }), "f", "application/pdf")).toBe("pdf-bytes");
+  });
+});
+
+// --- Shared drives (decision 0016) ------------------------------------------
+
+/** Asserts a mock was called and that every call declared shared-drive support. */
+function expectSupportsAllDrives(fn: { mock: { calls: [unknown, ...unknown[]][] } }): void {
+  expect(fn.mock.calls.length).toBeGreaterThan(0);
+  for (const [params] of fn.mock.calls) {
+    expect(params).toMatchObject({ supportsAllDrives: true });
+  }
+}
+
+describe("supportsAllDrives", () => {
+  it("is sent by every file operation", async () => {
+    const list = vi.fn(async (_p: ListParams) => ({ data: { files: [] } }));
+    const get = vi.fn(async (_p: GetParam) => ({ data: raw() }));
+    const create = vi.fn(async (_p: CreateParam) => ({ data: raw() }));
+    const copy = vi.fn(async (_p: CopyParam) => ({ data: raw() }));
+    const update = vi.fn(async (_p: UpdateParam) => ({ data: raw() }));
+    const del = vi.fn(async (_p: DeleteParam) => ({}));
+    const drive = mockDrive({ list, get, create, copy, update, delete: del });
+
+    await listChildren(drive, "F");
+    await searchFiles(drive, "q");
+    await getFile(drive, "f");
+    await createFolder(drive, "n", "P");
+    await copyFile(drive, "f", "P");
+    await moveFile(drive, "f", "P");
+    await trashFile(drive, "f");
+    await deleteFile(drive, "f");
+    await uploadMedia(drive, { name: "n.txt", mimeType: "text/plain", body: "x" });
+    await downloadMedia(drive, "f");
+
+    for (const fn of [list, get, create, copy, update, del]) expectSupportsAllDrives(fn);
+  });
+
+  it("is sent by every permission operation", async () => {
+    const list = vi.fn(async (_p: PermListParam) => ({ data: { permissions: [] } }));
+    const create = vi.fn(async (_p: PermCreateParam) => ({
+      data: { id: "p1", type: "user", role: "reader" },
+    }));
+    const update = vi.fn(async (_p: PermUpdateParam) => ({
+      data: { id: "p1", type: "user", role: "writer" },
+    }));
+    const del = vi.fn(async (_p: PermDeleteParam) => ({}));
+    const drive = mockDrive({}, { list, create, update, delete: del });
+
+    await listPermissions(drive, "F");
+    await createPermission(drive, "F", { type: "anyone", role: "reader" });
+    await updatePermissionRole(drive, "F", "p1", "writer");
+    await deletePermission(drive, "F", "p1");
+
+    for (const fn of [list, create, update, del]) expectSupportsAllDrives(fn);
+  });
+
+  it("is not sent by files.export, which has no such parameter", async () => {
+    const exp = vi.fn(async (_p: ExportParam) => ({ data: "pdf" }));
+    await exportFile(mockDrive({ export: exp }), "f", "application/pdf");
+    expect(callArgs(exp)[0]).not.toHaveProperty("supportsAllDrives");
+  });
+});
+
+describe("list scope (decision 0016)", () => {
+  it("stays on My Drive when no scope is given", async () => {
+    const list = vi.fn(async (_p: ListParams) => ({ data: { files: [] } }));
+    await listChildren(mockDrive({ list }), "F");
+    const params = callArgs(list)[0];
+    expect(params.corpora).toBeUndefined();
+    expect(params.driveId).toBeUndefined();
+    expect(params.includeItemsFromAllDrives).toBeUndefined();
+  });
+
+  it("widens listChildren to every shared drive", async () => {
+    const list = vi.fn(async (_p: ListParams) => ({ data: { files: [] } }));
+    await listChildren(mockDrive({ list }), "F", { scope: { kind: "all" } });
+    expect(callArgs(list)[0]).toMatchObject({
+      corpora: "allDrives",
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+  });
+
+  it("restricts searchFiles to one shared drive", async () => {
+    const list = vi.fn(async (_p: ListParams) => ({ data: { files: [] } }));
+    await searchFiles(mockDrive({ list }), "budget", { scope: { kind: "drive", driveId: "D1" } });
+    expect(callArgs(list)[0]).toMatchObject({
+      corpora: "drive",
+      driveId: "D1",
+      includeItemsFromAllDrives: true,
+    });
+  });
+});
+
+describe("listSharedDrives / resolveDriveScope", () => {
+  function driveList(pages: Record<string, { drives?: { id?: string; name?: string }[] }>) {
+    return vi.fn(async (params: SharedDriveListParams) => ({
+      data: pages[params.pageToken ?? ""] ?? { drives: [] },
+    }));
+  }
+
+  it("lists shared drives across pages", async () => {
+    const paged = vi.fn(async (params: SharedDriveListParams) =>
+      params.pageToken === undefined
+        ? { data: { drives: [{ id: "D1", name: "Team" }], nextPageToken: "p2" } }
+        : { data: { drives: [{ id: "D2", name: "Ops" }] } },
+    );
+    const drives = await listSharedDrives(mockDrive({}, {}, { list: paged }));
+    expect(drives).toEqual([
+      { id: "D1", name: "Team" },
+      { id: "D2", name: "Ops" },
+    ]);
+  });
+
+  it("returns undefined when neither flag is given", async () => {
+    expect(await resolveDriveScope(mockDrive(), {})).toBeUndefined();
+  });
+
+  it("maps --all-drives to the allDrives corpus without an API call", async () => {
+    const list = driveList({});
+    expect(await resolveDriveScope(mockDrive({}, {}, { list }), { allDrives: true })).toEqual({
+      kind: "all",
+    });
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("resolves a drive name to its id", async () => {
+    const list = driveList({
+      "": {
+        drives: [
+          { id: "D1", name: "Team" },
+          { id: "D2", name: "Ops" },
+        ],
+      },
+    });
+    expect(await resolveDriveScope(mockDrive({}, {}, { list }), { drive: "Ops" })).toEqual({
+      kind: "drive",
+      driveId: "D2",
+    });
+  });
+
+  it("rejects both flags at once", async () => {
+    await expect(
+      resolveDriveScope(mockDrive(), { allDrives: true, drive: "Team" }),
+    ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+  });
+
+  it("reports an unknown drive name as NOT_FOUND", async () => {
+    const list = driveList({ "": { drives: [{ id: "D1", name: "Team" }] } });
+    await expect(
+      resolveDriveScope(mockDrive({}, {}, { list }), { drive: "Nope" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("reports an ambiguous drive name as INVALID_ARGS listing the ids", async () => {
+    const list = driveList({
+      "": {
+        drives: [
+          { id: "D1", name: "Team" },
+          { id: "D2", name: "Team" },
+        ],
+      },
+    });
+    await expect(
+      resolveDriveScope(mockDrive({}, {}, { list }), { drive: "Team" }),
+    ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("D1, D2") });
   });
 });
 
@@ -287,8 +464,10 @@ describe("mapDriveError", () => {
 
 // --- Permissions (decision 0011) --------------------------------------------
 
+type PermListParam = Parameters<DriveClient["permissions"]["list"]>[0];
 type PermCreateParam = Parameters<DriveClient["permissions"]["create"]>[0];
 type PermUpdateParam = Parameters<DriveClient["permissions"]["update"]>[0];
+type PermDeleteParam = Parameters<DriveClient["permissions"]["delete"]>[0];
 
 describe("normalizePermission", () => {
   it("normalizes a user grant", () => {
@@ -419,9 +598,9 @@ describe("permission operations", () => {
   });
 
   it("deletePermission calls through and maps errors", async () => {
-    const del = vi.fn(async () => ({}));
+    const del = vi.fn(async (_params: PermDeleteParam) => ({}));
     await deletePermission(mockDrive({}, { delete: del }), "F", "p1");
-    expect(del).toHaveBeenCalledWith({ fileId: "F", permissionId: "p1" });
+    expect(callArgs(del)[0]).toMatchObject({ fileId: "F", permissionId: "p1" });
 
     const boom = vi.fn(async () => {
       throw Object.assign(new Error("nope"), { code: 404 });
