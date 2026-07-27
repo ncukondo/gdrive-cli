@@ -46,6 +46,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0019 `PERMISSION_DENIED` for a role-denied 403](archive/0019-permission-denied-error-code.md) | — | — | done |
 | [0020 `share add` grants the shared-drive roles](archive/0020-shared-drive-roles.md) | — | — | done |
 | [0021 `drive:<name>/<path>` addressing](archive/0021-shared-drive-paths.md) | — | — | done |
+| [0022 `info` names a shared drive root](archive/0022-drive-root-name.md) | — | — | done |
 
 ## Parallelism notes
 
@@ -67,10 +68,10 @@ role-denied 403 out of `AUTH_REQUIRED` (issue #3, decision 0017) — a
 consequence of 0016 §1, since shared-drive requests only started reaching
 Drive's permission checks once `supportsAllDrives` was set.
 0020 widened `share add` to the shared-drive roles (issue #4, decision 0018,
-which revises 0011), and 0021 added `drive:<name>/<path>` addressing (issue #5,
-decision 0019, which supersedes 0016 §3). The remaining shared-drive follow-up
-is issue #6 (`info` on a drive root reports the name `Drive`). There is no open
-task right now.
+which revises 0011), 0021 added `drive:<name>/<path>` addressing (issue #5,
+decision 0019, which supersedes 0016 §3), and 0022 made `info` report a drive
+root's real name (issue #6, decision 0020). That closes the shared-drive
+follow-ups opened after v0.4.0; there is no open task right now.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
