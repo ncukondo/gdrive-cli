@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown, planInsert, planTableFills } from "./markdown-doc.ts";
+import {
+  parseMarkdown,
+  planCellFills,
+  planTable,
+  planTextRun,
+  toSegments,
+} from "./markdown-doc.ts";
 import { renderDocument, type DocumentRaw, type StructuralElementRaw } from "./docs-api.ts";
 
 describe("parseMarkdown — blocks", () => {
@@ -298,11 +304,11 @@ describe("round trip with renderDocument", () => {
   });
 });
 
-describe("planInsert — one round trip when nothing is a table", () => {
+describe("planTextRun", () => {
   const blocks = parseMarkdown("# Title\nplain **bold**\n- item").blocks;
 
-  it("inserts the whole payload once, then styles it back to front", () => {
-    const { requests, tables } = planInsert(blocks, 1);
+  it("inserts the whole run once, then styles it back to front", () => {
+    const { requests, length } = planTextRun(blocks, 1);
 
     // "Title\n" [1,7)  "plain bold\n" [7,18)  "item\n" [18,23)
     expect(requests).toEqual([
@@ -328,11 +334,11 @@ describe("planInsert — one round trip when nothing is a table", () => {
         },
       },
     ]);
-    expect(tables).toEqual([]);
+    expect(length).toBe(22);
   });
 
-  it("offsets every range by the anchor", () => {
-    const { requests } = planInsert(blocks, 101);
+  it("offsets every range by the start index", () => {
+    const { requests } = planTextRun(blocks, 101);
     expect(requests[0]).toEqual({
       insertText: { location: { index: 101 }, text: "Title\nplain bold\nitem\n" },
     });
@@ -345,22 +351,37 @@ describe("planInsert — one round trip when nothing is a table", () => {
     });
   });
 
-  it("nests a list with leading tabs and numbers an ordered one", () => {
-    const { requests } = planInsert(parseMarkdown("- top\n  1. deep").blocks, 1);
+  it("bullets a whole list in one request, so the tabs become nesting", () => {
+    const { requests } = planTextRun(parseMarkdown("- top\n  - deep\n- back").blocks, 1);
     expect(requests[0]).toEqual({
-      insertText: { location: { index: 1 }, text: "top\n\tdeep\n" },
+      insertText: { location: { index: 1 }, text: "top\n\tdeep\nback\n" },
     });
-    expect(requests[1]).toEqual({
-      createParagraphBullets: {
-        // "\tdeep" plus the newline the paragraph range covers
-        range: { startIndex: 5, endIndex: 11 },
-        bulletPreset: "NUMBERED_DECIMAL_ALPHA_ROMAN",
+    const bullets = requests.filter((r) => "createParagraphBullets" in r);
+    expect(bullets).toEqual([
+      {
+        createParagraphBullets: {
+          range: { startIndex: 1, endIndex: 16 },
+          bulletPreset: "BULLET_DISC_CIRCLE_SQUARE",
+        },
       },
-    });
+    ]);
+  });
+
+  it("reports the length the bullets leave behind, not the text sent", () => {
+    // "top\n\tdeep\nback\n" is 15 characters, and the tab does not survive.
+    expect(planTextRun(parseMarkdown("- top\n  - deep\n- back").blocks, 1).length).toBe(14);
+  });
+
+  it("starts a new list when the run changes between bullets and numbers", () => {
+    const { requests } = planTextRun(parseMarkdown("- a\n1. b").blocks, 1);
+    const presets = requests.flatMap((r) =>
+      "createParagraphBullets" in r ? [r.createParagraphBullets.bulletPreset] : [],
+    );
+    expect(presets).toEqual(["NUMBERED_DECIMAL_ALPHA_ROMAN", "BULLET_DISC_CIRCLE_SQUARE"]);
   });
 
   it("maps a quote to an indent and code to a monospace run", () => {
-    const { requests } = planInsert(parseMarkdown("> quoted\n\n```\nls\n```").blocks, 1);
+    const { requests } = planTextRun(parseMarkdown("> quoted\n\n```\nls\n```").blocks, 1);
     expect(requests).toEqual([
       { insertText: { location: { index: 1 }, text: "quoted\nls\n" } },
       {
@@ -381,7 +402,7 @@ describe("planInsert — one round trip when nothing is a table", () => {
   });
 
   it("carries a link across a styled span", () => {
-    const { requests } = planInsert(parseMarkdown("[**x**](https://e.com)").blocks, 1);
+    const { requests } = planTextRun(parseMarkdown("[**x**](https://e.com)").blocks, 1);
     expect(requests[1]).toEqual({
       updateTextStyle: {
         range: { startIndex: 1, endIndex: 2 },
@@ -390,84 +411,50 @@ describe("planInsert — one round trip when nothing is a table", () => {
       },
     });
   });
+
+  it("prepends a paragraph break when the caller asks for one", () => {
+    const { requests, length } = planTextRun(parseMarkdown("tail").blocks, 9, {
+      leadingNewline: true,
+    });
+    expect(requests[0]).toEqual({ insertText: { location: { index: 9 }, text: "\ntail\n" } });
+    expect(length).toBe(6);
+  });
 });
 
-describe("planInsert / planTableFills — a table costs a re-read", () => {
+describe("toSegments / planTable / planCellFills", () => {
   const blocks = parseMarkdown("intro\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter").blocks;
 
-  it("inserts every segment at the same anchor, last segment first", () => {
-    const { requests, tables } = planInsert(blocks, 5);
+  it("splits at the table, keeping the text on either side", () => {
+    expect(toSegments(blocks).map((s) => s.kind)).toEqual(["text", "table", "text"]);
+  });
 
-    expect(requests).toEqual([
-      { insertText: { location: { index: 5 }, text: "after\n" } },
-      { insertTable: { location: { index: 5 }, rows: 2, columns: 2 } },
-      { insertText: { location: { index: 5 }, text: "intro\n" } },
-    ]);
-    expect(tables).toEqual([
-      [
-        [[{ text: "a" }], [{ text: "b" }]],
-        [[{ text: "1" }], [{ text: "2" }]],
-      ],
-    ]);
+  it("creates the table empty, sized from the parsed rows", () => {
+    const segment = toSegments(blocks)[1];
+    const rows = segment?.kind === "table" ? segment.rows : [];
+    expect(planTable(rows, 7)).toEqual({
+      insertTable: { location: { index: 7 }, rows: 2, columns: 2 },
+    });
+    expect(planTable([], 7)).toBeNull();
   });
 
   it("fills the cells the re-read reports, in descending index order", () => {
-    const { tables } = planInsert(blocks, 5);
-    const document: DocumentRaw = {
-      body: {
-        content: [
-          {
-            startIndex: 1,
-            endIndex: 5,
-            paragraph: { elements: [{ textRun: { content: "old\n" } }] },
-          },
-          {
-            startIndex: 5,
-            endIndex: 11,
-            paragraph: { elements: [{ textRun: { content: "intro\n" } }] },
-          },
-          {
-            startIndex: 11,
-            endIndex: 25,
-            table: {
-              tableRows: [
-                {
-                  tableCells: [
-                    { content: [{ startIndex: 14, endIndex: 15 }] },
-                    { content: [{ startIndex: 16, endIndex: 17 }] },
-                  ],
-                },
-                {
-                  tableCells: [
-                    { content: [{ startIndex: 19, endIndex: 20 }] },
-                    { content: [{ startIndex: 21, endIndex: 22 }] },
-                  ],
-                },
-              ],
-            },
-          },
-        ],
-      },
+    const segment = toSegments(blocks)[1];
+    const rows = segment?.kind === "table" ? segment.rows : [];
+    const table = {
+      tableRows: [
+        { tableCells: [{ content: [{ startIndex: 10 }] }, { content: [{ startIndex: 12 }] }] },
+        { tableCells: [{ content: [{ startIndex: 15 }] }, { content: [{ startIndex: 17 }] }] },
+      ],
     };
 
-    expect(planTableFills(document, 5, tables)).toEqual([
-      { insertText: { location: { index: 21 }, text: "2" } },
-      { insertText: { location: { index: 19 }, text: "1" } },
-      { insertText: { location: { index: 16 }, text: "b" } },
-      { insertText: { location: { index: 14 }, text: "a" } },
-    ]);
-  });
-
-  it("ignores tables that were already in the document before the anchor", () => {
-    const before: StructuralElementRaw = {
-      startIndex: 1,
-      table: { tableRows: [{ tableCells: [{ content: [{ startIndex: 3 }] }] }] },
-    };
-    const ours: StructuralElementRaw = {
-      startIndex: 30,
-      table: { tableRows: [{ tableCells: [{ content: [{ startIndex: 33 }] }] }] },
-    };
-    const fills = planTableFills({ body: { content: [before, ours] } }, 20, [[[[{ text: "x" }]]]]);
-    expect(fills).toEqual([{ insertText: { location: { index: 33 }, text: "x" } }]);
+    expect(planCellFills(table, rows)).toEqual({
+      requests: [
+        { insertText: { location: { index: 17 }, text: "2" } },
+        { insertText: { location: { index: 15 }, text: "1" } },
+        { insertText: { location: { index: 12 }, text: "b" } },
+        { insertText: { location: { index: 10 }, text: "a" } },
+      ],
+      added: 4,
+    });
   });
 });

@@ -1,5 +1,12 @@
 import { mapDriveError as mapApiError } from "./api.ts";
-import { parseMarkdown, planInsert, planTableFills, type UnsupportedNote } from "./markdown-doc.ts";
+import {
+  parseMarkdown,
+  planCellFills,
+  planTable,
+  planTextRun,
+  toSegments,
+  type UnsupportedNote,
+} from "./markdown-doc.ts";
 
 // --- Raw Docs v1 shapes (only the fields we read) ---------------------------
 
@@ -327,10 +334,27 @@ async function applyRequests(
   }
 }
 
+/** The first table at or after `index`, which is the one we just created. */
+function tableAt(document: DocumentRaw, index: number): StructuralElementRaw | null {
+  for (const element of document.body?.content ?? []) {
+    if (element.table && (element.startIndex ?? 0) >= index) return element;
+  }
+  return null;
+}
+
 /**
  * Writes Markdown `source` at a 1-based index, returning what Docs could not
- * hold. A payload without a table is one round trip; a table costs a re-read,
- * because its cells' indices are the API's to decide (decision 0021 §5).
+ * hold.
+ *
+ * Segments are written **forward**, each at the cursor the previous one left.
+ * Writing them backwards at a fixed anchor would need no arithmetic, but
+ * inserting at a paragraph's start index merges into that paragraph, so its
+ * style — a heading, a quote's indent, a bullet — would spread over everything
+ * inserted before it afterwards.
+ *
+ * A payload without a table is still one round trip. A table costs a re-read:
+ * its cells' indices are the API's to decide, and guessing them writes cell
+ * text into the wrong cell — a failure that looks like success (0021 §5).
  */
 export async function insertMarkdown(
   client: DocsClient,
@@ -340,13 +364,39 @@ export async function insertMarkdown(
   options: { leadingNewline?: boolean } = {},
 ): Promise<UnsupportedNote[]> {
   const { blocks, unsupported } = parseMarkdown(source);
-  const plan = planInsert(blocks, index, options);
-  await applyRequests(client, documentId, plan.requests);
+  let cursor = index;
+  let leadingNewline = options.leadingNewline === true;
+  let pending: DocsRequest[] = [];
 
-  if (plan.tables.length > 0) {
-    const document = await getDocument(client, documentId);
-    await applyRequests(client, documentId, planTableFills(document, index, plan.tables));
+  for (const segment of toSegments(blocks)) {
+    if (segment.kind === "text") {
+      const plan = planTextRun(segment.blocks, cursor, { leadingNewline });
+      pending.push(...plan.requests);
+      cursor += plan.length;
+      leadingNewline = false;
+      continue;
+    }
+
+    if (leadingNewline) {
+      pending.push({ insertText: { location: { index: cursor }, text: "\n" } });
+      cursor += 1;
+      leadingNewline = false;
+    }
+    const create = planTable(segment.rows, cursor);
+    if (create === null) continue;
+
+    pending.push(create);
+    await applyRequests(client, documentId, pending);
+    pending = [];
+
+    const element = tableAt(await getDocument(client, documentId), cursor);
+    if (element?.table === undefined || element.table === null) continue;
+    const fills = planCellFills(element.table, segment.rows);
+    await applyRequests(client, documentId, fills.requests);
+    cursor = (element.endIndex ?? cursor) + fills.added;
   }
+
+  await applyRequests(client, documentId, pending);
   return unsupported;
 }
 

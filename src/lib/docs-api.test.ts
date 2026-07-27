@@ -291,13 +291,33 @@ describe("insertMarkdown", () => {
     ]);
   });
 
-  it("starts a new paragraph when asked, before everything else", async () => {
+  it("starts a new paragraph when asked", async () => {
     const client = mockDocs();
     await insertMarkdown(client, "D1", 9, "tail", { leadingNewline: true });
     const requests = callArgs(vi.mocked(client.documents.batchUpdate))[0].requestBody.requests;
-    expect(requests[requests.length - 1]).toEqual({
-      insertText: { location: { index: 9 }, text: "\n" },
-    });
+    expect(requests[0]).toEqual({ insertText: { location: { index: 9 }, text: "\ntail\n" } });
+  });
+
+  it("writes the text after a table past the table's real end", async () => {
+    const filled: DocumentRaw = {
+      body: {
+        content: [
+          {
+            startIndex: 1,
+            endIndex: 9,
+            table: { tableRows: [{ tableCells: [{ content: [{ startIndex: 4 }] }] }] },
+          },
+        ],
+      },
+    };
+    const client = mockDocs({ get: vi.fn(async () => ({ data: filled })) });
+    await insertMarkdown(client, "D1", 1, "| a |\n| --- |\n\nafter");
+
+    const last = vi.mocked(client.documents.batchUpdate).mock.calls.at(-1)?.[0];
+    // the table ended at 9 and one character went into its cell
+    expect(last?.requestBody.requests).toEqual([
+      { insertText: { location: { index: 10 }, text: "after\n" } },
+    ]);
   });
 
   it("reports what Docs cannot hold", async () => {

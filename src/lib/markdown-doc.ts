@@ -8,14 +8,7 @@
  * back apart.
  */
 
-import type {
-  DocsRange,
-  DocsRequest,
-  DocsTextStyleWrite,
-  DocumentRaw,
-  StructuralElementRaw,
-  TableRaw,
-} from "./docs-api.ts";
+import type { DocsRange, DocsRequest, DocsTextStyleWrite, TableRaw } from "./docs-api.ts";
 
 export interface SpanStyle {
   bold?: true;
@@ -285,13 +278,6 @@ const BULLET_PRESET = {
   unordered: "BULLET_DISC_CIRCLE_SQUARE",
 } as const;
 
-export interface InsertPlan {
-  /** One `batchUpdate` worth of requests, in the order they must be sent. */
-  requests: DocsRequest[];
-  /** The tables inserted, in document order — cells are filled after a re-read. */
-  tables: TableRows[];
-}
-
 function spanText(spans: InlineSpan[]): string {
   return spans.map((span) => span.text).join("");
 }
@@ -350,8 +336,9 @@ function spanRequests(spans: InlineSpan[], start: number): DocsRequest[] {
 
 /**
  * Requests that style one already-inserted block whose text starts at `start`.
- * Bullets come last: `createParagraphBullets` strips the leading tabs, which
- * moves everything after them.
+ * List bullets are not here: they are planned per contiguous run, because one
+ * request per item makes each item its own single-item list and loses the
+ * nesting the tabs encode.
  */
 function blockRequests(block: MarkdownBlock, start: number): DocsRequest[] {
   const text = blockText(block);
@@ -390,20 +377,15 @@ function blockRequests(block: MarkdownBlock, start: number): DocsRequest[] {
       },
     });
   }
-  if (block.kind === "list") {
-    requests.push({
-      createParagraphBullets: {
-        range: paragraph,
-        bulletPreset: block.ordered ? BULLET_PRESET.ordered : BULLET_PRESET.unordered,
-      },
-    });
-  }
   return requests;
 }
 
-type Segment = { kind: "text"; blocks: MarkdownBlock[] } | { kind: "table"; rows: TableRows };
+export type Segment =
+  | { kind: "text"; blocks: MarkdownBlock[] }
+  | { kind: "table"; rows: TableRows };
 
-function toSegments(blocks: MarkdownBlock[]): Segment[] {
+/** Splits blocks at table boundaries: tables are written in their own pass. */
+export function toSegments(blocks: MarkdownBlock[]): Segment[] {
   const segments: Segment[] = [];
   for (const block of blocks) {
     if (block.kind === "table") {
@@ -417,101 +399,130 @@ function toSegments(blocks: MarkdownBlock[]): Segment[] {
   return segments;
 }
 
-/**
- * Requests that write `blocks` at `anchor`.
- *
- * Every insertion targets the same index and the segments go in reverse, so
- * each one pushes its predecessors right and no index has to be recomputed —
- * the arithmetic that would otherwise be wrong the moment a table changes size.
- * A segment's styles follow its own `insertText` immediately, while its text is
- * still at the anchor; within a segment the blocks go back to front, because
- * bullets delete the tabs in front of an item and shift everything after it.
- */
-export function planInsert(
-  blocks: MarkdownBlock[],
-  anchor: number,
-  options: { leadingNewline?: boolean } = {},
-): InsertPlan {
-  const segments = toSegments(blocks);
-  const requests: DocsRequest[] = [];
-  const tables: TableRows[] = [];
+export interface TextRunPlan {
+  requests: DocsRequest[];
+  /**
+   * Characters the run leaves behind, so the caller knows where the next
+   * segment starts. Not the length of the text sent: `createParagraphBullets`
+   * deletes the tabs that told it the nesting level.
+   */
+  length: number;
+}
 
-  for (const segment of [...segments].reverse()) {
-    if (segment.kind === "table") {
-      const columns = segment.rows[0]?.length ?? 0;
-      if (segment.rows.length === 0 || columns === 0) continue;
-      requests.push({
-        insertTable: { location: { index: anchor }, rows: segment.rows.length, columns },
-      });
-      tables.unshift(segment.rows);
+/** The end of the paragraph a block occupies, newline included. */
+function paragraphEnd(block: MarkdownBlock, start: number): number {
+  return start + blockText(block).length + 1;
+}
+
+/**
+ * Requests that write a run of non-table blocks at `start` and style them.
+ *
+ * The text goes in once; every range is then known before the call, because a
+ * request's indices are read against the document as of the preceding request.
+ * The style units go back to front: `createParagraphBullets` deletes the tabs
+ * that told it the nesting level, which moves everything after them.
+ */
+export function planTextRun(
+  blocks: MarkdownBlock[],
+  start: number,
+  options: { leadingNewline?: boolean } = {},
+): TextRunPlan {
+  const lead = options.leadingNewline === true ? "\n" : "";
+  const lines = blocks.map((block) => `${blockText(block)}\n`);
+  const text = lead + lines.join("");
+  if (text === "") return { requests: [], length: 0 };
+
+  const starts: number[] = [];
+  let offset = start + lead.length;
+  for (const line of lines) {
+    starts.push(offset);
+    offset += line.length;
+  }
+
+  // One unit per block, except that a run of same-kind list items is one unit:
+  // its bullets request has to span the whole list for the nesting to land.
+  const units: { requests: DocsRequest[] }[] = [];
+  let i = 0;
+  while (i < blocks.length) {
+    const block = blocks[i];
+    const blockStart = starts[i];
+    if (block === undefined || blockStart === undefined) {
+      i += 1;
+      continue;
+    }
+    if (block.kind !== "list") {
+      units.push({ requests: blockRequests(block, blockStart) });
+      i += 1;
       continue;
     }
 
-    const lines = segment.blocks.map((block) => `${blockText(block)}\n`);
-    requests.push({ insertText: { location: { index: anchor }, text: lines.join("") } });
-
-    const starts: number[] = [];
-    let offset = anchor;
-    for (const line of lines) {
-      starts.push(offset);
-      offset += line.length;
+    let last = i;
+    for (;;) {
+      const next = blocks[last + 1];
+      if (next?.kind !== "list" || next.ordered !== block.ordered) break;
+      last += 1;
     }
-    for (let i = segment.blocks.length - 1; i >= 0; i -= 1) {
-      const block = segment.blocks[i];
-      const start = starts[i];
-      if (block !== undefined && start !== undefined) requests.push(...blockRequests(block, start));
+    const requests: DocsRequest[] = [];
+    for (let k = i; k <= last; k += 1) {
+      const item = blocks[k];
+      const itemStart = starts[k];
+      if (item !== undefined && itemStart !== undefined) {
+        requests.push(...blockRequests(item, itemStart));
+      }
     }
+    const lastItem = blocks[last];
+    const lastStart = starts[last];
+    if (lastItem !== undefined && lastStart !== undefined) {
+      requests.push({
+        createParagraphBullets: {
+          range: { startIndex: blockStart, endIndex: paragraphEnd(lastItem, lastStart) },
+          bulletPreset: block.ordered ? BULLET_PRESET.ordered : BULLET_PRESET.unordered,
+        },
+      });
+    }
+    units.push({ requests });
+    i = last + 1;
   }
 
-  // Last at the anchor means first in the document: a paragraph break in front
-  // of everything, for an append that must not join the previous paragraph.
-  if (options.leadingNewline === true && requests.length > 0) {
-    requests.push({ insertText: { location: { index: anchor }, text: "\n" } });
-  }
-
-  return { requests, tables };
+  const requests: DocsRequest[] = [{ insertText: { location: { index: start }, text } }];
+  for (let u = units.length - 1; u >= 0; u -= 1) requests.push(...(units[u]?.requests ?? []));
+  const tabsRemoved = blocks.reduce((sum, block) => sum + tabs(block).length, 0);
+  return { requests, length: text.length - tabsRemoved };
 }
 
-/** The tables our own insertion added, in document order. */
-function insertedTables(document: DocumentRaw, anchor: number): TableRaw[] {
-  const found: TableRaw[] = [];
-  const walk = (content: StructuralElementRaw[]) => {
-    for (const element of content) {
-      const start = element.startIndex ?? 0;
-      if (element.table && start >= anchor) found.push(element.table);
-    }
-  };
-  walk(document.body?.content ?? []);
-  return found;
+/** The request that creates an empty table at `index`, or null for no table. */
+export function planTable(rows: TableRows, index: number): DocsRequest | null {
+  const columns = rows[0]?.length ?? 0;
+  if (rows.length === 0 || columns === 0) return null;
+  return { insertTable: { location: { index }, rows: rows.length, columns } };
+}
+
+export interface CellFillPlan {
+  requests: DocsRequest[];
+  /** Characters added to the table, so the caller can advance past it. */
+  added: number;
 }
 
 /**
- * Cell fills for the tables `planInsert` created, read back from `document`.
- * Descending order throughout: an insert into an earlier cell moves every later
- * one, so the later ones are written first (decision 0021 §5).
+ * Fills a just-created table from the indices the API reported for its cells.
+ * Descending throughout: writing into an earlier cell moves every later one.
  */
-export function planTableFills(
-  document: DocumentRaw,
-  anchor: number,
-  tables: TableRows[],
-): DocsRequest[] {
-  const found = insertedTables(document, anchor);
+export function planCellFills(table: TableRaw, rows: TableRows): CellFillPlan {
   const requests: DocsRequest[] = [];
+  const rawRows = table.tableRows ?? [];
+  let added = 0;
 
-  for (let t = Math.min(found.length, tables.length) - 1; t >= 0; t -= 1) {
-    const rows = tables[t] ?? [];
-    const rawRows = found[t]?.tableRows ?? [];
-    for (let r = rawRows.length - 1; r >= 0; r -= 1) {
-      const cells = rawRows[r]?.tableCells ?? [];
-      for (let c = cells.length - 1; c >= 0; c -= 1) {
-        const spans = rows[r]?.[c] ?? [];
-        const text = spanText(spans);
-        const start = cells[c]?.content?.[0]?.startIndex;
-        if (text === "" || typeof start !== "number") continue;
-        requests.push({ insertText: { location: { index: start }, text } });
-        requests.push(...spanRequests(spans, start));
-      }
+  for (let r = rawRows.length - 1; r >= 0; r -= 1) {
+    const cells = rawRows[r]?.tableCells ?? [];
+    for (let c = cells.length - 1; c >= 0; c -= 1) {
+      const spans = rows[r]?.[c] ?? [];
+      const text = spanText(spans);
+      const start = cells[c]?.content?.[0]?.startIndex;
+      if (text === "" || typeof start !== "number") continue;
+      requests.push({ insertText: { location: { index: start }, text } });
+      requests.push(...spanRequests(spans, start));
+      added += text.length;
     }
   }
-  return requests;
+  return { requests, added };
 }
