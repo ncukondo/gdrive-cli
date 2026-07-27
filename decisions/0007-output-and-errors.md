@@ -48,6 +48,7 @@ All datetime fields are ISO 8601 with offset. Byte sizes are integers.
 | `AUTH_REQUIRED` | No usable credentials for the account | 2 |
 | `AUTH_EXPIRED` | Token expired and refresh failed | 2 |
 | `ACCOUNT_NOT_FOUND` | Named account/alias is not authenticated | 2 |
+| `PERMISSION_DENIED` | Signed in, but the account's role does not allow this | 1 |
 | `NOT_FOUND` | File / folder / doc / sheet / range not found | 1 |
 | `INVALID_ARGS` | Invalid command arguments | 3 |
 | `API_ERROR` | Google API returned an error | 1 |
@@ -68,3 +69,6 @@ All datetime fields are ISO 8601 with offset. Byte sizes are integers.
   the error envelope; command handlers never build JSON by hand.
 - Errors thrown internally carry an `ErrorCode`; a top-level handler maps code
   → exit code and renders per the active format.
+- Exit 2 is reserved for conditions `gdrive auth` can actually fix. A 403 that
+  reflects the account's *role* is exit 1; see
+  [0017](0017-permission-denied-error-code.md) for the split.
