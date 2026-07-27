@@ -163,6 +163,85 @@ describe("parseMarkdown — a run that does not start at 1 stays text (0023 §3)
   });
 });
 
+/**
+ * Decision 0024 §2/§3. A hard break is the single exception to
+ * one-source-line-is-one-block: the author asked for a join, in the one syntax
+ * that says so. A bare newline still joins nothing, which is what makes the
+ * exception safe.
+ */
+describe("parseMarkdown — hard breaks join lines (0024 §2)", () => {
+  /** U+000B, written by code point so it is not an invisible byte here. */
+  const VT = String.fromCharCode(11);
+
+  it("joins a line ending in a backslash", () => {
+    expect(parseMarkdown("a\\\nb").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: `a${VT}b` }] },
+    ]);
+  });
+
+  it("joins a line ending in two or more spaces", () => {
+    expect(parseMarkdown("a  \nb").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: `a${VT}b` }] },
+    ]);
+    expect(parseMarkdown("a   \nb").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: `a${VT}b` }] },
+    ]);
+  });
+
+  it("does not join on an escaped backslash — the escape rule wins", () => {
+    expect(parseMarkdown("a\\\\\nb").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "a\\" }] },
+      { kind: "paragraph", spans: [{ text: "b" }] },
+    ]);
+  });
+
+  it("joins a run of lines, not just a pair", () => {
+    expect(parseMarkdown("a\\\nb\\\nc").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: `a${VT}b${VT}c` }] },
+    ]);
+  });
+
+  it("drops a break with nothing after it", () => {
+    expect(parseMarkdown("a\\\n").blocks).toEqual([{ kind: "paragraph", spans: [{ text: "a" }] }]);
+    expect(parseMarkdown("a\\").blocks).toEqual([{ kind: "paragraph", spans: [{ text: "a" }] }]);
+    expect(parseMarkdown("a\\\n\nb").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "a" }] },
+      { kind: "paragraph", spans: [{ text: "b" }] },
+    ]);
+  });
+
+  it("keeps a break inside the heading or list item that owns it", () => {
+    expect(parseMarkdown("## a\\\nb").blocks).toEqual([
+      { kind: "heading", level: 2, spans: [{ text: `a${VT}b` }] },
+    ]);
+    expect(parseMarkdown("- a\\\nb").blocks).toEqual([
+      { kind: "list", ordered: false, level: 0, spans: [{ text: `a${VT}b` }] },
+    ]);
+  });
+
+  it("does not swallow a line that starts a block of its own", () => {
+    expect(parseMarkdown("a  \n## head").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "a" }] },
+      { kind: "heading", level: 2, spans: [{ text: "head" }] },
+    ]);
+    expect(parseMarkdown("- a  \n- b").blocks).toEqual([
+      { kind: "list", ordered: false, level: 0, spans: [{ text: "a" }] },
+      { kind: "list", ordered: false, level: 0, spans: [{ text: "b" }] },
+    ]);
+  });
+
+  it("leaves a fenced block alone, where a backslash is content", () => {
+    expect(parseMarkdown("```\na\\\nb\n```").blocks).toEqual([{ kind: "code", text: "a\\\nb" }]);
+  });
+
+  it("still keeps one paragraph per line without a break (0021)", () => {
+    expect(parseMarkdown("a\nb").blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "a" }] },
+      { kind: "paragraph", spans: [{ text: "b" }] },
+    ]);
+  });
+});
+
 describe("parseMarkdown — inline", () => {
   it("reads bold, italic, and links", () => {
     const { blocks } = parseMarkdown("plain **bold** and *italic* and [text](https://e.com).");
@@ -521,6 +600,33 @@ describe("round trip with renderDocument", () => {
     expect(parseMarkdown(renderDocument(document, "markdown")).blocks).toEqual([
       { kind: "paragraph", spans: [{ text: "5. " }, { text: "five" }] },
       { kind: "paragraph", spans: [{ text: "6. " }, { text: "six" }] },
+    ]);
+  });
+
+  it("survives a line break inside a paragraph and inside a heading", () => {
+    const VT = String.fromCharCode(11);
+    const document: DocumentRaw = {
+      body: {
+        content: [
+          para([`Agenda${VT}and notes`], { style: "HEADING_2" }),
+          para(["first line", { text: `${VT}second line`, bold: true }]),
+        ],
+      },
+    };
+
+    // The break leaves the emphasis on the way out — the renderer keeps
+    // whitespace outside the markers — and comes back attached to the plain
+    // run instead. A break carries no styling either way, so the document
+    // reads the same; only which span owns it moves.
+    expect(renderDocument(document, "markdown")).toBe(
+      "## Agenda\\\nand notes\nfirst line\\\n**second line**",
+    );
+    expect(parseMarkdown(renderDocument(document, "markdown")).blocks).toEqual([
+      { kind: "heading", level: 2, spans: [{ text: `Agenda${VT}and notes` }] },
+      {
+        kind: "paragraph",
+        spans: [{ text: `first line${VT}` }, { text: "second line", bold: true }],
+      },
     ]);
   });
 

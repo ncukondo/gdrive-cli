@@ -529,7 +529,16 @@ Appended to Meeting notes (1BzqpK...)
 ```
 
 One source line is one paragraph, matching what `read` prints — Markdown's rule
-that consecutive lines join into one paragraph does not apply.
+that consecutive lines join into one paragraph does not apply. The exception is
+a **hard break**: end a line with a backslash (or with two spaces) to put a line
+break *inside* a paragraph, the same break Shift+Enter makes in the Docs UI. A
+blank line is still what makes a new paragraph.
+
+```console
+$ printf 'first line\\\nsecond line\n' | gdrive docs append "Notes/Ops" -
+```
+
+`read` prints such a break as a trailing backslash, so it survives the pipe.
 
 `<https://…>` and a bare `https://…` both become links, as does `[text](url)`.
 

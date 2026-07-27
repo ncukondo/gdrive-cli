@@ -248,6 +248,51 @@ describe("renderDocument --as markdown", () => {
     });
   });
 
+  /**
+   * Decision 0024. Docs uses U+000B for a line break inside a paragraph — what
+   * Shift+Enter makes — and it reached the output as a raw control character.
+   */
+  describe("a soft line break becomes a hard break (0024 §1)", () => {
+    /** U+000B, written by code point so it is not an invisible byte here. */
+    const VT = String.fromCharCode(11);
+
+    it("spells a break with a backslash, keeping one paragraph", () => {
+      expect(renderDocument(doc([para([`a${VT}b\n`])]), "markdown")).toBe("a\\\nb");
+    });
+
+    it("renders every break in a paragraph", () => {
+      expect(renderDocument(doc([para([`a${VT}b${VT}c\n`])]), "markdown")).toBe("a\\\nb\\\nc");
+    });
+
+    it("renders a break in a heading and in a list item", () => {
+      const md = renderDocument(
+        doc(
+          [
+            para([`a${VT}b\n`], { style: "HEADING_2" }),
+            para([`c${VT}d\n`], { bullet: { listId: "L1" } }),
+          ],
+          {
+            lists: { L1: { listProperties: { nestingLevels: [{ glyphSymbol: "●" }] } } },
+          },
+        ),
+        "markdown",
+      );
+      expect(md).toBe("## a\\\nb\n- c\\\nd");
+    });
+
+    it("drops trailing spaces, which would otherwise read as a break of their own", () => {
+      expect(renderDocument(doc([para(["a  \n"])]), "markdown")).toBe("a");
+    });
+
+    it("leaves a paragraph without a break byte for byte", () => {
+      expect(renderDocument(doc([para(["plain text\n"])]), "markdown")).toBe("plain text");
+    });
+
+    it("gives plain text a real newline rather than the control character", () => {
+      expect(renderDocument(doc([para([`a${VT}b\n`])]), "text")).toBe("a\nb");
+    });
+  });
+
   it("renders tables as pipe rows with a header separator", () => {
     const table: StructuralElementRaw = {
       table: {

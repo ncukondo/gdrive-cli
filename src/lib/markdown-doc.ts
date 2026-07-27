@@ -6,6 +6,12 @@
  * line is one block: `read` separates blocks with a single newline, so merging
  * soft-wrapped lines the way CommonMark does would fuse paragraphs that came
  * back apart.
+ *
+ * A CommonMark hard break — a line ending in `\` or in two spaces — is the one
+ * exception (0024 §3): it joins the next line into the same block with a
+ * `U+000B`, the character Docs uses for a break inside a paragraph. The rule
+ * above is what makes that safe, since a bare newline never joins anything, so
+ * the only way to produce a break is to ask for one.
  */
 
 import type { DocsRange, DocsRequest, DocsTextStyleWrite, TableRaw } from "./docs-api.ts";
@@ -69,6 +75,62 @@ const BARE_URL = /^https?:\/\/[^\s<>]+/;
 /** Sentence punctuation that a bare URL should not swallow. */
 const URL_TAIL = /[.,;:!?]+$/;
 const ORDERED_MARKER = /^(\d+)[.)]$/;
+/** Docs' character for a line break inside a paragraph (decision 0024). */
+export const LINE_BREAK = "\u000B";
+
+/**
+ * Where to cut a line that ends in a CommonMark hard break, or null. Trailing
+ * backslashes count: an odd run ends in a break, an even one is an escaped
+ * backslash and the existing escape rule wins.
+ */
+function hardBreakAt(line: string): number | null {
+  const spaces = / {2,}$/.exec(line);
+  if (spaces) return line.length - spaces[0].length;
+  const slashes = /\\+$/.exec(line);
+  if (slashes && slashes[0].length % 2 === 1) return line.length - 1;
+  return null;
+}
+
+/**
+ * True when a line opens a block of its own, so a hard break on the line before
+ * must not swallow it. Trailing whitespace is invisible and easy to leave
+ * behind, and joining `- a  ` to `- b` would silently fuse two list items.
+ */
+function startsBlock(line: string): boolean {
+  if (line.trim() === "") return true;
+  return (
+    FENCE.test(line) ||
+    HEADING.test(line) ||
+    RULE.test(line) ||
+    QUOTE.test(line) ||
+    TABLE_ROW.test(line) ||
+    LIST_ITEM.test(line) ||
+    INDENTED.test(line) ||
+    HTML_LINE.test(line)
+  );
+}
+
+/**
+ * The block-level line starting at `from`: one source line, extended over any
+ * that a hard break joins to it, with `LINE_BREAK` where each break was
+ * (decision 0024 §2). Callers that consume raw lines themselves — fences,
+ * indented code, table rows — keep reading `lines` directly, so a backslash
+ * inside a code block stays content.
+ */
+function logicalLine(lines: string[], from: number): { text: string; next: number } {
+  let text = "";
+  let i = from;
+  for (;;) {
+    const line = lines[i] ?? "";
+    const cut = hardBreakAt(line);
+    const next = lines[i + 1];
+    if (cut === null || next === undefined || startsBlock(next)) {
+      return { text: text + (cut === null ? line : line.slice(0, cut)), next: i + 1 };
+    }
+    text += line.slice(0, cut) + LINE_BREAK;
+    i += 1;
+  }
+}
 
 /** True for `| --- | :-: |` — the row that makes the line above it a header. */
 function isSeparatorRow(line: string | undefined): boolean {
@@ -298,15 +360,15 @@ export function parseMarkdown(source: string): ParsedMarkdown {
 
   let i = 0;
   while (i < lines.length) {
-    const line = lines[i] ?? "";
+    const raw = lines[i] ?? "";
     const number = i + 1;
 
-    if (line.trim() === "") {
+    if (raw.trim() === "") {
       i += 1;
       continue;
     }
 
-    const fence = FENCE.exec(line);
+    const fence = FENCE.exec(raw);
     if (fence) {
       const marker = fence[1] ?? "```";
       const body: string[] = [];
@@ -321,7 +383,7 @@ export function parseMarkdown(source: string): ParsedMarkdown {
     }
 
     // Indented code, but never a nested list item — `read` indents those too.
-    if (INDENTED.test(line) && !LIST_ITEM.test(line)) {
+    if (INDENTED.test(raw) && !LIST_ITEM.test(raw)) {
       const body: string[] = [];
       while (i < lines.length) {
         const candidate = lines[i] ?? "";
@@ -333,6 +395,9 @@ export function parseMarkdown(source: string): ParsedMarkdown {
       continue;
     }
 
+    // Everything from here owns one block-level line, hard breaks included.
+    const { text: line, next: after } = logicalLine(lines, i);
+
     const heading = HEADING.exec(line);
     if (heading) {
       blocks.push({
@@ -340,24 +405,24 @@ export function parseMarkdown(source: string): ParsedMarkdown {
         level: (heading[1] ?? "#").length,
         spans: inline(heading[2] ?? "", number),
       });
-      i += 1;
+      i = after;
       continue;
     }
 
     if (RULE.test(line)) {
-      i += 1;
+      i = after;
       continue;
     }
 
     const quote = QUOTE.exec(line);
     if (quote) {
       blocks.push({ kind: "quote", spans: inline(quote[1] ?? "", number) });
-      i += 1;
+      i = after;
       continue;
     }
 
-    if (TABLE_ROW.test(line) && isSeparatorRow(lines[i + 1])) {
-      const rows: TableRows = [splitRow(line).map((cell) => inline(cell, number))];
+    if (TABLE_ROW.test(raw) && isSeparatorRow(lines[i + 1])) {
+      const rows: TableRows = [splitRow(raw).map((cell) => inline(cell, number))];
       i += 2;
       while (i < lines.length && TABLE_ROW.test(lines[i] ?? "")) {
         rows.push(splitRow(lines[i] ?? "").map((cell) => inline(cell, i + 1)));
@@ -380,19 +445,19 @@ export function parseMarkdown(source: string): ParsedMarkdown {
         ...(ordinal !== null ? { number: Number(ordinal[1]) } : {}),
         spans: inline(item[3] ?? "", number),
       });
-      i += 1;
+      i = after;
       continue;
     }
 
     if (HTML_LINE.test(line) && !AUTOLINK.test(line.trimStart())) {
       unsupported.push({ line: number, kind: "html" });
       blocks.push({ kind: "paragraph", spans: [{ text: line.trim() }] });
-      i += 1;
+      i = after;
       continue;
     }
 
     blocks.push({ kind: "paragraph", spans: inline(line, number) });
-    i += 1;
+    i = after;
   }
 
   return { blocks: resolveOrderedRuns(blocks, markers), unsupported };
@@ -586,8 +651,7 @@ export function planTextRun(
     offset += line.length;
   }
 
-  const preset = (ordered: boolean) =>
-    ordered ? BULLET_PRESET.ordered : BULLET_PRESET.unordered;
+  const preset = (ordered: boolean) => (ordered ? BULLET_PRESET.ordered : BULLET_PRESET.unordered);
 
   // One unit per block, except that everything belonging to one Docs list is a
   // single unit: its bullets request has to span the whole list for the nesting

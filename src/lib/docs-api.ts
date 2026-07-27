@@ -1,5 +1,6 @@
 import { mapDriveError as mapApiError } from "./api.ts";
 import {
+  LINE_BREAK,
   parseMarkdown,
   planCellFills,
   planTable,
@@ -254,10 +255,24 @@ function plainText(content: StructuralElementRaw[]): string {
   return out;
 }
 
+/**
+ * Spells Docs' in-paragraph line breaks as CommonMark hard breaks (0024 §1).
+ * Trailing spaces go with them: they are invisible, and left in place they
+ * would read back as a break of their own.
+ */
+function hardBreaks(block: string): string {
+  return block
+    .split(LINE_BREAK)
+    .map((line) => line.replace(/ +$/, ""))
+    .join("\\\n");
+}
+
 /** Renders a document body as Markdown or plain text (decision 0009). */
 export function renderDocument(document: DocumentRaw, as: DocsRenderFormat): string {
   const content = document.body?.content ?? [];
-  if (as === "text") return plainText(content).replace(/\n+$/, "");
+  if (as === "text") {
+    return plainText(content).replaceAll(LINE_BREAK, "\n").replace(/\n+$/, "");
+  }
 
   const lists = document.lists ?? {};
   const ordinal = makeOrdinals();
@@ -266,7 +281,9 @@ export function renderDocument(document: DocumentRaw, as: DocsRenderFormat): str
     if (element.paragraph) {
       const paragraph = element.paragraph;
       blocks.push(
-        paragraphPrefix(paragraph, lists, ordinal) + inlineMarkdown(paragraph.elements ?? []),
+        hardBreaks(
+          paragraphPrefix(paragraph, lists, ordinal) + inlineMarkdown(paragraph.elements ?? []),
+        ),
       );
     } else if (element.table) {
       blocks.push(markdownTable(element.table));
