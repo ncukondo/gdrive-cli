@@ -45,6 +45,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0018 Shared-drive review fixes](archive/0018-shared-drive-review-fixes.md) | 0017 | — | done |
 | [0019 `PERMISSION_DENIED` for a role-denied 403](archive/0019-permission-denied-error-code.md) | — | — | done |
 | [0020 `share add` grants the shared-drive roles](archive/0020-shared-drive-roles.md) | — | — | done |
+| [0021 `drive:<name>/<path>` addressing](archive/0021-shared-drive-paths.md) | — | — | done |
 
 ## Parallelism notes
 
@@ -64,11 +65,12 @@ before 0015 (decision 0015). 0017 fixed shared-drive access (issue #1) under
 decision 0016, and 0018 closed the gaps its review found. 0019 then split a
 role-denied 403 out of `AUTH_REQUIRED` (issue #3, decision 0017) — a
 consequence of 0016 §1, since shared-drive requests only started reaching
-Drive's permission checks once `supportsAllDrives` was set. The remaining
+Drive's permission checks once `supportsAllDrives` was set.
 0020 widened `share add` to the shared-drive roles (issue #4, decision 0018,
-which revises 0011). The remaining shared-drive follow-ups are issues #5 (paths
-across shared drives) and #6 (`info` on a drive root reports the name `Drive`).
-There is no open task right now.
+which revises 0011), and 0021 added `drive:<name>/<path>` addressing (issue #5,
+decision 0019, which supersedes 0016 §3). The remaining shared-drive follow-up
+is issue #6 (`info` on a drive root reports the name `Drive`). There is no open
+task right now.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
