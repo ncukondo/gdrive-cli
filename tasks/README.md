@@ -50,7 +50,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0023 `docs` writes take Markdown by default](archive/0023-markdown-writes.md) | — | — | done |
 | [0024 `insert --before` / `--after <marker>`](archive/0024-insert-at-marker.md) | 0023 | — | done |
 | [0025 List numbering & links](archive/0025-list-numbering-and-links.md) | 0023 | — | done |
-| [0026 Soft line breaks](0026-soft-line-breaks.md) | 0025 | — | todo |
+| [0026 Soft line breaks](archive/0026-soft-line-breaks.md) | 0025 | — | done |
 
 ## Parallelism notes
 
@@ -97,7 +97,12 @@ from measurements against Drive's native `text/markdown` import and the Docs
 API, which is what 0021 §4 asks for; the numbers are reachable through the API
 even though `startNumber` is read-only, and 0023 §2 records the three-step
 sequence that gets there. The two tasks run in order because they change the
-same parser and the same round-trip test.
+same parser and the same round-trip test. Both are **done**, and both found the
+same shape of thing in implementation: a rule the decision stated correctly but
+did not follow through to its arithmetic or its guards. Those corrections are in
+each task's outcome notes and, where they change what the record claims, back in
+the decision. Issues #8 and #9 are closed by them; there is no open task right
+now.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
