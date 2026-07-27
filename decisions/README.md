@@ -35,6 +35,8 @@ instead of restating them.
 | [0020](0020-drive-root-name.md) | `info` on a drive root reports the drive's real name |
 | [0021](0021-markdown-writes.md) | Markdown is the format on both sides of `docs`; writes default to it (extends 0009) |
 | [0022](0022-insert-at-marker.md) | `insert --before` / `--after <marker>` positions by text (extends 0009) |
+| [0023](0023-list-numbering-and-links.md) | Ordered lists keep their numbering; autolinks and bare URLs link (extends 0021) |
+| [0024](0024-soft-line-breaks.md) | A soft line break round-trips as a `\` hard break (extends 0021) |
 
 ## Related projects (reference implementations)
 
