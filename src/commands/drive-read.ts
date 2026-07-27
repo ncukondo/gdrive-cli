@@ -10,9 +10,11 @@ import {
   exportFile,
   getFile,
   listChildren,
+  listSharedDrives,
   resolveDriveScope,
   searchFiles,
   type DriveClient,
+  type DriveScopeArgs,
 } from "../lib/api.ts";
 import { resolvePath } from "../lib/resolve-path.ts";
 import { resolveGlobalOptions, handleError, type GlobalOptions } from "../index.ts";
@@ -20,6 +22,7 @@ import { createLsCommand, handleLs, parseLimit, parseOrder, parseType } from "./
 import { createSearchCommand, handleSearch } from "./search.ts";
 import { createInfoCommand, handleInfo } from "./info.ts";
 import { createDownloadCommand, handleDownload, parseExportAs } from "./download.ts";
+import { createDrivesCommand, handleDrives } from "./drives.ts";
 
 async function buildDrive(opts: GlobalOptions): Promise<DriveClient> {
   const config = loadConfig(nodeFs, opts.config);
@@ -39,18 +42,12 @@ function toBuffer(content: unknown): Buffer {
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
 
-/** The `--all-drives` / `--drive <name>` pair as commander hands them over. */
-interface ScopeOptions {
-  allDrives?: boolean;
-  drive?: string;
-}
-
 export function registerDriveRead(program: Command): void {
   const ls = createLsCommand();
   ls.action(async (folder: string | undefined) => {
     const opts = resolveGlobalOptions(program);
     const o = ls.opts<
-      { type?: string; trashed?: boolean; limit?: string; order?: string } & ScopeOptions
+      { type?: string; trashed?: boolean; limit?: string; order?: string } & DriveScopeArgs
     >();
     try {
       const type = parseType(o.type);
@@ -81,7 +78,7 @@ export function registerDriveRead(program: Command): void {
   const search = createSearchCommand();
   search.action(async (query: string) => {
     const opts = resolveGlobalOptions(program);
-    const o = search.opts<{ type?: string; limit?: string; order?: string } & ScopeOptions>();
+    const o = search.opts<{ type?: string; limit?: string; order?: string } & DriveScopeArgs>();
     try {
       const type = parseType(o.type);
       const limit = parseLimit(o.limit);
@@ -105,6 +102,24 @@ export function registerDriveRead(program: Command): void {
     }
   });
   program.addCommand(search);
+
+  const drives = createDrivesCommand();
+  drives.action(async () => {
+    const opts = resolveGlobalOptions(program);
+    try {
+      const drive = await buildDrive(opts);
+      const result = await handleDrives({
+        listSharedDrives: () => listSharedDrives(drive),
+        format: opts.format,
+        quiet: opts.quiet,
+        write: stdout,
+      });
+      process.exit(result.exitCode);
+    } catch (error) {
+      handleError(error, opts.format);
+    }
+  });
+  program.addCommand(drives);
 
   const info = createInfoCommand();
   info.action(async (file: string) => {

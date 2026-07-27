@@ -177,31 +177,36 @@ describe("handleLs", () => {
     expect(callArgs(listChildren)[0]).toBe("D1");
   });
 
-  it("still resolves an explicit folder under --drive", async () => {
+  it("rejects a folder argument together with a scope flag", async () => {
+    // Previously the folder resolved against My Drive and the driveId was
+    // ignored, so `ls --drive X <folder>` returned some other drive's contents.
     const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
-    await handleLs({
-      resolvePath: vi.fn(async () => "FID"),
-      listChildren,
-      format: "text",
-      quiet: false,
-      write: () => {},
-      folder: "Reports",
-      scope: { kind: "drive", driveId: "D1" },
-    });
-    expect(callArgs(listChildren)[0]).toBe("FID");
+    await expect(
+      handleLs({
+        resolvePath: vi.fn(async () => "FID"),
+        listChildren,
+        format: "text",
+        quiet: false,
+        write: () => {},
+        folder: "Reports",
+        scope: { kind: "drive", driveId: "D1" },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+    expect(listChildren).not.toHaveBeenCalled();
   });
 
-  it("keeps My Drive root as the default under --all-drives", async () => {
-    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
-    await handleLs({
-      resolvePath: vi.fn(),
-      listChildren,
-      format: "text",
-      quiet: false,
-      write: () => {},
-      scope: { kind: "all" },
-    });
-    expect(callArgs(listChildren)[0]).toBe("root");
+  it("points at the ID-only route when it rejects that combination", async () => {
+    await expect(
+      handleLs({
+        resolvePath: vi.fn(async () => "FID"),
+        listChildren: vi.fn(async () => files),
+        format: "text",
+        quiet: false,
+        write: () => {},
+        folder: "Reports",
+        scope: { kind: "drive", driveId: "D1" },
+      }),
+    ).rejects.toThrow(/ID/);
   });
 
   it("sends no scope when neither flag is given", async () => {
@@ -218,9 +223,11 @@ describe("handleLs", () => {
 });
 
 describe("createLsCommand", () => {
-  it("declares the shared-drive scope flags", () => {
+  it("offers --drive but not --all-drives", () => {
+    // `ls` always filters by a single parent, so there is no corpus for
+    // --all-drives to widen — it was a documented no-op (decision 0016 §2).
     const flags = createLsCommand().options.map((o) => o.long);
-    expect(flags).toContain("--all-drives");
     expect(flags).toContain("--drive");
+    expect(flags).not.toContain("--all-drives");
   });
 });
