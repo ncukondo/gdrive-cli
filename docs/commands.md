@@ -705,9 +705,17 @@ honor `GDRIVE_CLI_VERSION` and `GDRIVE_CLI_INSTALL_DIR`. See
 | Code | Meaning | Error codes |
 |------|---------|-------------|
 | `0` | Success | — |
-| `1` | Operation failed | `NOT_FOUND`, `API_ERROR`, `CONFIG_ERROR`, `IO_ERROR` |
+| `1` | Operation failed | `NOT_FOUND`, `PERMISSION_DENIED`, `API_ERROR`, `CONFIG_ERROR`, `IO_ERROR` |
 | `2` | Authentication problem | `AUTH_REQUIRED`, `AUTH_EXPIRED`, `ACCOUNT_NOT_FOUND` |
 | `3` | Bad arguments | `INVALID_ARGS` |
 
 Errors go to stderr — as `Error: <message>` in text mode, or as the envelope in
 JSON mode. See [`../decisions/0007`](../decisions/0007-output-and-errors.md).
+
+`PERMISSION_DENIED` means the account is signed in and Drive refused anyway —
+typically a shared-drive file where you hold `reader` or `commenter` and the
+command needs `writer` or `organizer`. Re-running `gdrive auth` will not change
+it; ask an organizer of the drive for a higher role. Exit **2** is reserved for
+the cases `gdrive auth` really does fix, including a token minted before a
+scope was added. See
+[`../decisions/0017`](../decisions/0017-permission-denied-error-code.md).

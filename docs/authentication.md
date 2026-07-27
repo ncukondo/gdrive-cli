@@ -133,4 +133,6 @@ account's alias entry from the config.
 | `client_secret.json` is malformed | `AUTH_REQUIRED` (exit 2) | Re-download it, or set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` |
 | Refresh fails — token revoked or expired | `AUTH_EXPIRED` (exit 2) | Re-run `gdrive auth` for that account |
 | `-a name` names an account that has no token | `ACCOUNT_NOT_FOUND` (exit 2) | `gdrive account list` to see what is authenticated |
+| Drive refuses a write on a file you can only read | `PERMISSION_DENIED` (exit 1) | Not an auth problem — ask the owner or a shared-drive organizer for `writer` |
+| "Request had insufficient authentication scopes" | `AUTH_REQUIRED` (exit 2) | The token predates a scope change; re-run `gdrive auth` for that account |
 | Consent screen says the app is unverified | — | Add your address as a *Test user* on the consent screen |
