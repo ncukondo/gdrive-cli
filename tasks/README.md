@@ -42,7 +42,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0016 Remove type assertions](archive/0016-remove-type-assertions.md) | — | — | done |
 | [0015 Upgrade googleapis (130 → 173)](archive/0015-googleapis-upgrade.md) | 0016 | — | done |
 | [0017 Shared drive support](archive/0017-shared-drive-support.md) | — | — | done |
-| [0018 Shared-drive review fixes](0018-shared-drive-review-fixes.md) | 0017 | — | in-progress |
+| [0018 Shared-drive review fixes](archive/0018-shared-drive-review-fixes.md) | 0017 | — | done |
 
 ## Parallelism notes
 
@@ -59,9 +59,9 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 After v0.1.0 shipped, the plan continues with maintenance work. 0016 removed
 the type assertions that would let a googleapis bump break silently, so it ran
 before 0015 (decision 0015). 0017 fixed shared-drive access (issue #1) under
-decision 0016, and 0018 closes the gaps its review found; the remaining
+decision 0016, and 0018 closed the gaps its review found; the remaining
 follow-up — path resolution across shared drives — stays on the issue until
-someone asks for it.
+someone asks for it. There is no open task right now.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
