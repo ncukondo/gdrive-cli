@@ -60,6 +60,9 @@ const tree: DriveNode[] = [
   { id: "lnkFolder", name: "link-to-2026", parents: ["rep1"], target: "y2026" },
   { id: "lnkDoc", name: "link-to-doc", parents: ["rep1"], target: "doc1" },
   { id: "lnkSheet", name: "link-to-sheet", parents: ["rep1"], target: "sh1" },
+  // Points at an id the tree does not hold: `files.get` answers 404, which is
+  // what a trashed, deleted or unreadable target looks like.
+  { id: "lnkGone", name: "link-to-gone", parents: ["rep1"], target: "1GoneDoc" },
   { id: "other", name: "Other", mimeType: FOLDER, parents: ["root"] },
   { id: "plain", name: "plain.txt", parents: ["root"] },
   // The ids the Docs/Sheets fakes hand back, so the follow-up Drive move finds them.
@@ -75,7 +78,9 @@ interface DriveSpies {
   update: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
   export: ReturnType<typeof vi.fn>;
+  permissionList: ReturnType<typeof vi.fn>;
   permissionCreate: ReturnType<typeof vi.fn>;
+  permissionDelete: ReturnType<typeof vi.fn>;
 }
 
 const madeUp = (id: string): DriveFileRaw => ({ id, name: "made-up", mimeType: "text/plain" });
@@ -99,15 +104,33 @@ function createDriveSpies(): DriveSpies {
   const copy = vi.fn(async () => ({ data: madeUp("copied") }));
   const update = vi.fn(async () => ({ data: madeUp("updated") }));
   const exported = vi.fn(async () => ({ data: "EXPORTED" }));
+  const permissionList = vi.fn(async () => ({ data: { permissions: [] } }));
   const permissionCreate = vi.fn(async () => ({
     data: { id: "p1", type: "user", role: "writer" },
   }));
+  const permissionDelete = vi.fn(async () => ({}));
   const client: DriveClient = {
     ...base,
     files: { ...base.files, list, get, create, copy, update, export: exported },
-    permissions: { ...base.permissions, create: permissionCreate },
+    permissions: {
+      ...base.permissions,
+      list: permissionList,
+      create: permissionCreate,
+      delete: permissionDelete,
+    },
   };
-  return { client, list, create, copy, update, get, export: exported, permissionCreate };
+  return {
+    client,
+    list,
+    create,
+    copy,
+    update,
+    get,
+    export: exported,
+    permissionList,
+    permissionCreate,
+    permissionDelete,
+  };
 }
 
 interface DocsSpies {
@@ -237,18 +260,23 @@ function build(): Command {
   return program;
 }
 
-/**
- * Runs one command to completion. A handler's own `process.exit(0)` surfaces as
- * an `ExitSignal` that the registry's catch turns into an error line, so the
- * real failures are the ones that do *not* mention the fake exit.
- */
-async function run(args: string[]): Promise<void> {
+/** Runs one command to completion, whether it succeeds or fails. */
+async function attempt(args: string[]): Promise<void> {
   const program = build();
   try {
     await program.parseAsync(["node", "gdrive", "--config", noConfig, ...args]);
   } catch (error) {
     if (!(error instanceof ExitSignal)) throw error;
   }
+}
+
+/**
+ * Runs one command and insists it worked. A handler's own `process.exit(0)`
+ * surfaces as an `ExitSignal` that the registry's catch turns into an error
+ * line, so the real failures are the ones that do *not* mention the fake exit.
+ */
+async function run(args: string[]): Promise<void> {
+  await attempt(args);
   const failures = stderr.filter((line) => !line.includes("process.exit") && line.trim() !== "");
   if (failures.length > 0) throw new Error(`command failed: ${failures.join(" ")}`);
 }
@@ -381,20 +409,39 @@ describe("entry arguments never follow a shortcut (decision 0025 §1)", () => {
       fileId: "lnkDoc",
       requestBody: { trashed: true },
     });
+    // The other half of the promise: the target is not touched *as well*.
+    expect(drive.update).toHaveBeenCalledTimes(1);
   });
 
   it("`mv <link> <folder>` moves the shortcut itself", async () => {
     await run(["mv", "Reports/link-to-doc", "Other"]);
     expect(firstArg(drive.update)).toMatchObject({ fileId: "lnkDoc", addParents: "other" });
+    expect(drive.update).toHaveBeenCalledTimes(1);
   });
 
   it("`cp <link> <folder>` copies the shortcut itself", async () => {
     await run(["cp", "Reports/link-to-doc", "Other"]);
     expect(firstArg(drive.copy)).toMatchObject({ fileId: "lnkDoc" });
+    expect(drive.copy).toHaveBeenCalledTimes(1);
   });
 
   it("`share add <link>` permissions the shortcut, not the target", async () => {
     await run(["share", "add", "Reports/link-to-doc", "--to", "you@example.com"]);
+    expect(firstArg(drive.permissionCreate)).toMatchObject({ fileId: "lnkDoc" });
+  });
+
+  it("`share list <link>` reads the shortcut's own permissions", async () => {
+    await run(["share", "list", "Reports/link-to-doc"]);
+    expect(firstArg(drive.permissionList)).toMatchObject({ fileId: "lnkDoc" });
+  });
+
+  it("`share remove <link>` revokes on the shortcut", async () => {
+    await run(["share", "remove", "Reports/link-to-doc", "--permission-id", "p1"]);
+    expect(firstArg(drive.permissionDelete)).toMatchObject({ fileId: "lnkDoc" });
+  });
+
+  it("`share link <link>` opens up the shortcut, not the document", async () => {
+    await run(["share", "link", "Reports/link-to-doc"]);
     expect(firstArg(drive.permissionCreate)).toMatchObject({ fileId: "lnkDoc" });
   });
 
@@ -414,6 +461,29 @@ describe("entry arguments never follow a shortcut (decision 0025 §1)", () => {
     const text = stdout.join("");
     expect(text).toContain("Type:      shortcut");
     expect(text).toContain("doc1");
+  });
+});
+
+describe("a dangling shortcut, end to end (decision 0025 §6)", () => {
+  it("renders an error naming the shortcut as the user typed it", async () => {
+    await attempt(["docs", "read", "Reports/link-to-gone"]);
+    expect(stderr.join("")).toContain(
+      'Error: Shortcut "Reports/link-to-gone" points at a file that is gone or not accessible (target 1GoneDoc).',
+    );
+  });
+
+  it("keeps the NOT_FOUND code through the JSON envelope", async () => {
+    await attempt(["-f", "json", "docs", "read", "Reports/link-to-gone"]);
+    const parsed: unknown = JSON.parse(stderr.join(""));
+    expect(parsed).toMatchObject({
+      success: false,
+      error: { code: "NOT_FOUND", message: expect.stringContaining("Shortcut") },
+    });
+  });
+
+  it("never reaches the Docs API with the shortcut's own id", async () => {
+    await attempt(["docs", "read", "Reports/link-to-gone"]);
+    expect(docs.get).not.toHaveBeenCalled();
   });
 });
 
