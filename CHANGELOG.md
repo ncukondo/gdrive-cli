@@ -23,7 +23,7 @@ generated at the time.
 
 ## 0.8.0 — 2026-08-03
 
-**A command that is not told a format now prints JSON, not text**, with two
+**A command that is not told a format now prints JSON, not text**, with three
 exemptions spelled out below. Alongside that, Drive shortcuts and Google Forms:
 `gdrive` now knows what a shortcut is and follows it where following is right,
 and `gdrive forms read` / `forms responses` read a form and its answers.
@@ -38,13 +38,16 @@ log for 0.x.
 1. **JSON is what a command prints when it is not told otherwise.** Text was
    the default; it is now the convenience layer, asked for with `-f text` or
    with `default_format = "text"` in your config. It applies to every command
-   but the two exempted below — the tables from `ls`, `search`, `drives`,
+   but the three exempted below — the tables from `ls`, `search`, `drives`,
    `share list`, `sheets tabs`, `sheets read` and `forms responses`, the
    labelled block from `info`, and every one-line confirmation such as
    `Uploaded Budget (1S6cRd...)` — all of which now arrive as the envelope.
+   **Errors move with them**: a failure that wrote `Error: <message>` to stderr
+   now writes `{"success":false,"error":{"code":…}}` there instead, so anything
+   matching stderr by prefix needs `-f text` too.
 
-   **Two things are deliberately exempt**, because in both a JSON default would
-   have broken something that was already right:
+   **Three things are deliberately exempt**, because in each a JSON default
+   would have broken something that was already right:
 
    - **`gdrive docs read` still prints Markdown and `gdrive forms read` still
      prints YAML**, with no flag. Those outputs already *are* the machine
@@ -56,6 +59,12 @@ log for 0.x.
      `FOLDER=$(gdrive mkdir 2027 -q)` needs no `-f`. A format you *name* still
      outranks it: `gdrive ls -f json -q` is JSON, which is
      [0007](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0007-output-and-errors.md)'s rule and unchanged (§2).
+   - **`gdrive auth` still prompts** for OAuth client credentials on a fresh
+     install. [Decision 0005](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0005-auth-and-scopes.md)
+     suppresses that prompt in JSON mode so a script gets `AUTH_REQUIRED`
+     rather than a hang, and only a named `-f json` counts: `gdrive -f json auth`
+     returns `AUTH_REQUIRED`, bare `gdrive auth` asks for the Client ID as it
+     always has.
 
    What to do: add `-f text` where you were reading or redirecting a table or a
    confirmation line, or set `default_format = "text"` once and change nothing
@@ -68,21 +77,33 @@ log for 0.x.
 2. **Text output is tab-separated and pads nothing.** `ls`, `search`, `drives`,
    `share list`, `sheets tabs`, `sheets read --as table`, `forms responses --as
    table` and `gdrive info` now join their fields with a single tab. No column
-   is measured, so no column can be measured wrongly. Pull request #14 is where
-   that was settled by measurement rather than argument: Unicode Annex #11 calls
-   U+4DC0 two columns while `Bun.stringWidth` and `string-width@5` both call it
-   one, and terminals agree with none of the three, so the alignment was dropped
-   rather than fixed again — see §2 of the decision linked above.
+   is measured, so no column can be measured wrongly. Alignment was dropped
+   rather than fixed again because no oracle for "how wide is this character"
+   agrees with the others. Measured in this project's own dependency tree:
+   `🟰` U+1F7F0 is `W` — two columns — in Unicode's `EastAsianWidth` data, and
+   `Bun.stringWidth` agrees at 2, while `string-width@5.1.2` returns 1 — two
+   answers inside one dependency tree, before a terminal and a font get a say. A
+   wrong width is not cosmetic when the field to the right of it is the id the
+   next command takes.
 
    What to do: split a row on `\t` instead of slicing it at fixed offsets. For
    columns on screen, pipe it through something that has a terminal and a font
-   in front of it — `gdrive ls -f text | column -t -s $'\t'`. `--as csv` and
-   `--as json` are untouched, as is quiet mode's CSV.
+   in front of it — `gdrive ls -f text | column -t -s $'\t'`.
+
+   **`--as csv` and `--as json` encode text, so they now need `-f text` to be
+   reachable at all.** The encodings themselves are unchanged, but
+   `gdrive sheets read S --as csv > out.csv` — the reason `--as csv` exists —
+   writes the envelope until you add `-f text`. `-q` also still prints CSV, for
+   both `sheets read` and `forms responses`.
 
    Text is lossy on purpose now: a tab, a newline, or any other control
-   character in a file name — Drive accepts all of them, and a newline there
-   used to split a row in half — is replaced with a space, so one file can never
-   render as two rows. `-f json` carries the real name.
+   character is replaced with a space in **every value text mode prints** — a
+   file name (Drive accepts all three, and a newline there used to split a row
+   in half), a spreadsheet cell in `sheets read`, an answer in
+   `forms responses`, and the name inside a one-line confirmation like
+   `Created folder <name> (<id>)`. So one record can never render as two rows or
+   two lines. `-f json` carries the real value, and `--as csv` / `-q`'s CSV are
+   unaffected because CSV quotes properly.
 
 3. **`type` gains two members, `shortcut` and `form`.** A Drive shortcut used to
    report `type: file` and now reports `type: shortcut`; a Google Form used to
