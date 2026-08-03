@@ -250,9 +250,9 @@ Lists a folder's direct children; My Drive root when the argument is omitted.
 
 ```console
 $ gdrive ls "Reports/2026" --type sheet -n 2 --order modified
-Type    Modified          Name                       ID
-sheet   2026-07-24 06:17  Budget                     1S6cRd...
-sheet   2026-06-02 11:40  Headcount                  1QwErT...
+Type      Modified          Name                       ID
+sheet     2026-07-24 06:17  Budget                     1S6cRd...
+sheet     2026-06-02 11:40  Headcount                  1QwErT...
 ```
 
 ```json
@@ -297,8 +297,8 @@ Searches file names and full text across My Drive.
 
 ```console
 $ gdrive search budget --type sheet
-Type    Modified          Name                       ID
-sheet   2026-07-24 06:17  Budget                     1S6cRd...
+Type      Modified          Name                       ID
+sheet     2026-07-24 06:17  Budget                     1S6cRd...
 
 $ gdrive search budget --drive "Finance"   # one shared drive
 $ gdrive search budget --all-drives        # My Drive + every shared drive
