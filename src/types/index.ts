@@ -49,15 +49,16 @@ export interface CommandResult {
 /**
  * Friendly file-type labels derived from a Drive MIME type (decision 0008).
  * A member exists because a command can act on that type, not because Drive can
- * store it (decision 0034 §1): `shortcut` joined with decision 0025. `file` is
- * the residue — "nothing here acts on this specifically" — and stays last.
+ * store it (decision 0034 §1): `shortcut` joined with decision 0025, and `form`
+ * once `forms read` shipped. `file` is the residue — "nothing here acts on this
+ * specifically" — and stays last.
  *
  * The list is a value, not just a union, because two other things are derived
  * from it: the `--type` choices and the width of the table's type column.
  * Growing it is a minor-release break for a consumer that switches exhaustively
  * on the label (decisions 0014, 0034 §3).
  */
-export const FILE_TYPES = ["folder", "doc", "sheet", "slides", "shortcut", "file"] as const;
+export const FILE_TYPES = ["folder", "doc", "sheet", "slides", "form", "shortcut", "file"] as const;
 
 export type FileType = (typeof FILE_TYPES)[number];
 

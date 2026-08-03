@@ -7,6 +7,7 @@ import {
   escapeQueryValue,
   exportFile,
   FILE_FIELDS,
+  FORM_MIME,
   getFile,
   listChildren,
   mapDriveError,
@@ -31,7 +32,7 @@ import {
   type ListParams,
   type SharedDriveListParams,
 } from "./api.ts";
-import { AppError } from "../types/index.ts";
+import { AppError, FILE_TYPES } from "../types/index.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
 
 function raw(overrides: Partial<DriveFileRaw> = {}): DriveFileRaw {
@@ -185,6 +186,46 @@ describe("query helpers", () => {
     expect(typeFilterClause("shortcut")).toBe(`mimeType = '${SHORTCUT_MIME}'`);
     // `file` still means "anything that is not a folder", shortcuts included.
     expect(typeFilterClause("file")).not.toContain("shortcut");
+  });
+
+  /**
+   * `file` is the residue, so a member with no clause of its own would silently
+   * filter as "not a folder" instead of failing. Asserted over the vocabulary so
+   * the next member cannot land there unnoticed.
+   */
+  it.each([...FILE_TYPES].filter((type) => type !== "file"))(
+    "filters %s on a MIME the map labels with that very type",
+    (type) => {
+      const mime = /^mimeType = '(.+)'$/.exec(typeFilterClause(type) ?? "")?.[1];
+      expect(mime).toBeDefined();
+      expect(mimeToType(mime ?? "")).toBe(type);
+    },
+  );
+});
+
+/**
+ * A form earns a label because `forms read` and `forms responses` act on one
+ * (decision 0034 §1). A live run found `info` reporting a form as `type: file`,
+ * `target_type: file` on a shortcut to one, and no `--type` value that finds it.
+ */
+describe("a form is a type of its own (decision 0034)", () => {
+  it("labels the form MIME on the file itself", () => {
+    expect(mimeToType(FORM_MIME)).toBe("form");
+    expect(normalizeFile(raw({ mimeType: FORM_MIME })).type).toBe("form");
+  });
+
+  it("labels a shortcut's target through the same map (decision 0025 §2)", () => {
+    const file = normalizeFile(
+      raw({
+        mimeType: SHORTCUT_MIME,
+        shortcutDetails: { targetId: "1FoRm", targetMimeType: FORM_MIME },
+      }),
+    );
+    expect(file.target_type).toBe("form");
+  });
+
+  it("filters on the form MIME", () => {
+    expect(typeFilterClause("form")).toBe(`mimeType = '${FORM_MIME}'`);
   });
 });
 

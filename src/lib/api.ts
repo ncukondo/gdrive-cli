@@ -254,15 +254,22 @@ export function mapDriveError(error: unknown): never {
 export const SHARED_DRIVE_ROOT_ID = /^0A[A-Za-z0-9_-]{17}$/;
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
+const DOC_MIME = "application/vnd.google-apps.document";
+const SHEET_MIME = "application/vnd.google-apps.spreadsheet";
+const SLIDES_MIME = "application/vnd.google-apps.presentation";
 
 /** A pointer to another file, not a file of its own (decision 0025). */
 export const SHORTCUT_MIME = "application/vnd.google-apps.shortcut";
 
+/** What `forms read` and `forms responses` take, hence a label (decision 0034 §1). */
+export const FORM_MIME = "application/vnd.google-apps.form";
+
 const MIME_TYPE_MAP: Record<string, FileType> = {
-  "application/vnd.google-apps.folder": "folder",
-  "application/vnd.google-apps.document": "doc",
-  "application/vnd.google-apps.spreadsheet": "sheet",
-  "application/vnd.google-apps.presentation": "slides",
+  [FOLDER_MIME]: "folder",
+  [DOC_MIME]: "doc",
+  [SHEET_MIME]: "sheet",
+  [SLIDES_MIME]: "slides",
+  [FORM_MIME]: "form",
   [SHORTCUT_MIME]: "shortcut",
 };
 
@@ -315,16 +322,27 @@ function orderByClause(order?: OrderKey): string | undefined {
   return order ? ORDER_MAP[order] : undefined;
 }
 
+/**
+ * What each `--type` value filters on, `file` excepted. Exhaustive over the
+ * vocabulary by its type, so a new label cannot be added without saying what it
+ * matches — the chain of `if`s this replaced let one fall through to the `file`
+ * residue and filter as "not a folder" instead.
+ */
+const TYPE_FILTER_MIME: Record<Exclude<FileType, "file">, string> = {
+  folder: FOLDER_MIME,
+  doc: DOC_MIME,
+  sheet: SHEET_MIME,
+  slides: SLIDES_MIME,
+  form: FORM_MIME,
+  shortcut: SHORTCUT_MIME,
+};
+
 /** Builds the `mimeType` clause for a `--type` filter, or null for no filter. */
 export function typeFilterClause(type?: FileType): string | null {
   if (!type) return null;
-  if (type === "folder") return `mimeType = '${FOLDER_MIME}'`;
-  if (type === "doc") return `mimeType = 'application/vnd.google-apps.document'`;
-  if (type === "sheet") return `mimeType = 'application/vnd.google-apps.spreadsheet'`;
-  if (type === "slides") return `mimeType = 'application/vnd.google-apps.presentation'`;
-  if (type === "shortcut") return `mimeType = '${SHORTCUT_MIME}'`;
   // "file": anything that is not a folder — shortcuts included (decision 0025 §7)
-  return `mimeType != '${FOLDER_MIME}'`;
+  if (type === "file") return `mimeType != '${FOLDER_MIME}'`;
+  return `mimeType = '${TYPE_FILTER_MIME[type]}'`;
 }
 
 // --- Shared drives (decision 0016) ------------------------------------------

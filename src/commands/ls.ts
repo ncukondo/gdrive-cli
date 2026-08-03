@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import {
   AppError,
+  FILE_TYPES,
   type CommandResult,
   type DriveFile,
   type FileType,
@@ -11,12 +12,17 @@ import { parseChoice } from "../lib/args.ts";
 import type { DriveScope, ListOptions, OrderKey } from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
 
-/** Shared by `ls` and `search`. `file` still includes shortcuts (decision 0025 §7). */
-const VALID_TYPES: FileType[] = ["folder", "doc", "sheet", "slides", "shortcut", "file"];
 const VALID_ORDERS: OrderKey[] = ["name", "modified", "created"];
 
+/**
+ * Shared by `ls` and `search`, and by both `--help` texts: one vocabulary, so
+ * the accepted values, the message an unknown one gets, and the help can never
+ * name different sets. `file` still includes shortcuts (decision 0025 §7).
+ */
+export const TYPE_OPTION_DESCRIPTION = `Filter by type: ${FILE_TYPES.join(" | ")}`;
+
 export function parseType(value: string | undefined): FileType | undefined {
-  return value === undefined ? undefined : parseChoice(VALID_TYPES, value, "--type");
+  return value === undefined ? undefined : parseChoice(FILE_TYPES, value, "--type");
 }
 
 export function parseOrder(value: string | undefined): OrderKey | undefined {
@@ -97,7 +103,7 @@ export function createLsCommand(): Command {
   return new Command("ls")
     .description("List a folder's children (My Drive root if omitted)")
     .argument("[folder]", "Folder ID or path")
-    .option("--type <type>", "Filter by type: folder | doc | sheet | slides | shortcut | file")
+    .option("--type <type>", TYPE_OPTION_DESCRIPTION)
     .option("--trashed", "List trashed files")
     .option("-n, --limit <n>", "Maximum number of files")
     .option("--order <order>", "Sort: name | modified | created")

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSearchCommand, handleSearch } from "./search.ts";
+import { FILE_TYPES } from "../types/index.ts";
 import type { DriveFile } from "../types/index.ts";
 import type { ListOptions } from "../lib/api.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
@@ -108,5 +109,11 @@ describe("createSearchCommand", () => {
     const flags = createSearchCommand().options.map((o) => o.long);
     expect(flags).toContain("--all-drives");
     expect(flags).toContain("--drive");
+  });
+
+  it("offers every type in --help, so the help text cannot drift from the vocabulary", () => {
+    const description =
+      createSearchCommand().options.find((o) => o.long === "--type")?.description ?? "";
+    for (const type of FILE_TYPES) expect(description).toContain(type);
   });
 });
