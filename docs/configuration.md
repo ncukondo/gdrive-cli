@@ -63,7 +63,7 @@ authenticated, with `default_account` set to the first of them.
 $ gdrive init -f text
 Created /home/me/.config/gdrive-cli/config.toml
 Accounts: work@example.com, me@gmail.com
-Default:  work@example.com
+Default: work@example.com
 ```
 
 The file it writes carries `default_format = "json"` — the same default the CLI

@@ -859,6 +859,11 @@ Quiet: one tab title per line.
 
 `--as` is `table` (default), `csv`, or `json`; `table` is tab-separated.
 
+**`--as` chooses a text encoding, so it needs text mode to be reachable at all.**
+Without `-f text` the envelope comes back and `--as` has no visible effect:
+`gdrive sheets read S "A1:B3" --as csv -f text > out.csv` is the CSV export, and
+`-q` prints CSV too.
+
 ```console
 $ gdrive sheets read -f text "Reports/2026/Budget" "Sheet1!A1:B3"
 name	score
@@ -1123,7 +1128,9 @@ what was asked. A `<form>` given as a bare ID costs one Drive lookup on top, to
 find out whether the ID is a [shortcut](#shortcuts); a path pays only when its
 last segment really is one, to check the target is still there.
 
-`--as` is `table` (default), `csv`, or `json`; `table` is tab-separated.
+`--as` is `table` (default), `csv`, or `json`; `table` is tab-separated. As with
+`sheets read`, `--as` chooses a text encoding and needs `-f text` to be
+reachable; `-q` prints CSV whatever the default is.
 
 ```console
 $ gdrive forms responses -f text "Surveys/2026 Engagement"
