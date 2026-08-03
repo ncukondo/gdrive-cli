@@ -53,6 +53,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0026 Soft line breaks](archive/0026-soft-line-breaks.md) | 0025 | — | done |
 | [0027 Shortcuts resolve by argument role](0027-shortcuts.md) | — | — | todo |
 | [0028 `gdrive ln` creates a shortcut](0028-ln.md) | 0027 | — | todo |
+| [0029 `forms read` / `forms responses`](0029-forms-read.md) | — | D | todo |
+| [0030 `forms write` / `forms create`](0030-forms-write.md) | 0029 | D | todo |
 
 ## Parallelism notes
 
@@ -65,6 +67,12 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   and 0010 add their own `lib/*-api.ts`; 0014 extends `lib/api.ts` (0006) with
   permission methods, so it merges after 0006 and coordinates with 0007/0008 on
   `lib/api.ts` edits.
+- **Group D** (0029 / 0030): Forms. Disjoint from the shortcut tasks — a new
+  `commands/forms/` tree and a new `lib/forms-api.ts`, touching no file 0027 or
+  0028 owns. Within the group they are *sequential*, not parallel: 0030 extends
+  the projection and the client port 0029 creates. 0029 may run in a worktree
+  beside 0027; their only shared points are the append-only registration in
+  `src/commands/index.ts` and `package.json`.
 
 After v0.1.0 shipped, the plan continues with maintenance work. 0016 removed
 the type assertions that would let a googleapis bump break silently, so it ran
@@ -118,9 +126,22 @@ it does not parallelize with anything else that takes a file argument.
 settled. It runs after 0027 rather than beside it because it is the first
 consumer of `resolveTarget` and of the `shortcut` file type, and because writing
 it against a half-built resolver would bake in whichever shape 0027 happened to
-land first. Between them the two tasks close the shortcut gap; Google Forms and
-Slides content are the other two holes the same survey found, and neither has a
-record yet.
+land first. Between them the two tasks close the shortcut gap.
+
+0029 and 0030 take the second hole the same survey found: Google Forms, the one
+Workspace type the CLI cannot touch at all. Checking the API first paid off —
+`forms.get`, `forms.responses.list` and `forms.batchUpdate` all accept the
+`drive` scope 0005 already requests, so Forms needs no re-consent and 0005 is
+only annotated, not revised. Decision 0027 makes a form one YAML document,
+identical in both directions, because the primary consumer is an agent that
+should edit a node rather than drive a dozen per-question flags; 0028 applies
+that document back by matching on item id, which is what keeps a question's
+`questionId` — and therefore its responses — attached across an edit. The two
+tasks are group D and run in order: 0030 extends the projection and the client
+port 0029 creates. `yaml` joins the runtime dependencies for this and nothing
+else (0002).
+
+Google Slides content is the remaining hole, and it has no record yet.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
