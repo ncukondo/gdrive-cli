@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatFileDetail, formatFileTable } from "./file-format.ts";
+import { FILE_TYPES } from "../types/index.ts";
 import type { DriveFile } from "../types/index.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
@@ -48,5 +49,21 @@ describe("formatFileTable", () => {
     const table = formatFileTable([shortcut()]);
     expect(table).toContain("shortcut");
     expect(table).not.toContain("->");
+  });
+});
+
+/**
+ * A real listing printed `shortcut2026-08-03 04:51`: the width was written down
+ * as 8, and `shortcut` is 8 characters, so `padEnd` added nothing. Asserted over
+ * the whole vocabulary rather than for `shortcut`, so the next member added
+ * cannot bring the collision back.
+ */
+describe("formatFileTable column widths", () => {
+  const MODIFIED = "2026-07-24 06:17";
+
+  it.each([...FILE_TYPES])("keeps the type clear of the timestamp: %s", (type) => {
+    const [header = "", row = ""] = formatFileTable([file({ type })]).split("\n");
+    expect(row.startsWith(`${type} `)).toBe(true);
+    expect(row.indexOf(MODIFIED)).toBe(header.indexOf("Modified"));
   });
 });
