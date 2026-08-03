@@ -127,7 +127,7 @@ same reason: `cat link` should read the target, `rm link` should not delete it.
 | Role | Follows | Arguments |
 |------|---------|-----------|
 | **Container** — "look inside this" | always | every intermediate path segment; `ls [folder]`; `--parent` on `mkdir`, `upload`, `docs create`, `sheets create`; the destination of `mv` and `cp` |
-| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear` |
+| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear`; `forms read/responses` |
 | **Entry** — "this file, as an entry in a folder" | never | `rm`; `mv <file>`; `cp <file>`; `share list/add/remove/link`; `info` |
 
 The two arguments of `mv link Other` play different roles in one command: the
@@ -912,6 +912,9 @@ edit that node, and write the document back.
 The Forms API must be enabled on your Google Cloud project
 ([`authentication.md`](authentication.md)); no new OAuth scope is needed, so an
 existing login keeps working.
+
+`<form>` is a *content* argument in both commands, so it follows a
+[shortcut](#shortcuts) to the form it points at.
 
 ### The document
 
