@@ -111,8 +111,9 @@ Five sub-features; commit at each green point.
    - **Docs** — `docs/commands.md`: the file object gains `target_id` /
      `target_type`, `--type` lists `shortcut`, and a *Shortcuts* section
      reproduces 0025's role table with a worked example of the `rm` case.
-     `README.md` highlights gain a shortcuts bullet. Cross-link 0025 from
-     `decisions/0008` addressing.
+     `README.md` highlights gain a shortcuts bullet. No decision file is edited
+     ([`0032`](../decisions/0032-decisions-are-append-only.md)); 0025 already
+     states its own relationship to 0008, and the index carries the pointer.
 
 ## Acceptance criteria
 
@@ -127,7 +128,8 @@ Five sub-features; commit at each green point.
 - [ ] A dangling shortcut fails `NOT_FOUND` with a message naming it a shortcut
 - [ ] `ls --type shortcut` filters to shortcuts
 - [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
-- [ ] `docs/commands.md` and `README.md` updated; 0008 cross-links 0025
+- [ ] `docs/commands.md` and `README.md` updated, in the same pull request as the
+      code ([`0033`](../decisions/0033-implementation-lands-through-review.md) §1)
 
 ## Verification
 
