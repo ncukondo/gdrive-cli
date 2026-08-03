@@ -72,17 +72,59 @@ describe("formatFileTable column widths", () => {
  * The columns are a display property, so the assertions below are about display
  * offsets — and a test that asked the renderer how wide a string is would agree
  * with the renderer about a name it measures wrongly, which is exactly the bug.
+ * So the test measures with a table of its own.
  *
- * `TWO_COLUMN` is therefore an independent measure: the characters these
- * fixtures actually use, listed by hand and checked against a terminal, with
- * everything else counting one column. It knows nothing about Annex #11 ranges,
- * so it cannot share a mistake with the code that does.
+ * What that table is, precisely, because the first version of it claimed more:
+ * it is a hand-written list of the sequences these fixtures use, each checked to
+ * draw two columns, plus printable ASCII at one column, plus **an error for
+ * anything else**. The error is the part that matters. An allowlist that
+ * defaulted to 1 could only ever disagree with the renderer about characters
+ * already known to be wide, so a character missing from both tables passed
+ * silently — the oracle shared not the implementation but the habit of
+ * enumerating, and neither could be surprised. Refusing to guess is what a
+ * second opinion can honestly offer here: it cannot confirm the range data, but
+ * it cannot quietly ratify a hole in it either.
+ *
+ * Entries are sequences rather than characters so that `⚠️` and `👍🏽` are
+ * measured as what a terminal draws, without the test restating the renderer's
+ * rules for variation selectors and modifiers.
  */
-const TWO_COLUMN = new Set([..."会議研修医へのフィードバックシート要", "📊"]);
+const WIDE_ALONE = [..."会議研修医へのフィードバックシート要約契書📊🟰䷀"];
+
+const TWO_COLUMNS: readonly string[] = [
+  "⚠️", // U+26A0 is narrow alone; VS16 asks for the emoji, which is wide
+  "👍\u{1F3FD}", // the modifier recolours the hand rather than adding a glyph
+  ...WIDE_ALONE,
+].sort((a, b) => b.length - a.length);
+
+/** Printable ASCII, the only characters this test is willing to assume about. */
+const ONE_COLUMN = /^[\x20-\x7e]$/;
+
+/** Non-ASCII hand-checked as narrow. `—` is East Asian Width `A`, one column outside a CJK context. */
+const ALSO_ONE_COLUMN = new Set(["—"]);
 
 function displayColumns(text: string): number {
   let columns = 0;
-  for (const char of text) columns += TWO_COLUMN.has(char) ? 2 : 1;
+  let at = 0;
+  while (at < text.length) {
+    const wide = TWO_COLUMNS.find((token) => text.startsWith(token, at));
+    if (wide !== undefined) {
+      columns += 2;
+      at += wide.length;
+      continue;
+    }
+    const code = text.codePointAt(at) ?? 0;
+    const char = String.fromCodePoint(code);
+    if (!ONE_COLUMN.test(char) && !ALSO_ONE_COLUMN.has(char)) {
+      throw new Error(
+        `this test has no hand-checked width for U+${code.toString(16).toUpperCase().padStart(4, "0")}` +
+          ` in ${JSON.stringify(text)}. Check what a terminal draws and add it to TWO_COLUMNS;` +
+          ` do not ask the renderer.`,
+      );
+    }
+    columns += 1;
+    at += char.length;
+  }
   return columns;
 }
 
@@ -116,12 +158,21 @@ describe("formatFileTable is a table for any name Drive permits", () => {
     ["a full-width name", "研修医へのフィードバックシート"],
     ["a mixed name", "会議 2026-08 notes"],
     ["a name with an emoji", "📊 Q3 dashboard"],
+    // Wide by Annex #11 but outside the ranges a pre-5.2 wcwidth table carries,
+    // which is what the first version of `WIDE_RANGES` turned out to be.
+    ["a name with a hexagram and a heavy equals sign", "🟰 metrics ䷀"],
+    // The commonest wide characters of all, and the ones a bare code-point
+    // lookup gets wrong: the base character is narrow and VS16 asks for the
+    // emoji.
+    ["a name with an emoji presentation selector", "⚠️ urgent"],
+    ["a name with a skin-tone modifier", "👍🏽 ok"],
   ];
 
   it.each(names)("puts the ID column at one display offset: %s", (_label, name) => {
     const long = file({ id: "1LoNgEr", name });
     const [header = "", ...rows] = formatFileTable([long, SHORT]).split("\n");
 
+    expect(rows).toHaveLength(2); // one line per file, whatever the name contains
     const headerStarts = columnStarts(header, HEADER_FIELDS);
     const rowStarts = [
       columnStarts(rows[0] ?? "", ["sheet", "2026-07-24 06:17", name, "1LoNgEr"]),
@@ -145,13 +196,19 @@ describe("formatFileTable is a table for any name Drive permits", () => {
    */
   it("grows the column to fit a name too wide for it", () => {
     const name = "研修医へのフィードバックシート要約 2026";
-    const [header = "", ...rows] = formatFileTable([file({ id: "1AbCdEf", name }), SHORT]).split(
+    const [header = "", ...rows] = formatFileTable([file({ id: "1LoNgEr", name }), SHORT]).split(
       "\n",
     );
-    const [, , , headerId = 0] = columnStarts(header, HEADER_FIELDS);
+    const headerStarts = columnStarts(header, HEADER_FIELDS);
+    const [, , , headerId = 0] = headerStarts;
+
     expect(headerId).toBeGreaterThan(55); // the offset a table of short names uses
+    // Both rows, including the one the widening exists for.
+    expect(columnStarts(rows[0] ?? "", ["sheet", "2026-07-24 06:17", name, "1LoNgEr"])).toEqual(
+      headerStarts,
+    );
     expect(columnStarts(rows[1] ?? "", ["sheet", "2026-07-24 06:17", "Budget", "1ShOrT"])).toEqual(
-      columnStarts(header, HEADER_FIELDS),
+      headerStarts,
     );
   });
 });

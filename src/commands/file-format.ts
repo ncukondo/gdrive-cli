@@ -11,22 +11,30 @@ export function formatModified(iso: string | null): string {
 const COL_GAP = 2;
 
 /**
- * East Asian Wide (`W`) and Fullwidth (`F`) code points — Unicode Annex #11 —
- * the ones a fixed-width terminal draws two columns wide. Written out here
- * rather than pulled from a package: this is a static table that changes only
- * when Unicode assigns a new CJK or emoji block, the CLI ships as an npm
- * package and a compiled binary so every runtime dependency is a deliberate
- * addition ([0002](../../decisions/0002-tech-stack.md)), and the one built-in
- * answer — `Bun.stringWidth` — is barred because shipped code must run under
- * plain Node as well.
+ * East Asian Wide (`W`) and Fullwidth (`F`) code points — the ones a fixed-width
+ * terminal draws two columns wide.
  *
- * Emoji blocks are listed whole, so a few unassigned code points inside them
- * measure 2. Two known gaps are deliberate, because the terminal rather than
- * the character decides them: a base character followed by U+FE0F is measured
- * as the base character, and a ZWJ sequence is measured per component.
+ * Generated from `EastAsianWidth-17.0.0.txt`
+ * (`https://www.unicode.org/Public/17.0.0/ucd/EastAsianWidth.txt`) by taking
+ * every `W` and `F` entry plus the five blocks that file's header gives a
+ * default of `W` (U+3400..4DBF, U+4E00..9FFF, U+F900..FAFF, U+20000..2FFFD,
+ * U+30000..3FFFD), then coalescing. `A` (ambiguous) counts as one column, which
+ * is its value outside an East Asian context. Regenerate the same way rather
+ * than editing an entry by hand.
+ *
+ * The first version of this table was written from memory of a wcwidth-style
+ * list and was wrong for 214 assigned code points in one direction (U+4DC0..4DFF
+ * `䷀`, U+1D300..1D356, U+1F7F0 `🟰`) and 245 in the other (U+1F5A5..1F5FA `🖥`,
+ * U+3248..324F). Hence the provenance note: the value of a table like this is
+ * entirely in where it came from.
+ *
+ * It follows the standard, and some terminals do not. `string-width@5` and
+ * `Bun.stringWidth` both draw U+4DC0 and U+1D300 at one column against Annex
+ * #11's two. Annex #11 is at least a written rule that can be checked; the
+ * terminals disagree with each other.
  */
 const WIDE_RANGES: readonly (readonly [number, number])[] = [
-  [0x1100, 0x115f], // Hangul Jamo initial consonants
+  [0x1100, 0x115f],
   [0x231a, 0x231b],
   [0x2329, 0x232a],
   [0x23e9, 0x23ec],
@@ -34,8 +42,10 @@ const WIDE_RANGES: readonly (readonly [number, number])[] = [
   [0x23f3, 0x23f3],
   [0x25fd, 0x25fe],
   [0x2614, 0x2615],
+  [0x2630, 0x2637],
   [0x2648, 0x2653],
   [0x267f, 0x267f],
+  [0x268a, 0x268f],
   [0x2693, 0x2693],
   [0x26a1, 0x26a1],
   [0x26aa, 0x26ab],
@@ -61,52 +71,135 @@ const WIDE_RANGES: readonly (readonly [number, number])[] = [
   [0x2b1b, 0x2b1c],
   [0x2b50, 0x2b50],
   [0x2b55, 0x2b55],
-  [0x2e80, 0x303e], // CJK radicals through CJK symbols and punctuation
-  [0x3041, 0x33ff], // kana, Hangul compatibility jamo, CJK compatibility
-  [0x3400, 0x4dbf], // CJK unified ideographs extension A
-  [0x4e00, 0x9fff], // CJK unified ideographs
-  [0xa000, 0xa4cf], // Yi
-  [0xa960, 0xa97f], // Hangul jamo extended-A
-  [0xac00, 0xd7a3], // Hangul syllables
-  [0xf900, 0xfaff], // CJK compatibility ideographs
-  [0xfe10, 0xfe19], // vertical forms
-  [0xfe30, 0xfe6f], // CJK compatibility forms, small form variants
-  [0xff01, 0xff60], // fullwidth ASCII
-  [0xffe0, 0xffe6], // fullwidth signs
+  [0x2e80, 0x2e99],
+  [0x2e9b, 0x2ef3],
+  [0x2f00, 0x2fd5],
+  [0x2ff0, 0x303e],
+  [0x3041, 0x3096],
+  [0x3099, 0x30ff],
+  [0x3105, 0x312f],
+  [0x3131, 0x318e],
+  [0x3190, 0x31e5],
+  [0x31ef, 0x321e],
+  [0x3220, 0x3247],
+  [0x3250, 0xa48c],
+  [0xa490, 0xa4c6],
+  [0xa960, 0xa97c],
+  [0xac00, 0xd7a3],
+  [0xf900, 0xfaff],
+  [0xfe10, 0xfe19],
+  [0xfe30, 0xfe52],
+  [0xfe54, 0xfe66],
+  [0xfe68, 0xfe6b],
+  [0xff01, 0xff60],
+  [0xffe0, 0xffe6],
   [0x16fe0, 0x16fe4],
-  [0x17000, 0x18cd5], // Tangut, Khitan
-  [0x1b000, 0x1b2ff], // kana supplement and extensions
+  [0x16ff0, 0x16ff6],
+  [0x17000, 0x18cd5],
+  [0x18cff, 0x18d1e],
+  [0x18d80, 0x18df2],
+  [0x1aff0, 0x1aff3],
+  [0x1aff5, 0x1affb],
+  [0x1affd, 0x1affe],
+  [0x1b000, 0x1b122],
+  [0x1b132, 0x1b132],
+  [0x1b150, 0x1b152],
+  [0x1b155, 0x1b155],
+  [0x1b164, 0x1b167],
+  [0x1b170, 0x1b2fb],
+  [0x1d300, 0x1d356],
+  [0x1d360, 0x1d376],
   [0x1f004, 0x1f004],
   [0x1f0cf, 0x1f0cf],
   [0x1f18e, 0x1f18e],
   [0x1f191, 0x1f19a],
-  [0x1f200, 0x1f320],
-  [0x1f32d, 0x1f64f], // emoticons and pictographs
-  [0x1f680, 0x1f6ff], // transport and map symbols
+  [0x1f200, 0x1f202],
+  [0x1f210, 0x1f23b],
+  [0x1f240, 0x1f248],
+  [0x1f250, 0x1f251],
+  [0x1f260, 0x1f265],
+  [0x1f300, 0x1f320],
+  [0x1f32d, 0x1f335],
+  [0x1f337, 0x1f37c],
+  [0x1f37e, 0x1f393],
+  [0x1f3a0, 0x1f3ca],
+  [0x1f3cf, 0x1f3d3],
+  [0x1f3e0, 0x1f3f0],
+  [0x1f3f4, 0x1f3f4],
+  [0x1f3f8, 0x1f43e],
+  [0x1f440, 0x1f440],
+  [0x1f442, 0x1f4fc],
+  [0x1f4ff, 0x1f53d],
+  [0x1f54b, 0x1f54e],
+  [0x1f550, 0x1f567],
+  [0x1f57a, 0x1f57a],
+  [0x1f595, 0x1f596],
+  [0x1f5a4, 0x1f5a4],
+  [0x1f5fb, 0x1f64f],
+  [0x1f680, 0x1f6c5],
+  [0x1f6cc, 0x1f6cc],
+  [0x1f6d0, 0x1f6d2],
+  [0x1f6d5, 0x1f6d8],
+  [0x1f6dc, 0x1f6df],
+  [0x1f6eb, 0x1f6ec],
+  [0x1f6f4, 0x1f6fc],
   [0x1f7e0, 0x1f7eb],
-  [0x1f900, 0x1f9ff], // supplemental symbols and pictographs
-  [0x1fa70, 0x1faff], // symbols and pictographs extended-A
-  [0x20000, 0x3fffd], // CJK unified ideographs extensions B onward
+  [0x1f7f0, 0x1f7f0],
+  [0x1f90c, 0x1f93a],
+  [0x1f93c, 0x1f945],
+  [0x1f947, 0x1f9ff],
+  [0x1fa70, 0x1fa7c],
+  [0x1fa80, 0x1fa8a],
+  [0x1fa8e, 0x1fac6],
+  [0x1fac8, 0x1fac8],
+  [0x1facd, 0x1fadc],
+  [0x1fadf, 0x1faea],
+  [0x1faef, 0x1faf8],
+  [0x20000, 0x2fffd],
+  [0x30000, 0x3fffd],
 ];
 
 /** Combining marks and format characters, which the terminal draws over or into their neighbour. */
 const ZERO_WIDTH = /[\p{Mn}\p{Me}\u200B-\u200F\u2060\uFEFF]/u;
 
+/**
+ * Emoji modifiers. Annex #11 calls them `W`, but they recolour the emoji before
+ * them instead of adding a glyph: `👍🏽` is one two-column picture, not two.
+ */
+const SKIN_TONE = /^[\u{1F3FB}-\u{1F3FF}]$/u;
+
+/**
+ * U+FE0F asks for the emoji form of the character before it. That character is
+ * often narrow on its own — `⚠`, `❤`, `▶`, `✔` are all `N` in Annex #11 — and
+ * the emoji it selects is drawn wide, so the pair has to be measured together.
+ * These are the commonest wide sequences a file name is likely to contain.
+ */
+const EMOJI_PRESENTATION = "\uFE0F";
+
 function charWidth(char: string): number {
-  if (ZERO_WIDTH.test(char)) return 0;
+  if (ZERO_WIDTH.test(char) || SKIN_TONE.test(char)) return 0;
   const code = char.codePointAt(0);
   if (code === undefined) return 0;
   return WIDE_RANGES.some(([low, high]) => code >= low && code <= high) ? 2 : 1;
 }
 
 /**
- * Terminal columns `text` occupies. Every column below pads by this and never
- * by `.length`: a UTF-16 unit is not a column in either direction — `会` is one
- * unit and two columns, an emoji is two units and two columns.
+ * Terminal columns `text` occupies. Every column below pads by this and never by
+ * `.length`: a UTF-16 unit is not a column in either direction — `会` is one unit
+ * and two columns, an emoji is two units and two columns.
+ *
+ * One gap is left deliberately, because the terminal and not the character
+ * decides it: a ZWJ sequence is measured per component, so `👨‍👩‍👧` scores 6 where a
+ * terminal that supports the sequence draws 2 and one that does not draws 6.
+ * Closing it means a grapheme segmenter and a guess about the terminal.
  */
 function displayWidth(text: string): number {
+  const chars = [...text];
   let width = 0;
-  for (const char of text) width += charWidth(char);
+  for (const [index, char] of chars.entries()) {
+    if (char === EMOJI_PRESENTATION) continue; // already counted, with its base character
+    width += chars[index + 1] === EMOJI_PRESENTATION ? 2 : charWidth(char);
+  }
   return width;
 }
 
