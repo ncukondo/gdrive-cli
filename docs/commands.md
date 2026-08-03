@@ -148,10 +148,15 @@ Created:   2026-07-30T14:02:10.000Z
 Target:    1DocXyZ... (doc)
 Owners:    me@gmail.com
 Trashed:   false
+Link:      https://drive.google.com/file/d/1LnkAbC.../view?usp=drivesdk
 
 $ gdrive rm "Reports/link-to-doc"     # trashes 1LnkAbC..., not 1DocXyZ...
 $ gdrive info 1DocXyZ...              # the document is untouched
 ```
+
+`Link:` opens the **shortcut**, not the target — Drive builds it from the
+shortcut's own ID, and it is the one field of a shortcut's `info` that does not
+say so in its name. Follow `Target:` instead to reach the document.
 
 `share` stays with the entries for the same reason: a shortcut carries its own
 ACL, and a `share add` that quietly widened access to the target instead would
@@ -203,7 +208,14 @@ Slides, folders):
 }
 ```
 
-`type` is one of `folder`, `doc`, `sheet`, `slides`, `shortcut`, `file`.
+`type` is one of `folder`, `doc`, `sheet`, `slides`, `form`, `shortcut`, `file`.
+
+A type exists because a command can act on it, not because Drive can store it
+([`../decisions/0034`](../decisions/0034-form-is-a-file-type.md)): `form` is
+there because [`forms read`](#forms-gdrive-forms) is. `file` is the residue —
+Drawings, Sites, Jamboards, Apps Script and every binary all read `file`,
+because nothing here acts on them specifically. Expect the list to grow by one
+member each time a command learns a new kind of file.
 
 `target_id` and `target_type` are `null` on every file except a
 [shortcut](#shortcuts), where they name what it points at and what kind of thing
@@ -242,7 +254,7 @@ Lists a folder's direct children; My Drive root when the argument is omitted.
 
 | Option | Description |
 |--------|-------------|
-| `--type <t>` | `folder` \| `doc` \| `sheet` \| `slides` \| `shortcut` \| `file` |
+| `--type <t>` | `folder` \| `doc` \| `sheet` \| `slides` \| `form` \| `shortcut` \| `file` |
 | `--trashed` | List trashed files instead |
 | `-n, --limit <n>` | Cap the number of results |
 | `--order <o>` | `name` \| `modified` \| `created` |
@@ -915,6 +927,24 @@ existing login keeps working.
 
 `<form>` is a *content* argument in both commands, so it follows a
 [shortcut](#shortcuts) to the form it points at.
+
+### Finding a form
+
+A form reports [`type: form`](#the-file-object), so `--type form` lists the
+files these two commands can take:
+
+```console
+$ gdrive ls Surveys --type form
+Type      Modified          Name                       ID
+form      2026-08-03 04:51  2026 Engagement survey     1FoRm...
+form      2026-07-11 16:20  Untitled form              1OtHeR...
+```
+
+Search by name rather than filtering, and remember that a form has **two
+names**: the Drive name that `ls`, `search` and `info` report, and the `title`
+inside the document that `forms read` prints. Creating a form in the Forms UI
+and titling it leaves the Drive name at `Untitled form`, so the two often
+differ, and `search` only sees the Drive one.
 
 ### The document
 

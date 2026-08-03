@@ -27,7 +27,8 @@ AI-agent use.
   `create`.
 - **Forms** — `forms read` prints a whole form as one YAML document, ids and
   all; `forms responses` tabulates the answers with the question titles as
-  column headers (table/CSV/JSON), with or without a linked spreadsheet.
+  column headers (table/CSV/JSON), with or without a linked spreadsheet. A form
+  reports `type: form`, so `ls --type form` finds one.
 - **Sharing** — `share list / add / remove / link` to manage permissions.
 - **Agent-first** — the primary consumer is an AI agent: `-f json` is a stable,
   first-class interface, with `-q` quiet piping and stable exit codes.
@@ -85,6 +86,7 @@ gdrive rm "Reports/link-to-2026"     # …but this trashes the shortcut
 gdrive docs read "Notes/Meeting"     # Markdown to stdout
 gdrive docs append "Notes/Meeting" @draft.md   # …and Markdown back in
 gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:C10" --as csv
+gdrive ls Surveys --type form        # the files `forms read` can take
 gdrive forms read "Surveys/2026" > form.yaml          # the whole form as YAML
 gdrive forms responses "Surveys/2026" --as csv        # answers, by question title
 gdrive share link "Reports/2026/Budget"
