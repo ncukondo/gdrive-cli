@@ -940,11 +940,24 @@ form      2026-08-03 04:51  2026 Engagement survey     1FoRm...
 form      2026-07-11 16:20  Untitled form              1OtHeR...
 ```
 
-Search by name rather than filtering, and remember that a form has **two
-names**: the Drive name that `ls`, `search` and `info` report, and the `title`
-inside the document that `forms read` prints. Creating a form in the Forms UI
-and titling it leaves the Drive name at `Untitled form`, so the two often
-differ, and `search` only sees the Drive one.
+A form has **two names**, and they often differ: the Drive name that `ls`,
+`search` and `info` report, and the `title` inside the document that `forms
+read` prints. Titling a form in the Forms UI leaves its Drive name at
+`Untitled form` — which is what `1OtHeR...` above is.
+
+`search` finds a form under either. It matches the Drive name *and* Drive's
+full-text index, and that index covers the title inside the form:
+
+```console
+$ gdrive search "Onboarding feedback"      # the title inside 1OtHeR...
+Type      Modified          Name                       ID
+form      2026-07-11 16:20  Untitled form              1OtHeR...
+```
+
+A **path** does not: every command taking a `<form>` resolves it by Drive name,
+so `gdrive forms read "Onboarding feedback"` is `NOT_FOUND` for the very form
+`search` just returned. Take the ID from `search`, or the name in its `Name`
+column.
 
 ### The document
 
