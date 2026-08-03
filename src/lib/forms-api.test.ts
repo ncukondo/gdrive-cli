@@ -288,6 +288,46 @@ describe("tabulateResponses", () => {
       expect(table.rows[0]).toMatchObject({ "Which apply? — Row": ["a"] });
     });
 
+    /**
+     * A grid's columns are a `ChoiceQuestion` like any other, so the two
+     * places that read `ChoiceQuestion.type` must answer alike. They did not:
+     * one accepted `CHECK_BOX`, the other only `CHECKBOX`, so the same form
+     * would have read one way as a question and another as a grid.
+     */
+    it.each(["CHECKBOX", "RADIO", "DROP_DOWN", "CHECK_BOX"])(
+      "reads `%s` the same way as a grid and as a plain question",
+      (apiType) => {
+        const asQuestion: FormRaw = {
+          info: { title: "Survey" },
+          items: [
+            {
+              itemId: "i1",
+              title: "Q",
+              questionItem: {
+                question: { questionId: "q1", choiceQuestion: { type: apiType } },
+              },
+            },
+          ],
+        };
+        const asGrid: FormRaw = {
+          info: { title: "Survey" },
+          items: [
+            {
+              itemId: "i1",
+              title: "Q",
+              questionGroupItem: {
+                grid: { columns: { type: apiType } },
+                questions: [{ questionId: "q1", rowQuestion: { title: "Row" } }],
+              },
+            },
+          ],
+        };
+        const [, question] = tabulateResponses(toFormDocument(asQuestion).document, []).columns;
+        const [, row] = tabulateResponses(toFormDocument(asGrid).document, []).columns;
+        expect(row?.multi).toBe(question?.multi);
+      },
+    );
+
     it("falls back to the row's question id when nothing is titled", () => {
       const untitled: FormRaw = {
         info: { title: "Survey" },
