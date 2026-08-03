@@ -57,6 +57,7 @@ names the relationship its record has to the ones before it.
 | [0036](0036-machine-format-by-default.md) | The default output is the machine one, and text stops aligning (revises 0007) |
 | [0037](0037-tests-assert-behaviour.md) | A test asserts what the program does, never what it is made of (extends 0035) |
 | [0038](0038-quiet-asks-for-a-value.md) | `--quiet` asks for a value, not for a format (revises 0007) |
+| [0039](0039-what-0036-and-0037-got-wrong.md) | Two unmeasured claims corrected: the width evidence, and what catches padding (revises 0036, 0037) |
 
 ## Related projects (reference implementations)
 
