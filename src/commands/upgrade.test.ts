@@ -33,6 +33,27 @@ describe("formatUpgradeText", () => {
     );
     expect(formatUpgradeText(outcomes.upgraded)).toBe("Upgraded to v0.2.0.");
   });
+
+  /**
+   * Every branch, not the three that were easy to reach. `runUpgrade` derives
+   * both the dry-run and the upgraded version from the same `release.tag_name`,
+   * so sanitising one and not the other rests on `git check-ref-format` — a
+   * claim about a producer, which is the standard this table stopped accepting.
+   */
+  it("keeps every branch on one line, whatever the release named", () => {
+    const bad = "0.2.0\nUpgraded to v9.9.9";
+    for (const text of [
+      formatUpgradeText({ kind: "upgraded", from: "0.1.0", to: bad }),
+      formatUpgradeText({ kind: "up-to-date", version: bad }),
+      formatUpgradeText({ kind: "dry-run", current: "0.1.0", latest: bad, asset: "a" }),
+    ]) {
+      expect(text.split("\n")).toHaveLength(1);
+    }
+    // `not-binary` is three lines by design; no value may add a fourth.
+    expect(
+      formatUpgradeText({ kind: "not-binary", package: "pkg\nrm -rf /" }).split("\n"),
+    ).toHaveLength(3);
+  });
 });
 
 describe("upgradeData", () => {

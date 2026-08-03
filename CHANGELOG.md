@@ -124,12 +124,21 @@ log for 0.x.
 
    Text is lossy on purpose now. Every value the CLI *interpolates* into text
    has its tabs, newlines and other control characters replaced with a space:
-   a table field, a `--quiet` value, and a one-line confirmation like
-   `Created folder <name> (<id>)` or `Cleared <range>`. So a table has exactly
-   as many rows as it has records, `-q` exactly as many lines as it has values,
-   and a confirmation exactly one. Drive accepts a newline in a file name — a
-   sheet title and an A1 range reach the same messages — and one there used to
-   split a row in half.
+   a table field, a `--quiet` value, and a confirmation like
+   `Created folder <name> (<id>)` or `Cleared <range>`. **No value can add a
+   row, a line or a field the record did not have** — a table has as many rows
+   as records, `-q` one line per value, and a message keeps the shape it was
+   written with, which is one line for most and two for `gdrive share link`,
+   whose newline belongs to the message rather than to a value. Drive accepts a
+   newline in a file name — a sheet title and an A1 range reach the same
+   messages — and one there used to split a row in half.
+
+   This reaches values you supplied as well as values Google did: a path given
+   to `download -o` or `init --config` is sanitised on its way back out, so
+   `OUT=$(gdrive download X -o "$P" -q)` stops round-tripping a `$P` that holds
+   a control character. `-f json` keeps it exact, which is the trade
+   [decision 0036](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0036-machine-format-by-default.md)
+   §2 makes on purpose: text is the lossy layer and JSON is the exact one.
 
    Three kinds of output are deliberately left as they are, because in each the
    content *is* the point: a document (`docs read`'s Markdown, `forms read`'s
