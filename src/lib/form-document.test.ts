@@ -57,9 +57,12 @@ const form: FormRaw = {
           choiceQuestion: {
             type: "CHECKBOX",
             shuffle: true,
+            // `goToAction` and `goToSectionId` are alternatives, so each
+            // option carries at most one of them, as a real form does.
             options: [
               { value: "Docs" },
-              { value: "Sheets", goToAction: "GO_TO_ACTION_UNSPECIFIED", goToSectionId: "i-page" },
+              { value: "Sheets", goToAction: "NEXT_SECTION" },
+              { value: "Slides", goToSectionId: "i-page" },
             ],
           },
         },
@@ -189,11 +192,8 @@ describe("toFormDocument", () => {
       shuffle: true,
       options: [
         "Docs",
-        {
-          value: "Sheets",
-          go_to_action: "GO_TO_ACTION_UNSPECIFIED",
-          go_to_section_id: "i-page",
-        },
+        { value: "Sheets", go_to_action: "NEXT_SECTION" },
+        { value: "Slides", go_to_section_id: "i-page" },
       ],
     });
   });
@@ -480,6 +480,36 @@ describe("the order of an item's keys", () => {
       "responder_uri",
       "linked_sheet_id",
       "items",
+    ]);
+  });
+
+  /**
+   * The test above cannot tell "declaration order" from "input order": what it
+   * parses is already in emission order. This one arrives shuffled, so only the
+   * schema's own declaration order can produce the result.
+   */
+  it("returns declaration order however the document arrived", () => {
+    const shuffled = [
+      "items:",
+      "  - options: [Sales, Engineering]",
+      "    required: true",
+      "    title: Which team are you on?",
+      "    choice_type: radio",
+      "    type: choice",
+      "    question_id: q1",
+      "    id: i1",
+      "title: Survey",
+    ].join("\n");
+    const parsed = parseFormDocument(shuffled);
+    expect(Object.keys(parsed)).toEqual(["title", "items"]);
+    expect(Object.keys(parsed.items[0] ?? {})).toEqual([
+      "id",
+      "question_id",
+      "type",
+      "choice_type",
+      "title",
+      "required",
+      "options",
     ]);
   });
 
