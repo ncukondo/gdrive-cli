@@ -71,6 +71,7 @@ function deps(overrides: {
   format?: "text" | "json";
   quiet?: boolean;
   write: (msg: string) => void;
+  warn?: (msg: string) => void;
 }) {
   return {
     resolvePath: async () => "1FoRm",
@@ -80,9 +81,46 @@ function deps(overrides: {
     format: overrides.format ?? ("text" as const),
     quiet: overrides.quiet ?? false,
     write: overrides.write,
+    warn: overrides.warn ?? (() => {}),
     ...(overrides.as !== undefined ? { as: overrides.as } : {}),
   };
 }
+
+/** One item the schema cannot model, holding two questions of its own. */
+const withGrid: FormRaw = {
+  formId: "1FoRm",
+  info: { title: "Survey" },
+  items: [
+    {
+      itemId: "i0",
+      title: "Name",
+      questionItem: { question: { questionId: "q0", textQuestion: {} } },
+    },
+    {
+      itemId: "i1",
+      title: "Rate each area",
+      questionGroupItem: {
+        grid: { columns: { type: "RADIO" } },
+        questions: [
+          { questionId: "g1", rowQuestion: { title: "Speed" } },
+          { questionId: "g2", rowQuestion: { title: "Support" } },
+        ],
+      },
+    },
+  ],
+};
+
+const gridResponses: FormResponseRaw[] = [
+  {
+    responseId: "r1",
+    lastSubmittedTime: "2026-07-01T10:00:00Z",
+    answers: {
+      q0: { textAnswers: { answers: [{ value: "Ann" }] } },
+      g1: { textAnswers: { answers: [{ value: "2" }] } },
+      g2: { textAnswers: { answers: [{ value: "1" }] } },
+    },
+  },
+];
 
 describe("handleFormsResponses", () => {
   it("heads the table with the question titles and a submitted column", async () => {
@@ -194,6 +232,44 @@ describe("handleFormsResponses", () => {
     expect(out.output.split("\n")[1]).toBe("2026-07-01T10:22:00Z,Sales,Docs; Sheets,1FiLe; 2FiLe");
   });
 
+  it("tabulates a grid's rows rather than dropping them", async () => {
+    const out = collect();
+    await handleFormsResponses(
+      deps({ write: out.write, form: withGrid, responses: gridResponses, as: "csv" }),
+    );
+    expect(out.output.split("\n")).toEqual([
+      "submitted,Name,Rate each area — Speed,Rate each area — Support",
+      "2026-07-01T10:00:00Z,Ann,2,1",
+    ]);
+  });
+
+  it("warns about an item it could not model, like `forms read` does", async () => {
+    const out = collect();
+    const warnings: string[] = [];
+    await handleFormsResponses(
+      deps({ write: out.write, warn: (m) => warnings.push(m), form: withGrid, responses: [] }),
+    );
+    expect(warnings).toEqual(["Kept as raw: questionGroupItem (item i1)"]);
+  });
+
+  it("reports the same items in data.unsupported instead, in JSON", async () => {
+    const out = collect();
+    const warnings: string[] = [];
+    await handleFormsResponses(
+      deps({
+        write: out.write,
+        warn: (m) => warnings.push(m),
+        form: withGrid,
+        responses: [],
+        format: "json",
+      }),
+    );
+    expect(warnings).toEqual([]);
+    expect(JSON.parse(out.output).data.unsupported).toEqual([
+      { id: "i1", kind: "questionGroupItem" },
+    ]);
+  });
+
   it("rejects an unknown --as", async () => {
     const out = collect();
     await expect(handleFormsResponses(deps({ write: out.write, as: "yaml" }))).rejects.toThrow(
@@ -212,6 +288,7 @@ describe("handleFormsResponses", () => {
       format: "text",
       quiet: false,
       write: out.write,
+      warn: () => {},
     });
     expect(fake.calls).toEqual(["forms.get", "forms.responses.list"]);
   });
