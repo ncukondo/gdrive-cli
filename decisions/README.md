@@ -37,6 +37,8 @@ instead of restating them.
 | [0022](0022-insert-at-marker.md) | `insert --before` / `--after <marker>` positions by text (extends 0009) |
 | [0023](0023-list-numbering-and-links.md) | Ordered lists keep their numbering; autolinks and bare URLs link (extends 0021) |
 | [0024](0024-soft-line-breaks.md) | A soft line break round-trips as a `\` hard break (extends 0021) |
+| [0025](0025-shortcuts.md) | Shortcuts follow by argument role: containers and content yes, entries never (extends 0008) |
+| [0026](0026-ln.md) | `gdrive ln <target> <folder>` creates a shortcut (extends 0025) |
 
 ## Related projects (reference implementations)
 

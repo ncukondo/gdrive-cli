@@ -29,6 +29,9 @@ Resolution rules:
   (multiple matches), the command errors `INVALID_ARGS` listing the candidate
   IDs; the user disambiguates with an ID.
 - `NOT_FOUND` if any segment does not resolve.
+- A segment naming a **shortcut** resolves to the shortcut's target, and whether
+  the *final* segment does depends on what the argument is for
+  ([`0025`](0025-shortcuts.md)).
 
 ### Deletion
 
@@ -73,7 +76,9 @@ JSON `data` carries a `files` array (or single `file`) of the File structure:
 ```
 
 `type` is a friendly label derived from `mime_type`
-(`folder`/`doc`/`sheet`/`slides`/`file`).
+(`folder`/`doc`/`sheet`/`slides`/`shortcut`/`file`). A `shortcut` carries two
+more fields, `target_id` and `target_type`, `null` on everything else
+([`0025`](0025-shortcuts.md) §2).
 
 ## Related
 
