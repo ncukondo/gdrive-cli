@@ -48,7 +48,7 @@ versa, marked as not authenticated). The default is listed first and marked
 `*`.
 
 ```console
-$ gdrive account list
+$ gdrive account list -f text
 * work@example.com (work)
   me@gmail.com (personal)
 ```
@@ -71,7 +71,7 @@ Sets `default_account` in the config. Fails with `ACCOUNT_NOT_FOUND` if that
 account has no token.
 
 ```console
-$ gdrive account use work
+$ gdrive account use -f text work
 Default account set to work@example.com
 ```
 
@@ -85,7 +85,7 @@ Assigns or renames an alias. An alias already used by a different account is
 rejected with `INVALID_ARGS`.
 
 ```console
-$ gdrive account alias work@example.com w
+$ gdrive account alias -f text work@example.com w
 Alias "w" -> work@example.com
 ```
 
@@ -99,7 +99,7 @@ Revokes the token, deletes the token file, and drops the account's config
 entry. If it was the default, `default_account` is cleared.
 
 ```console
-$ gdrive account remove personal
+$ gdrive account remove -f text personal
 Removed me@gmail.com
 ```
 

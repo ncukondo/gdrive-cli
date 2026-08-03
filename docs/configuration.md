@@ -15,7 +15,15 @@ Resolution order, first match wins:
 A path given explicitly (option or environment variable) that does not exist is
 a `CONFIG_ERROR`; the implicit locations are simply skipped when absent. With no
 config anywhere, built-in defaults apply — the CLI still works, it just has no
-default account or aliases.
+default account or aliases, and it emits JSON.
+
+`default_format` is where a person at a terminal moves the default back to
+text. Unasked, every command emits its machine representation
+([`../decisions/0036`](../decisions/0036-machine-format-by-default.md)):
+
+```toml
+default_format = "text"
+```
 
 ## Format
 
@@ -24,8 +32,8 @@ default account or aliases.
 # May be an email or an alias.
 default_account = "work"
 
-# Default output format: "text" (default) or "json"
-default_format = "text"
+# Default output format: "json" (default) or "text"
+default_format = "json"
 
 # Known accounts. `email` is canonical (it matches accounts/<email>.json).
 # `alias` is optional and interchangeable with the email on the CLI.
@@ -52,11 +60,14 @@ Generates the file for you, seeded from the accounts you have already
 authenticated, with `default_account` set to the first of them.
 
 ```console
-$ gdrive init
+$ gdrive init -f text
 Created /home/me/.config/gdrive-cli/config.toml
 Accounts: work@example.com, me@gmail.com
 Default:  work@example.com
 ```
+
+The file it writes carries `default_format = "json"` — the same default the CLI
+applies without a config, written down rather than inverted.
 
 ```json
 { "success": true, "data": {
