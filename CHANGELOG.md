@@ -23,10 +23,10 @@ generated at the time.
 
 ## 0.8.0 — 2026-08-03
 
-**Every command's default output changes: JSON, not text.** Alongside that,
-Drive shortcuts and Google Forms — `gdrive` now knows what a shortcut is and
-follows it where following is right, and `gdrive forms read` / `forms responses`
-read a form and its answers.
+**A command that is not told a format now prints JSON, not text**, with two
+exemptions spelled out below. Alongside that, Drive shortcuts and Google Forms:
+`gdrive` now knows what a shortcut is and follows it where following is right,
+and `gdrive forms read` / `forms responses` read a form and its answers.
 
 ### Breaking changes
 
@@ -37,22 +37,33 @@ log for 0.x.
 
 1. **JSON is what a command prints when it is not told otherwise.** Text was
    the default; it is now the convenience layer, asked for with `-f text` or
-   with `default_format = "text"` in your config. Every command is affected,
-   `gdrive docs read` and `gdrive forms read` included: their Markdown and YAML
-   now arrive inside `data.content` / `data.form` unless `-f text` is passed,
-   so `gdrive forms read X > form.yaml` writes an envelope until you add it.
+   with `default_format = "text"` in your config. It applies to every command
+   but the two exempted below — the tables from `ls`, `search`, `drives`,
+   `share list`, `sheets tabs`, `sheets read` and `forms responses`, the
+   labelled block from `info`, and every one-line confirmation such as
+   `Uploaded Budget (1S6cRd...)` — all of which now arrive as the envelope.
 
-   `--quiet` itself is unchanged: [decision 0007](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0007-output-and-errors.md)
-   has always said JSON mode ignores it. What changed is which mode it composes
-   with, so `gdrive ls -q` prints the envelope now and wants `-q -f text` for
-   bare IDs.
+   **Two things are deliberately exempt**, because in both a JSON default would
+   have broken something that was already right:
 
-   What to do: add `-f text` where you were reading or redirecting the text, or
-   set `default_format = "text"` once and change nothing else. `gdrive init`
-   now writes `default_format = "json"`, so regenerating a config does not
-   quietly restore the old default. [Decision 0036](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0036-machine-format-by-default.md)
-   §1 is the reasoning: 0007 opens by saying the primary consumer is an AI
-   agent, and eleven lines later made the convenience layer the default.
+   - **`gdrive docs read` still prints Markdown and `gdrive forms read` still
+     prints YAML**, with no flag. Those outputs already *are* the machine
+     representation ([decision 0036](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0036-machine-format-by-default.md) §1),
+     so `gdrive forms read X > form.yaml` keeps writing YAML. `-f json` wraps
+     one in the envelope, in `data.content` / `data.form`, exactly as before.
+   - **`-q` still prints the bare value**, whatever the default is
+     ([decision 0038](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0038-quiet-asks-for-a-value.md) §1), so
+     `FOLDER=$(gdrive mkdir 2027 -q)` needs no `-f`. A format you *name* still
+     outranks it: `gdrive ls -f json -q` is JSON, which is
+     [0007](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0007-output-and-errors.md)'s rule and unchanged (§2).
+
+   What to do: add `-f text` where you were reading or redirecting a table or a
+   confirmation line, or set `default_format = "text"` once and change nothing
+   else. `gdrive init` now writes `default_format = "json"`, so regenerating a
+   config does not quietly restore the old default.
+   [Decision 0036](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0036-machine-format-by-default.md) §1 is the reasoning:
+   0007 opens by saying the primary consumer is an AI agent, and eleven lines
+   later made the convenience layer the default.
 
 2. **Text output is tab-separated and pads nothing.** `ls`, `search`, `drives`,
    `share list`, `sheets tabs`, `sheets read --as table`, `forms responses --as
