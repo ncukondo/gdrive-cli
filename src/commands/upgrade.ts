@@ -16,11 +16,11 @@ export function formatUpgradeText(outcome: UpgradeOutcome): string {
         line`  bun add -g ${outcome.package}@latest`,
       ].join("\n");
     case "up-to-date":
-      return `Already up to date (v${outcome.version}).`;
+      return line`Already up to date (v${outcome.version}).`;
     case "dry-run":
       return line`Would upgrade v${outcome.current} -> v${outcome.latest} using ${outcome.asset}.`;
     case "upgraded":
-      return `Upgraded to v${outcome.to}.`;
+      return line`Upgraded to v${outcome.to}.`;
   }
 }
 
