@@ -48,11 +48,23 @@ bun run test:e2e       # requires auth
 bun run lint / format / format:check / typecheck
 ```
 
-## Development Rules (see `decisions/0001`)
+## Development Rules (see `decisions/0001`, `0032`, `0033`)
 
-- **No living SPEC**: record design in `decisions/NNNN-*.md`; document behavior
-  in `docs/`; do work as `tasks/NNNN-*.md` files (TDD Red→Green→Refactor).
+- **No living SPEC**: the code is the source of truth for *what*. `decisions/`
+  holds the *why* the code cannot show; `docs/` describes behavior for a user;
+  `tasks/NNNN-*.md` decide what to build before the code exists (TDD
+  Red→Green→Refactor). Where a document and the code disagree, the code wins.
+- **Decisions are append-only** (`0032`): never edit a committed decision file —
+  not even to add a dependency to a list. Write a new one and read the directory
+  from the highest number down. `decisions/README.md` indexes the relationships.
+- **Tasks expire** (`0032` §5): a merged task is archived in the next commit, not
+  at the end of a batch. Correct it once on the way out if the implementation
+  diverged; after that it is history.
 - **TDD**: failing test first, minimal code to pass, refactor green.
 - **Commits**: small; specific `git add <file>` (never `-A`/`.`); English.
+- **Implementation lands via PR** (`0033`): `src/`, `tests/`, `docs/`,
+  `package.json` go on a `task/00NN-slug` branch, reviewed by a fresh agent that
+  holds no implementation context, then rebase-merged. `decisions/` and `tasks/`
+  commit straight to main; a task's status/archive update follows the merge.
 - **Parallel**: parallel-safe tasks use `git worktree`; deps declared per task.
-- Docs updates are part of a task's Definition of Done.
+- Docs updates are part of a task's Definition of Done, in the same PR.

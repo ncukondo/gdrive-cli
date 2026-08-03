@@ -1,9 +1,14 @@
 # Tasks
 
-One file per unit of work, created from [`_template.md`](_template.md).
-Completed task files move to [`archive/`](archive/) (keep the filename).
+One file per unit of work, created from [`_template.md`](_template.md). A task
+decides what to build while there is no code to read, so it expires when its code
+lands: move it to [`archive/`](archive/) (keep the filename) in the commit after
+its pull request merges, correcting it once on the way out if the implementation
+diverged ([`decisions/0032`](../decisions/0032-decisions-are-append-only.md) §5).
 
-Rules (see [`decisions/0001`](../decisions/0001-development-process.md)):
+Rules (see [`decisions/0001`](../decisions/0001-development-process.md),
+[`0032`](../decisions/0032-decisions-are-append-only.md),
+[`0033`](../decisions/0033-implementation-lands-through-review.md)):
 
 - Work **TDD-first**: the task file lists the failing tests to write before
   implementation. A task is done when its acceptance criteria are checked and
@@ -11,7 +16,10 @@ Rules (see [`decisions/0001`](../decisions/0001-development-process.md)):
 - Each task declares `Depends on` and `Parallel`. Parallel-safe tasks have
   disjoint file scopes and can run in separate `git worktree`s.
 - Don't restate decisions — link to `decisions/NNNN-*.md`. If work needs a
-  decision change, record a new decision first.
+  decision change, record a **new** decision first; never edit a committed one.
+- Implementation (`src/`, `tests/`, `docs/`, `package.json`) lands on a
+  `task/00NN-slug` branch through a pull request, reviewed by an agent holding no
+  implementation context. `decisions/` and `tasks/` commit straight to main.
 - Docs (`docs/`, `README.md`) updates implied by a task are part of its DoD.
 
 Before starting, read `decisions/0013-architecture.md` (source-tree map +
