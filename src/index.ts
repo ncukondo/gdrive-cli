@@ -28,7 +28,7 @@ export function createProgram(): Command {
     .description("CLI for Google Drive, Docs, Sheets, and Forms with multi-account switching")
     .version(pkg.version)
     .option("-a, --account <email|alias>", "Account to use (overrides the default)")
-    .option("-f, --format <format>", "Output format: text | json", "text")
+    .option("-f, --format <format>", "Output format: text | json", "json")
     .option("-q, --quiet", "Minimal output", false)
     .option("--config <path>", "Config file path");
 
@@ -44,8 +44,9 @@ export function createProgram(): Command {
 
 /**
  * Format default when `-f/--format` is absent: `$GDRIVE_CLI_FORMAT`, then
- * `default_format` in the config (decision 0006). A broken config is ignored
- * here — the command's own `loadConfig` reports it as a `CONFIG_ERROR`.
+ * `default_format` in the config (decision 0006), then the machine format
+ * (decision 0036 §1). A broken config is ignored here — the command's own
+ * `loadConfig` reports it as a `CONFIG_ERROR`.
  */
 function defaultFormat(configPath?: string): string {
   const fromEnv = process.env["GDRIVE_CLI_FORMAT"];
@@ -53,7 +54,7 @@ function defaultFormat(configPath?: string): string {
   try {
     return loadConfig(nodeFs, configPath).default_format;
   } catch {
-    return "text";
+    return "json";
   }
 }
 

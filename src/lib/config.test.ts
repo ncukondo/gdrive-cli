@@ -122,11 +122,16 @@ email = "me@gmail.com"
 
   it("returns empty defaults for an empty file", () => {
     const config = parseConfig("");
-    expect(config).toEqual({ default_format: "text", accounts: [] });
+    expect(config).toEqual({ default_format: "json", accounts: [] });
   });
 
-  it("defaults format to text when absent", () => {
-    expect(parseConfig(`default_account = "x"`).default_format).toBe("text");
+  /** Decision 0036 §1: unasked, a command emits its machine representation. */
+  it("defaults format to json when absent", () => {
+    expect(parseConfig(`default_account = "x"`).default_format).toBe("json");
+  });
+
+  it("still lets a user ask for text", () => {
+    expect(parseConfig(`default_format = "text"`).default_format).toBe("text");
   });
 
   it("throws CONFIG_ERROR on malformed TOML", () => {
@@ -179,7 +184,7 @@ email = "me@gmail.com"
 describe("loadConfig", () => {
   it("returns empty defaults when no config file exists", () => {
     const fs = fakeFs({});
-    expect(loadConfig(fs, undefined)).toEqual({ default_format: "text", accounts: [] });
+    expect(loadConfig(fs, undefined)).toEqual({ default_format: "json", accounts: [] });
   });
 
   it("loads and parses the config at the CLI path", () => {

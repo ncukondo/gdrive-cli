@@ -116,8 +116,11 @@ export function parseConfig(toml: string): Config {
     ? raw["accounts"].map((entry, i) => toAccountEntry(entry, i))
     : [];
 
+  // A command that is not told otherwise emits its machine representation
+  // (decision 0036 §1); `default_format = "text"` is how a person at a terminal
+  // moves it back.
   const default_format =
-    typeof raw["default_format"] === "string" ? validateFormat(raw["default_format"]) : "text";
+    typeof raw["default_format"] === "string" ? validateFormat(raw["default_format"]) : "json";
 
   const config: Config = { default_format, accounts };
   if (typeof raw["default_account"] === "string") {
