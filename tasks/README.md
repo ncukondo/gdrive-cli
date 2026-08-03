@@ -55,6 +55,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0028 `gdrive ln` creates a shortcut](0028-ln.md) | 0027 | — | todo |
 | [0029 `forms read` / `forms responses`](0029-forms-read.md) | — | D | todo |
 | [0030 `forms write` / `forms create`](0030-forms-write.md) | 0029 | D | todo |
+| [0031 `slides read`](0031-slides-read.md) | 0029 | E | todo |
+| [0032 `slides write` / `slides create`](0032-slides-write.md) | 0031, 0030 | E | todo |
 
 ## Parallelism notes
 
@@ -73,6 +75,12 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   the projection and the client port 0029 creates. 0029 may run in a worktree
   beside 0027; their only shared points are the append-only registration in
   `src/commands/index.ts` and `package.json`.
+- **Group E** (0031 / 0032): Slides. Same shape as group D and disjoint from it
+  (`commands/slides/`, `lib/slides-api.ts`), so D and E can run side by side.
+  Sequential within the group. 0031 needs 0029 only for the `yaml` dependency
+  and the document conventions; 0032 also waits on 0030, which builds the
+  planner, the plan output, `--dry-run` and `PRUNE_REQUIRED` that 0032 reuses
+  rather than reinvents.
 
 After v0.1.0 shipped, the plan continues with maintenance work. 0016 removed
 the type assertions that would let a googleapis bump break silently, so it ran
@@ -141,7 +149,23 @@ tasks are group D and run in order: 0030 extends the projection and the client
 port 0029 creates. `yaml` joins the runtime dependencies for this and nothing
 else (0002).
 
-Google Slides content is the remaining hole, and it has no record yet.
+0031 and 0032 close the last hole, Slides, and it needed a different answer than
+Forms did. A Doc is a stream and a form is a list, but a slide is a canvas —
+every element carries a transform in EMU and the element array is z-order, not
+reading order — so the first question was what to do about geometry. Decision
+0029 answers it by not modelling any: a slide is a layout plus its placeholders,
+because the API's own `createSlide` path never needs a coordinate either. What
+that cannot describe — a hand-placed text box, an image, a table — is listed
+read-only under `elements`, which differs from how 0027 hides an unmodelled form
+item in `raw`, and for a stated reason: text outside a placeholder is common
+enough that burying it would make the ordinary deck read as empty. 0030 then
+reuses 0028 wholesale and adds only what Slides forces: rewriting a placeholder
+loses its inline formatting, so only changed ones are rewritten and the plan
+warns; and editing a read-only `elements` entry is an error rather than a silent
+no-op, which is 0028 §3's lesson arriving through a different door.
+
+Every Workspace type the CLI names now has a planned read and write path. What
+is uneven is fidelity, not coverage.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
