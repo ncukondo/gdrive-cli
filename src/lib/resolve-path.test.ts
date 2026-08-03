@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { looksLikeId, resolvePath, ROOT_ID } from "./resolve-path.ts";
+import { looksLikeId, resolvePath, resolveTarget, ROOT_ID } from "./resolve-path.ts";
 import type { DriveClient } from "./api.ts";
 import { createTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
@@ -221,6 +221,118 @@ describe("resolvePath through a shortcut (decision 0025 §1)", () => {
     ).rejects.toMatchObject({
       code: "NOT_FOUND",
       message: "No such file or folder: Reports/link-to-notes/page",
+    });
+  });
+});
+
+const SHORTCUT = "application/vnd.google-apps.shortcut";
+const LINK_ID = "1LnkAaaaaaaaaaaaaaaaaaaa";
+const DOC_ID = "1DocAaaaaaaaaaaaaaaaaaaa";
+
+// The same shapes addressed by ID rather than by name.
+const byIdTree: DriveNode[] = [
+  { id: DOC_ID, name: "Notes", mimeType: DOC, parents: [ROOT_ID] },
+  { id: LINK_ID, name: "link-to-notes", parents: [ROOT_ID], target: DOC_ID },
+];
+
+function spyOnGet(drive: DriveClient) {
+  const get = vi.fn(drive.files.get);
+  const client: DriveClient = { ...drive, files: { ...drive.files, get } };
+  return { client, get };
+}
+
+describe("resolveTarget (decision 0025 §3)", () => {
+  it("follows a path that names a shortcut, and pays nothing for the walk", async () => {
+    const { client, get } = spyOnGet(createTreeDrive(shortcutTree));
+    const { id } = await resolveTarget(client, "Reports/link-to-notes");
+    expect(id).toBe("doc1");
+    // One `files.get`: the target, which is also what checks it still exists.
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an ordinary file's own id, unfollowed and unfetched", async () => {
+    const { client, get } = spyOnGet(createTreeDrive(shortcutTree));
+    expect(await resolveTarget(client, "Reports/Notes")).toEqual({ id: "doc1", file: null });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("costs one files.get for a bare id, and hands the metadata back", async () => {
+    const { client, get } = spyOnGet(createTreeDrive(byIdTree));
+    const resolved = await resolveTarget(client, DOC_ID);
+    expect(resolved.id).toBe(DOC_ID);
+    expect(resolved.file).toMatchObject({ id: DOC_ID, name: "Notes", type: "doc" });
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows a bare id that turns out to be a shortcut", async () => {
+    const resolved = await resolveTarget(createTreeDrive(byIdTree), LINK_ID);
+    expect(resolved.id).toBe(DOC_ID);
+    // The metadata describes the id that came back, so a caller that needs it
+    // (`download`) does not fetch it again.
+    expect(resolved.file).toMatchObject({ id: DOC_ID, type: "doc" });
+  });
+
+  it("leaves resolvePath on the same argument pointing at the shortcut", async () => {
+    const drive = createTreeDrive(byIdTree);
+    expect(await resolvePath(drive, LINK_ID)).toBe(LINK_ID);
+    expect(await resolvePath(createTreeDrive(shortcutTree), "Reports/link-to-notes")).toBe("lnk2");
+  });
+
+  it("asks Drive for nothing when the argument is a root", async () => {
+    const { client, get } = spyOnGet(createTreeDrive(shortcutTree));
+    expect(await resolveTarget(client, "/")).toEqual({ id: ROOT_ID, file: null });
+    expect(get).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveTarget on a shortcut it cannot follow (decision 0025 §5, §6)", () => {
+  it("names the argument, and the word shortcut, when the target is gone", async () => {
+    const dangling: DriveNode[] = [
+      { id: "rep1", name: "Reports", mimeType: FOLDER, parents: [ROOT_ID] },
+      { id: "lnk1", name: "link", parents: ["rep1"], target: "deleted-target" },
+    ];
+    await expect(resolveTarget(createTreeDrive(dangling), "Reports/link")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: expect.stringContaining('Shortcut "Reports/link"'),
+    });
+    await expect(resolveTarget(createTreeDrive(dangling), "Reports/link")).rejects.toThrow(
+      /deleted-target/,
+    );
+  });
+
+  it("treats a trashed target as gone", async () => {
+    const trashedTarget: DriveNode[] = [
+      { id: "doc1", name: "Notes", mimeType: DOC, parents: [ROOT_ID], trashed: true },
+      { id: "lnk1", name: "link", parents: [ROOT_ID], target: "doc1" },
+    ];
+    await expect(resolveTarget(createTreeDrive(trashedTarget), "link")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: expect.stringContaining("Shortcut"),
+    });
+  });
+
+  it("reports a shortcut with no target as API_ERROR, not NOT_FOUND", async () => {
+    // Drive answering its own MIME with no `shortcutDetails.targetId` breaks
+    // its own contract, which is an API_ERROR (0020 §4 takes the same line).
+    const malformed: DriveNode[] = [
+      { id: LINK_ID, name: "link", mimeType: SHORTCUT, parents: [ROOT_ID] },
+    ];
+    await expect(resolveTarget(createTreeDrive(malformed), "link")).rejects.toMatchObject({
+      code: "API_ERROR",
+    });
+    await expect(resolveTarget(createTreeDrive(malformed), LINK_ID)).rejects.toMatchObject({
+      code: "API_ERROR",
+    });
+  });
+
+  it("refuses a chain rather than hopping twice", async () => {
+    const chained: DriveNode[] = [
+      { id: "doc1", name: "Notes", mimeType: DOC, parents: [ROOT_ID] },
+      { id: "lnk1", name: "inner", parents: [ROOT_ID], target: "doc1" },
+      { id: "lnk2", name: "outer", parents: [ROOT_ID], target: "lnk1" },
+    ];
+    await expect(resolveTarget(createTreeDrive(chained), "outer")).rejects.toMatchObject({
+      code: "API_ERROR",
     });
   });
 });
