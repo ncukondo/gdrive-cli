@@ -157,9 +157,11 @@ say so. `info` stays because it is the command that answers *what is this ID*,
 and it reports `target_id` — the escape hatch whenever you want the target from
 a command that does not follow, since a target ID is just an ID.
 
-Following costs one extra Drive call, and only where it happens: an ID-shaped
-argument that a command follows is fetched once to find out whether it is a
-shortcut at all. A path pays nothing extra, because the walk already learns it.
+A path that names an ordinary file costs nothing extra, because the path walk
+already learns which of its segments are shortcuts. Two cases do cost one Drive
+call each: an ID-shaped argument that a command follows is fetched to find out
+whether it is a shortcut at all, and a shortcut that is actually followed is
+checked to be sure its target is still there.
 
 Two failures name the shortcut rather than leaving you with a mysterious
 `NOT_FOUND` on an ID you can see in `ls`:
