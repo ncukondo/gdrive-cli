@@ -54,6 +54,7 @@ names the relationship its record has to the ones before it.
 | [0033](0033-implementation-lands-through-review.md) | Implementation lands through a pull request, reviewed without its context (revises 0001) |
 | [0034](0034-form-is-a-file-type.md) | The type vocabulary tracks what the CLI can act on, not what Drive stores (revises 0008) |
 | [0035](0035-docs-are-downstream.md) | Output correctness is asserted at the renderer; `docs/` is never a test fixture (revises 0001) |
+| [0036](0036-machine-format-by-default.md) | The default output is the machine one, and text stops aligning (revises 0007) |
 
 ## Related projects (reference implementations)
 
