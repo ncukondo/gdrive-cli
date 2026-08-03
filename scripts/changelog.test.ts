@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { HEADING_FORMAT, extractVersionNotes } from "./changelog.ts";
+import { HEADING_FORMAT, extractVersionNotes, listVersions } from "./changelog.ts";
 
 const THREE_VERSIONS = `# Changelog
 
@@ -96,17 +96,111 @@ describe("extractVersionNotes", () => {
   it("keeps a section's own sub-headings, which are not version headings", () => {
     expect(extractVersionNotes(THREE_VERSIONS, "0.8.0")).toContain("### Breaking changes");
   });
+
+  it("reads a CRLF file without leaving a carriage return on every line", () => {
+    expect(extractVersionNotes(THREE_VERSIONS.replace(/\n/g, "\r\n"), "0.9.0")).toBe("Newest.");
+  });
+});
+
+describe("a `##` line inside a fenced code block", () => {
+  it("does not truncate the section it sits in", () => {
+    const fenced = [
+      "## 0.8.0 — 2026-08-03",
+      "",
+      "Real notes, first line.",
+      "",
+      "```markdown",
+      "## Not a version heading, just an example",
+      "```",
+      "",
+      "Text after the fence.",
+      "",
+    ].join("\n");
+
+    expect(extractVersionNotes(fenced, "0.8.0")).toContain("Text after the fence.");
+  });
+
+  it("does not become the body of the version it illustrates", () => {
+    const fenced = [
+      "# Changelog",
+      "",
+      "Here is the format we use:",
+      "",
+      "```",
+      "## 0.9.0 — 2026-09-01",
+      "```",
+      "",
+      "## 0.9.0 — 2026-09-01",
+      "",
+      "The real 0.9.0 notes.",
+      "",
+    ].join("\n");
+
+    expect(extractVersionNotes(fenced, "0.9.0")).toBe("The real 0.9.0 notes.");
+  });
+
+  it("is skipped inside a `~~~` fence too", () => {
+    const fenced = ["## 0.8.0 — 2026-08-03", "", "~~~", "## nope", "~~~", "", "Tail.", ""].join(
+      "\n",
+    );
+
+    expect(extractVersionNotes(fenced, "0.8.0")).toContain("Tail.");
+  });
+
+  it("errors rather than swallowing the rest of the file when a fence never closes", () => {
+    const unclosed = [
+      "## 0.9.0 — 2026-09-01",
+      "",
+      "```",
+      "an example nobody closed",
+      "",
+      "## 0.8.0 — 2026-08-03",
+      "",
+      "Mine.",
+      "",
+    ].join("\n");
+
+    expect(() => extractVersionNotes(unclosed, "0.9.0", "CHANGELOG.md")).toThrowError(
+      /CHANGELOG\.md/,
+    );
+    expect(() => extractVersionNotes(unclosed, "0.9.0", "CHANGELOG.md")).toThrowError(/fence/i);
+  });
+});
+
+describe("listVersions", () => {
+  it("names the version headings in file order, and nothing else", () => {
+    expect(listVersions(THREE_VERSIONS)).toEqual(["0.9.0", "0.8.0", "0.7.0"]);
+  });
+
+  it("ignores a heading that only appears as a fenced example", () => {
+    expect(listVersions("```\n## 0.9.0 — 2026-09-01\n```\n")).toEqual([]);
+  });
+
+  it("is what tells a failed release which sections do exist", () => {
+    expect(() => extractVersionNotes(THREE_VERSIONS, "1.0.0", "CHANGELOG.md")).toThrowError(
+      /0\.9\.0, 0\.8\.0, 0\.7\.0/,
+    );
+  });
 });
 
 describe("the real CHANGELOG.md", () => {
-  it("has a section for the version this branch is preparing", () => {
-    const notes = extractVersionNotes(
-      readFileSync("CHANGELOG.md", "utf8"),
-      "0.8.0",
-      "CHANGELOG.md",
-    );
+  const changelog = readFileSync("CHANGELOG.md", "utf8");
 
-    expect(notes).toContain("### Breaking changes");
-    expect(notes).not.toContain("## 0.8.0");
+  // Not a docs fixture (decision 0035 §2): this file is an input the release
+  // workflow parses, so what is asserted is that it parses — never that it
+  // says a particular thing.
+  it("extracts every section it declares, heading stripped and body intact", () => {
+    const versions = listVersions(changelog);
+    expect(versions.length).toBeGreaterThan(0);
+
+    for (const version of versions) {
+      const notes = extractVersionNotes(changelog, version, "CHANGELOG.md");
+      expect(notes).not.toContain(`## ${version}`);
+      expect(notes.split("\n").filter((line) => line.startsWith("## "))).toEqual([]);
+    }
+  });
+
+  it("still has the section 0.8.0 will be released from", () => {
+    expect(listVersions(changelog)).toContain("0.8.0");
   });
 });

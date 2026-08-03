@@ -7,8 +7,9 @@
  * that they are "called out in the release notes for the version that ships
  * it", which makes the changelog the compatibility record rather than a
  * convenience. So every failure here is loud: a tag whose version has no
- * section must fail the release job rather than publish an empty body that
- * nobody can read.
+ * section, a heading that drifted, an empty section and an unclosed code fence
+ * all fail the release job. The failure worth preventing is not a crash — it is
+ * a plausible-looking body that is the wrong text.
  *
  * Usage: `bun scripts/changelog.ts <version> [changelog path]` — the section
  * goes to stdout, and anything wrong goes to stderr with a non-zero exit.
@@ -31,13 +32,93 @@ const SECTION_BREAK = /^##\s/;
  */
 const VERSION_HEADING = /^## (\S+) — \d{4}-\d{2}-\d{2}$/;
 
-function fail(version: string, source: string, problem: string): Error {
+/** An opening or closing code fence: the run of markers, then the rest of the line. */
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+interface ScannedLine {
+  text: string;
+  /** True for a `## ` line outside a fence, whether or not it names a version. */
+  isSectionBreak: boolean;
+  /** The version this line's heading names, or null when it names none. */
+  version: string | null;
+}
+
+/**
+ * Splits the document into lines that know whether they are structure or
+ * content. Fences are the whole reason this is not a regex applied to each line
+ * on its own: a changelog documents its own heading format, and an example
+ * inside a fence must neither end a section nor start one. Without this, a
+ * fenced `## 0.9.0 …` above the real heading makes the extractor return the
+ * fence as the entire release body, and exit 0 while doing it.
+ */
+function scan(changelog: string, source: string): ScannedLine[] {
+  const lines: ScannedLine[] = [];
+  let fence: string | null = null;
+
+  // Normalising the line ending here is what keeps a CRLF changelog from
+  // putting a stray carriage return on every line of the release body.
+  for (const text of changelog.split(/\r?\n/)) {
+    const edge = FENCE.exec(text);
+    const marker = edge?.[1] ?? "";
+    const rest = edge?.[2] ?? "";
+    const closesFence =
+      fence !== null &&
+      marker[0] === fence[0] &&
+      marker.length >= fence.length &&
+      rest.trim() === "";
+
+    if (fence !== null) {
+      // A closing fence is the same character, at least as long, and alone on
+      // its line; anything else is content, including a nested opening fence.
+      if (closesFence) fence = null;
+      lines.push({ text, isSectionBreak: false, version: null });
+      continue;
+    }
+    if (edge !== null) {
+      fence = marker;
+      lines.push({ text, isSectionBreak: false, version: null });
+      continue;
+    }
+    if (SECTION_BREAK.test(text)) {
+      const heading = VERSION_HEADING.exec(text.trimEnd());
+      lines.push({ text, isSectionBreak: true, version: heading?.[1] ?? null });
+      continue;
+    }
+    lines.push({ text, isSectionBreak: false, version: null });
+  }
+
+  if (fence !== null) {
+    throw new Error(
+      `${source} has a code fence that is never closed, so every heading below it ` +
+        `is invisible and a section would be extracted with the rest of the file ` +
+        `inside it. Close the fence.`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * Every version the changelog declares, in the order they appear. A fenced
+ * example is not a declaration and is not listed, which is what makes this safe
+ * to name in the error a release failed on.
+ */
+export function listVersions(changelog: string, source = "CHANGELOG.md"): string[] {
+  const versions: string[] = [];
+  for (const line of scan(changelog, source)) {
+    if (line.version !== null) versions.push(line.version);
+  }
+  return versions;
+}
+
+function fail(changelog: string, version: string, source: string, problem: string): Error {
+  const known = listVersions(changelog, source);
   return new Error(
     `${problem}\n` +
       `Add one to ${source} under a heading of exactly "${HEADING_FORMAT}", ` +
       `here "## ${version} — YYYY-MM-DD".\n` +
       `A heading that drifted from that format reads as a missing version, ` +
-      `because nothing else can tell the two apart.`,
+      `because nothing else can tell the two apart.\n` +
+      `Sections found: ${known.length > 0 ? known.join(", ") : "(none)"}.`,
   );
 }
 
@@ -56,7 +137,7 @@ function trimBlankLines(lines: string[]): string[] {
  * removed. `source` only names the file in errors.
  *
  * Throws when the section is absent, when its heading does not match
- * {@link HEADING_FORMAT}, or when it is present but empty.
+ * {@link HEADING_FORMAT}, and when it is present but empty.
  */
 export function extractVersionNotes(
   changelog: string,
@@ -67,22 +148,21 @@ export function extractVersionNotes(
   let inSection = false;
   let found = false;
 
-  for (const line of changelog.split("\n")) {
-    if (SECTION_BREAK.test(line)) {
+  for (const line of scan(changelog, source)) {
+    if (line.isSectionBreak) {
       if (inSection) break;
-      const heading = VERSION_HEADING.exec(line.trimEnd());
-      inSection = heading !== null && heading[1] === version;
+      inSection = line.version === version;
       found = found || inSection;
       continue;
     }
-    if (inSection) body.push(line);
+    if (inSection) body.push(line.text);
   }
 
-  if (!found) throw fail(version, source, `${source} has no section for ${version}.`);
+  if (!found) throw fail(changelog, version, source, `${source} has no section for ${version}.`);
 
   const notes = trimBlankLines(body);
   if (notes.length === 0) {
-    throw fail(version, source, `The ${version} section of ${source} is empty.`);
+    throw fail(changelog, version, source, `The ${version} section of ${source} is empty.`);
   }
   return notes.join("\n");
 }
