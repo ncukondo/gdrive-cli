@@ -1,6 +1,8 @@
 # Task 0036: The table stays a table, whatever a file is called
 
-Status: todo (move to `tasks/archive/` when done)
+Status: closed unmerged — superseded by [0037](0037-machine-format-by-default.md)
+and decision [0036](../decisions/0036-machine-format-by-default.md). Its pull
+request #14 is closed without merging; see Outcome notes.
 Depends on: 0034 — it derived the type column's width and added the docs
 transcript test this task removes.
 Parallel: yes (worktree-safe) alongside 0035, which touches only `.github/` and
@@ -96,3 +98,29 @@ permits, and the renderer's tests are what say so.
   file name, a 30-character ASCII name and a short one, in one listing. Read the
   output as a column of IDs and check it is a column. This is the only step that
   proves the display measure matches a real terminal.
+
+## Outcome notes
+
+Closed unmerged. The work was done, reviewed twice, and is what settled the
+question against itself.
+
+- The fix worked. Measured against a real account, the id column moved from
+  display offsets `55, 59, -1, 55, 57, 70` to `60` on every row, and the `-1`
+  was a row whose name and id could not be separated at all.
+- Review then showed the guard could not hold. The test's "independent" oracle
+  was a closed allowlist, so it returned 1 for anything unlisted exactly as the
+  renderer's ranges did, and a fixture of two characters neither knew passed the
+  property while rendering a column out of line. The range data itself was wrong
+  for 214 assigned code points.
+- Regenerating from `EastAsianWidth-17.0.0.txt` fixed the data and exposed the
+  real problem: for `U+4DC0..4DFF` the standard says two columns while
+  `Bun.stringWidth` and `string-width@5` both say one. Depending on the ecosystem
+  package would have been worse than the hand-written table, not better — it is
+  stale in the same places. There is no correct answer to import.
+- That is the measurement behind
+  [`0036`](../decisions/0036-machine-format-by-default.md): alignment is not a
+  defect to fix but a cost to stop paying. Task 0037 removes the renderers this
+  task was repairing.
+- One commit of #14 is salvaged by 0037 — deleting
+  `tests/integration/docs-transcripts.test.ts`, which
+  [`0035`](../decisions/0035-docs-are-downstream.md) §2 requires regardless.
