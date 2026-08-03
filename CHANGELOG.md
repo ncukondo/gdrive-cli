@@ -23,7 +23,8 @@ generated at the time.
 
 ## 0.8.0 — 2026-08-03
 
-Drive shortcuts and Google Forms. `gdrive` now knows what a shortcut is and
+**Every command's default output changes: JSON, not text.** Alongside that,
+Drive shortcuts and Google Forms — `gdrive` now knows what a shortcut is and
 follows it where following is right, and `gdrive forms read` / `forms responses`
 read a form and its answers.
 
@@ -34,7 +35,45 @@ Pre-1.0 output changes, permitted by [decision
 and listed here because that record makes the release notes the compatibility
 log for 0.x.
 
-1. **`type` gains two members, `shortcut` and `form`.** A Drive shortcut used to
+1. **JSON is what a command prints when it is not told otherwise.** Text was
+   the default; it is now the convenience layer, asked for with `-f text` or
+   with `default_format = "text"` in your config. Every command is affected,
+   `gdrive docs read` and `gdrive forms read` included: their Markdown and YAML
+   now arrive inside `data.content` / `data.form` unless `-f text` is passed,
+   so `gdrive forms read X > form.yaml` writes an envelope until you add it.
+
+   `--quiet` itself is unchanged: [decision 0007](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0007-output-and-errors.md)
+   has always said JSON mode ignores it. What changed is which mode it composes
+   with, so `gdrive ls -q` prints the envelope now and wants `-q -f text` for
+   bare IDs.
+
+   What to do: add `-f text` where you were reading or redirecting the text, or
+   set `default_format = "text"` once and change nothing else. `gdrive init`
+   now writes `default_format = "json"`, so regenerating a config does not
+   quietly restore the old default. [Decision 0036](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0036-machine-format-by-default.md)
+   §1 is the reasoning: 0007 opens by saying the primary consumer is an AI
+   agent, and eleven lines later made the convenience layer the default.
+
+2. **Text output is tab-separated and pads nothing.** `ls`, `search`, `drives`,
+   `share list`, `sheets tabs`, `sheets read --as table`, `forms responses --as
+   table` and `gdrive info` now join their fields with a single tab. No column
+   is measured, so no column can be measured wrongly. Pull request #14 is where
+   that was settled by measurement rather than argument: Unicode Annex #11 calls
+   U+4DC0 two columns while `Bun.stringWidth` and `string-width@5` both call it
+   one, and terminals agree with none of the three, so the alignment was dropped
+   rather than fixed again — see §2 of the decision linked above.
+
+   What to do: split a row on `\t` instead of slicing it at fixed offsets. For
+   columns on screen, pipe it through something that has a terminal and a font
+   in front of it — `gdrive ls -f text | column -t -s $'\t'`. `--as csv` and
+   `--as json` are untouched, as is quiet mode's CSV.
+
+   Text is lossy on purpose now: a tab, a newline, or any other control
+   character in a file name — Drive accepts all of them, and a newline there
+   used to split a row in half — is replaced with a space, so one file can never
+   render as two rows. `-f json` carries the real name.
+
+3. **`type` gains two members, `shortcut` and `form`.** A Drive shortcut used to
    report `type: file` and now reports `type: shortcut`; a Google Form used to
    report `type: file` and now reports `type: form`. The full vocabulary is
    `folder`, `doc`, `sheet`, `slides`, `form`, `shortcut`, `file`, and an
@@ -50,14 +89,14 @@ log for 0.x.
    shortcuts even though each now reports its own type. Filter with
    `--type form` or `--type shortcut` when you want only those.
 
-2. **The file object gains `target_id` and `target_type`**, on every file, `null`
+4. **The file object gains `target_id` and `target_type`**, on every file, `null`
    on everything that is not a shortcut ([decision
    0025](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0025-shortcuts.md)
    §2). This is additive, so it only bites a consumer that rejects unknown
    fields or compares whole objects. In text output, `gdrive info` on a shortcut
-   gains a `Target: <id> (<type>)` line directly after `Created`.
+   gains a `Target:` line carrying `<id> (<type>)`, directly after `Created`.
 
-3. **A shortcut is followed, or not, according to what the argument is for.**
+5. **A shortcut is followed, or not, according to what the argument is for.**
    Previously nothing was followed, and the commands that should have followed
    simply failed. Now `ls <folder>`, `download`, `docs read/append/insert/replace`,
    `sheets tabs/read/write/append/clear`, `forms read/responses`, every
@@ -85,12 +124,6 @@ log for 0.x.
    §4). A path pays it only when its last segment really is one, and `download`
    pays nothing either way — it reuses the metadata the lookup already fetched.
 
-4. **The `ls` / `search` text table's `Type` column is two characters wider**
-   (8 → 10), because `shortcut` is eight characters and would otherwise run
-   straight into the timestamp. Every column after it shifts. Anything parsing
-   that table by fixed offsets needs adjusting; `-f json` is unaffected and
-   remains the supported machine interface.
-
 ### Added
 
 - **`gdrive forms read` and `gdrive forms responses`.** A form reads as a single
@@ -110,9 +143,17 @@ log for 0.x.
 
 ### Fixed
 
-Everything here was broken because the CLI had no idea shortcuts existed
-([decision
-0025](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0025-shortcuts.md)
+The `ls` / `search` table used to lose a file's name and ID to each other. A
+name of 27 or more UTF-16 units met the column width exactly, so the padding
+added nothing and the ID abutted the name — `…xxxxxxx1AbCdEf`, with no way to
+tell where one ended. A full-width character costs one UTF-16 unit and two
+display columns, so `研修医へのフィードバックシート` pushed every column right of
+it out by 15, and rows in one table disagreed about where the ID began. A
+newline in a name — Drive accepts one — split a row in half. All three are gone
+with the padding rather than repaired; the second breaking change above is why.
+
+The rest was broken because the CLI had no idea shortcuts existed
+([decision 0025](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0025-shortcuts.md)
 calls them bugs rather than missing features):
 
 - A path could not pass through a folder shortcut:
@@ -141,12 +182,3 @@ calls them bugs rather than missing features):
   has no export. Use `gdrive forms read`.
 - **Creating a shortcut is not supported** (`gdrive ln`), and neither is writing
   a form. Both are planned.
-- **Pre-existing, and worse than the column this release widened:** the `Name`
-  column of the `ls` / `search` table has the same defect the `Type` column had,
-  twice over. A name of 27 or more UTF-16 units meets the column width exactly,
-  so the padding adds nothing and the ID abuts the name — `…xxxxxxx1AbCdEf`,
-  with no way to tell where one ends. And a full-width character costs one
-  UTF-16 unit but two display columns, so a name containing them pushes every
-  column to its right out by that much, and rows in one table disagree about
-  where the ID starts. Neither is introduced here, both hit ordinary names, and
-  together they are the reason to parse `-f json` rather than the table.
