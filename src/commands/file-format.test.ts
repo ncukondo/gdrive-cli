@@ -32,11 +32,25 @@ const shortcut = () =>
     target_type: "sheet",
   });
 
+/**
+ * Names chosen for what each one broke while the table padded: a full-width
+ * name drifted every column right of it, a name of exactly the old `NAME_W`
+ * lost its separator entirely, a longer one pushed its row out of line, and an
+ * emoji with a modifier was measured one or two columns short.
+ */
+const AWKWARD_NAMES = [
+  "Budget",
+  "研修医へのフィードバックシート",
+  "x".repeat(27),
+  "y".repeat(64),
+  "❤️ 👍🏽 notes",
+];
+
 describe("formatFileDetail on a shortcut (decision 0025 §2)", () => {
   it("prints what the shortcut points at, and what kind of thing that is", () => {
     const detail = formatFileDetail(shortcut());
-    expect(detail).toContain("Type:      shortcut");
-    expect(detail).toContain("Target:    1AbC (sheet)");
+    expect(detail).toContain("Type:\tshortcut");
+    expect(detail).toContain("Target:\t1AbC (sheet)");
   });
 
   it("prints no target line for anything else", () => {
@@ -56,14 +70,63 @@ describe("formatFileTable", () => {
  * A real listing printed `shortcut2026-08-03 04:51`: the width was written down
  * as 8, and `shortcut` is 8 characters, so `padEnd` added nothing. Asserted over
  * the whole vocabulary rather than for `shortcut`, so the next member added
- * cannot bring the collision back.
+ * cannot bring the collision back — a tab separates the two fields whatever the
+ * label is, and the type is recoverable rather than merely visible.
  */
-describe("formatFileTable column widths", () => {
+describe("formatFileTable fields", () => {
   const MODIFIED = "2026-07-24 06:17";
 
-  it.each([...FILE_TYPES])("keeps the type clear of the timestamp: %s", (type) => {
-    const [header = "", row = ""] = formatFileTable([file({ type })]).split("\n");
-    expect(row.startsWith(`${type} `)).toBe(true);
-    expect(row.indexOf(MODIFIED)).toBe(header.indexOf("Modified"));
+  it.each([...FILE_TYPES])("keeps the type its own field: %s", (type) => {
+    const [, row = ""] = formatFileTable([file({ type })]).split("\n");
+    expect(row.split("\t")).toEqual([type, MODIFIED, "Budget", "id1"]);
+  });
+
+  it("names its columns in the header", () => {
+    const [header = ""] = formatFileTable([file()]).split("\n");
+    expect(header.split("\t")).toEqual(["Type", "Modified", "Name", "ID"]);
+  });
+
+  it.each(AWKWARD_NAMES)("round-trips a row split on tabs: %s", (name) => {
+    const [, row = ""] = formatFileTable([file({ name })]).split("\n");
+    expect(row.split("\t")).toEqual(["sheet", MODIFIED, name, "id1"]);
+  });
+
+  it("round-trips every row of one table, whatever the other names are", () => {
+    const files = AWKWARD_NAMES.map((name, i) => file({ name, id: `id${i}` }));
+    const rows = formatFileTable(files).split("\n").slice(1);
+    expect(rows.map((row) => row.split("\t"))).toEqual(
+      AWKWARD_NAMES.map((name, i) => ["sheet", MODIFIED, name, `id${i}`]),
+    );
+  });
+});
+
+/**
+ * What "no renderer aligns" buys, stated as behaviour rather than as a ban on
+ * `padEnd` (decision 0037 §2): widening one name repads every row of an aligned
+ * table, so this fails for any alignment scheme however it is built.
+ */
+describe("a row does not depend on the other rows", () => {
+  it("leaves every other row byte-identical when one name grows", () => {
+    const files = AWKWARD_NAMES.map((name, i) => file({ name, id: `id${i}` }));
+    const widened = files.map((f, i) =>
+      i === 0 ? { ...f, name: `${f.name} 🏥 拡張された名前` } : f,
+    );
+    const before = formatFileTable(files).split("\n");
+    const after = formatFileTable(widened).split("\n");
+    expect(after.filter((_, i) => i !== 1)).toEqual(before.filter((_, i) => i !== 1));
+    expect(after[1]).not.toBe(before[1]);
+  });
+});
+
+describe("formatFileDetail fields", () => {
+  it.each(AWKWARD_NAMES)("round-trips a label and its value: %s", (name) => {
+    const lines = formatFileDetail(file({ name })).split("\n");
+    expect(lines[0]?.split("\t")).toEqual(["Name:", name]);
+  });
+
+  it("leaves every other line byte-identical when the name grows", () => {
+    const before = formatFileDetail(file()).split("\n");
+    const after = formatFileDetail(file({ name: "研修医へのフィードバックシート" })).split("\n");
+    expect(after.slice(1)).toEqual(before.slice(1));
   });
 });

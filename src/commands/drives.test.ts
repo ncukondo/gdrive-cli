@@ -30,6 +30,23 @@ describe("formatDriveTable", () => {
   it("says so when there are none", () => {
     expect(formatDriveTable([])).toBe("No shared drives.");
   });
+
+  it("round-trips every field of every row, full-width name included", () => {
+    const rows = formatDriveTable(drives).split("\n").slice(1);
+    expect(rows.map((row) => row.split("\t"))).toEqual([
+      ["専門医部会", "0ANPgzMZtaAa6Uk9PVA"],
+      ["Finance", "0AAbCdEfGhIjKlMnOpQ"],
+    ]);
+  });
+
+  it("leaves every other row byte-identical when one name grows", () => {
+    const before = formatDriveTable(drives).split("\n");
+    const after = formatDriveTable([
+      { id: "0ANPgzMZtaAa6Uk9PVA", name: "専門医部会 — 会議資料アーカイブ" },
+      { id: "0AAbCdEfGhIjKlMnOpQ", name: "Finance" },
+    ]).split("\n");
+    expect(after.filter((_, i) => i !== 1)).toEqual(before.filter((_, i) => i !== 1));
+  });
 });
 
 describe("handleDrives", () => {

@@ -163,12 +163,18 @@ describe("handleFormsResponses", () => {
     const out = collect();
     await handleFormsResponses(deps({ write: out.write }));
     const [header, first] = out.output.split("\n");
-    expect(header).toBe(
-      "submitted             Which team are you on?  Which tools, roughly?  Attach your slides",
-    );
-    expect(first).toBe(
-      "2026-07-01T10:22:00Z  Sales                   Docs; Sheets           1FiLe; 2FiLe",
-    );
+    expect(header?.split("\t")).toEqual([
+      "submitted",
+      "Which team are you on?",
+      "Which tools, roughly?",
+      "Attach your slides",
+    ]);
+    expect(first?.split("\t")).toEqual([
+      "2026-07-01T10:22:00Z",
+      "Sales",
+      "Docs; Sheets",
+      "1FiLe; 2FiLe",
+    ]);
   });
 
   it("leaves an unanswered question as an empty cell", async () => {

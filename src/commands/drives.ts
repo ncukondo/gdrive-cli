@@ -1,18 +1,17 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat, SharedDrive } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
-
-const NAME_W = 32;
+import { formatTable, renderSuccess } from "../lib/output.ts";
 
 /**
- * Renders shared drives as an aligned text table (decision 0016). The ID column
- * is what `--parent`, `mv`, `cp`, and `ls` take, so it is never elided.
+ * Renders shared drives as tab-separated rows (decisions 0016, 0036 §2). The ID
+ * field is what `--parent`, `mv`, `cp`, and `ls` take, so it is never elided.
  */
 export function formatDriveTable(drives: SharedDrive[]): string {
   if (drives.length === 0) return "No shared drives.";
-  const header = "Name".padEnd(NAME_W) + "ID";
-  const rows = drives.map((d) => d.name.padEnd(NAME_W) + d.id);
-  return [header, ...rows].join("\n");
+  return formatTable(
+    ["Name", "ID"],
+    drives.map((d) => [d.name, d.id]),
+  );
 }
 
 export interface DrivesDeps {

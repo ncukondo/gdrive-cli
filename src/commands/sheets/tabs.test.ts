@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleSheetsTabs } from "./tabs.ts";
+import { formatTabTable, handleSheetsTabs } from "./tabs.ts";
 import type { SheetTab } from "../../lib/sheets-api.ts";
 
 function collect() {
@@ -17,8 +17,25 @@ const tabs: SheetTab[] = [
   { index: 1, title: "Summary", sheet_id: 7, rows: 50, cols: 10, hidden: true },
 ];
 
+describe("formatTabTable", () => {
+  it("round-trips every field of every row", () => {
+    const rows = formatTabTable(tabs).split("\n").slice(1);
+    expect(rows.map((row) => row.split("\t"))).toEqual([
+      ["0", "100", "26", "Sheet1"],
+      ["1", "50", "10", "Summary"],
+    ]);
+  });
+
+  it("leaves every other row byte-identical when one title grows", () => {
+    const before = formatTabTable(tabs).split("\n");
+    const longer = tabs.map((t, i) => (i === 0 ? { ...t, title: "回答 1 — シート" } : t));
+    const after = formatTabTable(longer).split("\n");
+    expect(after.filter((_, i) => i !== 1)).toEqual(before.filter((_, i) => i !== 1));
+  });
+});
+
 describe("handleSheetsTabs", () => {
-  it("lists tabs as an aligned table", async () => {
+  it("lists tabs as tab-separated rows", async () => {
     const resolvePath = vi.fn(async () => "S1");
     const out = collect();
     await handleSheetsTabs({
@@ -31,9 +48,7 @@ describe("handleSheetsTabs", () => {
     });
     expect(resolvePath).toHaveBeenCalledWith("Budget");
     expect(out.output).toBe(
-      ["Index  Rows  Cols  Title", "0      100   26    Sheet1", "1      50    10    Summary"].join(
-        "\n",
-      ),
+      ["Index\tRows\tCols\tTitle", "0\t100\t26\tSheet1", "1\t50\t10\tSummary"].join("\n"),
     );
   });
 

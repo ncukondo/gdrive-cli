@@ -129,18 +129,44 @@ describe("parseValues", () => {
 });
 
 describe("formatValuesTable", () => {
-  it("aligns columns", () => {
+  it("separates cells with one tab and pads nothing (decision 0036 §2)", () => {
     expect(
       formatValuesTable([
         ["name", "score"],
         ["alice", "9"],
       ]),
-    ).toBe("name   score\nalice  9");
+    ).toBe("name\tscore\nalice\t9");
   });
 
-  it("pads short rows and returns empty for no values", () => {
-    expect(formatValuesTable([["a", "b"], ["c"]])).toBe("a  b\nc");
+  it("keeps a short row short and returns empty for no values", () => {
+    expect(formatValuesTable([["a", "b"], ["c"]])).toBe("a\tb\nc");
     expect(formatValuesTable([])).toBe("");
+  });
+
+  it("round-trips every cell, whatever the widest cell of the column is", () => {
+    const grid = [
+      ["名前", "メモ"],
+      ["alice", "x".repeat(40)],
+      ["", "9"],
+    ];
+    expect(
+      formatValuesTable(grid)
+        .split("\n")
+        .map((row) => row.split("\t")),
+    ).toEqual(grid);
+  });
+
+  it("leaves every other row byte-identical when one cell grows", () => {
+    const grid = [
+      ["name", "score"],
+      ["alice", "9"],
+    ];
+    const before = formatValuesTable(grid).split("\n");
+    const after = formatValuesTable([
+      ["a-considerably-longer-name", "score"],
+      ["alice", "9"],
+    ]).split("\n");
+    expect(after.slice(1)).toEqual(before.slice(1));
   });
 });
 
