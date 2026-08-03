@@ -59,7 +59,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0024 `insert --before` / `--after <marker>`](archive/0024-insert-at-marker.md) | 0023 | — | done |
 | [0025 List numbering & links](archive/0025-list-numbering-and-links.md) | 0023 | — | done |
 | [0026 Soft line breaks](archive/0026-soft-line-breaks.md) | 0025 | — | done |
-| [0027 Shortcuts resolve by argument role](0027-shortcuts.md) | — | — | todo |
+| [0027 Shortcuts resolve by argument role](archive/0027-shortcuts.md) | — | — | done |
 | [0028 `gdrive ln` creates a shortcut](0028-ln.md) | 0027 | — | todo |
 | [0029 `forms read` / `forms responses`](0029-forms-read.md) | — | D | todo |
 | [0030 `forms write` / `forms create`](0030-forms-write.md) | 0029 | D | todo |
