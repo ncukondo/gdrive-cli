@@ -48,12 +48,13 @@ const withVideo: FormRaw = {
 };
 
 describe("handleFormsRead", () => {
-  it("resolves the argument like every other command", async () => {
+  it("fetches the form the argument resolved to, not the argument", async () => {
     const resolvePath = vi.fn(async () => "1FoRm");
+    const getForm = vi.fn(async () => form);
     const out = collect();
     await handleFormsRead({
       resolvePath,
-      getForm: async () => form,
+      getForm,
       file: "Surveys/2026",
       format: "text",
       quiet: false,
@@ -61,6 +62,7 @@ describe("handleFormsRead", () => {
       warn: () => {},
     });
     expect(resolvePath).toHaveBeenCalledWith("Surveys/2026");
+    expect(getForm).toHaveBeenCalledWith("1FoRm");
   });
 
   it("writes the YAML document, which parses back to the same structure", async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createFakeForms } from "../../../tests/helpers/fake-forms.ts";
 import type { FormRaw } from "../../lib/form-document.ts";
 import { getForm, listResponses, type FormResponseRaw } from "../../lib/forms-api.ts";
@@ -123,6 +123,42 @@ const gridResponses: FormResponseRaw[] = [
 ];
 
 describe("handleFormsResponses", () => {
+  it("fetches the form and the responses the argument resolved to", async () => {
+    const resolvePath = vi.fn(async () => "1FoRm");
+    const getForm = vi.fn(async () => form);
+    const listResponses = vi.fn(async () => responses);
+    const out = collect();
+    await handleFormsResponses({
+      resolvePath,
+      getForm,
+      listResponses,
+      file: "Surveys/2026",
+      format: "text",
+      quiet: false,
+      write: out.write,
+      warn: () => {},
+    });
+    expect(resolvePath).toHaveBeenCalledWith("Surveys/2026");
+    expect(getForm).toHaveBeenCalledWith("1FoRm");
+    expect(listResponses).toHaveBeenCalledWith("1FoRm");
+  });
+
+  /**
+   * Acceptance criterion 5. The linked spreadsheet is reported by `read` and
+   * is otherwise nothing to do with this command — which is exactly why it
+   * needs a fixture that has one, so that staying true stays checked.
+   */
+  it("returns the responses whether or not the form has a linked sheet", async () => {
+    const linked = collect();
+    const unlinked = collect();
+    await handleFormsResponses(
+      deps({ write: linked.write, form: { ...form, linkedSheetId: "1ShEeT" }, as: "csv" }),
+    );
+    await handleFormsResponses(deps({ write: unlinked.write, as: "csv" }));
+    expect(linked.output).toBe(unlinked.output);
+    expect(linked.output.split("\n")).toHaveLength(3);
+  });
+
   it("heads the table with the question titles and a submitted column", async () => {
     const out = collect();
     await handleFormsResponses(deps({ write: out.write }));

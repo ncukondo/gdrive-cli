@@ -10,7 +10,7 @@ export interface FakeFormsOptions {
    * only the first page is visibly wrong.
    */
   pages?: FormResponseRaw[][];
-  /** Thrown by `forms.get`, for the error-mapping tests. */
+  /** Thrown by whichever method is called, for the error-mapping tests. */
   error?: unknown;
 }
 
@@ -42,6 +42,7 @@ export function createFakeForms(options: FakeFormsOptions = {}): FakeForms {
       responses: {
         list: async ({ pageToken }) => {
           calls.push("forms.responses.list");
+          if (options.error !== undefined) throw options.error;
           pageTokens.push(pageToken);
           const index = pageToken === undefined ? 0 : Number(pageToken);
           const responses = pages[index] ?? [];
