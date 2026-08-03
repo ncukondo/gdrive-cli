@@ -5,7 +5,7 @@ import {
   type DrivePermission,
   type OutputFormat,
 } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { line, renderSuccess } from "../../lib/output.ts";
 
 export interface ShareRemoveDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -52,7 +52,7 @@ export async function handleShareRemove(deps: ShareRemoveDeps): Promise<CommandR
   const rendered = renderSuccess(
     {
       data: { id: fileId, permission_id: permissionId, removed: true },
-      text: `Removed permission ${permissionId} from ${fileId}`,
+      text: line`Removed permission ${permissionId} from ${fileId}`,
       quiet: "",
     },
     deps.format,

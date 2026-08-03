@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { line, renderSuccess } from "../lib/output.ts";
 import { nodeFs, type FsAdapter } from "../lib/fs.ts";
 import {
   aliasForEmail,
@@ -63,9 +63,9 @@ export async function handleAuthStatus(deps: AuthStatusDeps): Promise<CommandRes
   const scopes = tokens.scopes.map(shortScope);
 
   const textLines = [
-    `Account: ${email}${alias ? ` (alias: ${alias})` : ""}${isDefault ? " [default]" : ""}`,
-    `Token expires: ${expiresAt}`,
-    `Scopes: ${scopes.join(", ")}`,
+    line`Account: ${email}${alias ? ` (alias: ${alias})` : ""}${isDefault ? " [default]" : ""}`,
+    line`Token expires: ${expiresAt}`,
+    line`Scopes: ${scopes.join(", ")}`,
   ];
 
   deps.write(
@@ -117,7 +117,7 @@ export async function handleAuthLogout(deps: AuthLogoutDeps): Promise<CommandRes
 
   deps.write(
     renderSuccess(
-      { data: { email, logged_out: true }, text: `Logged out ${email}`, quiet: email },
+      { data: { email, logged_out: true }, text: line`Logged out ${email}`, quiet: email },
       deps.format,
       deps.quiet,
     ),
@@ -165,7 +165,7 @@ export async function handleAuthLogin(deps: AuthLoginDeps): Promise<CommandResul
     renderSuccess(
       {
         data: { authenticated: true, email: tokens.email, default: isFirstAccount },
-        text: `Authenticated as ${tokens.email}${isFirstAccount ? " (set as default account)" : ""}`,
+        text: line`Authenticated as ${tokens.email}${isFirstAccount ? " (set as default account)" : ""}`,
         quiet: tokens.email,
       },
       deps.format,

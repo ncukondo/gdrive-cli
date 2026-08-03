@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { line, renderSuccess } from "../lib/output.ts";
 import { nodeFs, type FsAdapter } from "../lib/fs.ts";
 import {
   aliasForEmail,
@@ -55,7 +55,7 @@ function formatAccountList(views: AccountView[]): string {
     const marker = v.default ? "*" : " ";
     const alias = v.alias ? ` (${v.alias})` : "";
     const unauth = v.authenticated ? "" : " (not authenticated)";
-    return `${marker} ${v.email}${alias}${unauth}`;
+    return line`${marker} ${v.email}${alias}${unauth}`;
   });
   return lines.join("\n");
 }
@@ -113,7 +113,11 @@ export async function handleAccountUse(deps: AccountMutateDeps): Promise<Command
 
   deps.write(
     renderSuccess(
-      { data: { default_account: email }, text: `Default account set to ${email}`, quiet: email },
+      {
+        data: { default_account: email },
+        text: line`Default account set to ${email}`,
+        quiet: email,
+      },
       deps.format,
       deps.quiet,
     ),
@@ -147,7 +151,7 @@ export async function handleAccountAlias(deps: AccountAliasDeps): Promise<Comman
     renderSuccess(
       {
         data: { email, alias: deps.alias },
-        text: `Alias "${deps.alias}" -> ${email}`,
+        text: line`Alias "${deps.alias}" -> ${email}`,
         quiet: email,
       },
       deps.format,
@@ -180,7 +184,7 @@ export async function handleAccountRemove(deps: AccountRemoveDeps): Promise<Comm
 
   deps.write(
     renderSuccess(
-      { data: { email, removed: true }, text: `Removed ${email}`, quiet: email },
+      { data: { email, removed: true }, text: line`Removed ${email}`, quiet: email },
       deps.format,
       deps.quiet,
     ),
