@@ -1,6 +1,7 @@
 # Task 0029: `gdrive forms read` / `forms responses`
 
-Status: todo (move to `tasks/archive/` when done)
+Status: done — PR [#10](https://github.com/ncukondo/gdrive-cli/pull/10), merged
+2026-08-03. Manual verification is outstanding; see Verification.
 Depends on: —
 Parallel: yes (worktree-safe) — a new command tree (`commands/forms/*`) and a
 new `lib/forms-api.ts`. It touches `src/commands/index.ts` (one append-only
@@ -103,24 +104,80 @@ readable as a table whose columns are question titles.
 
 ## Acceptance criteria
 
-- [ ] `gdrive forms read "Surveys/2026" > form.yaml` writes a document that
+- [x] `gdrive forms read "Surveys/2026" > form.yaml` writes a document that
       round-trips through a YAML parser unchanged
-- [ ] `gdrive forms read "Surveys/2026" -f json` carries the structure in
+- [x] `gdrive forms read "Surveys/2026" -f json` carries the structure in
       `data.form`
-- [ ] A form containing a video item reads with `type: unsupported` and warns
-- [ ] `gdrive forms responses "Surveys/2026"` prints a table headed by question
+- [x] A form containing a video item reads with `type: unsupported` and warns
+- [x] `gdrive forms responses "Surveys/2026"` prints a table headed by question
       titles; `--as csv` and `--as json` agree with it
-- [ ] A form with no linked response sheet still returns responses
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
-- [ ] `docs/commands.md` and `README.md` updated, in the same pull request as the
+- [x] A form with no linked response sheet still returns responses
+- [x] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
+- [x] `docs/commands.md` and `README.md` updated, in the same pull request as the
       code ([`0033`](../decisions/0033-implementation-lands-through-review.md) §1)
+
+## Outcome notes
+
+Three review rounds, by three agents that each knew nothing about how the code
+was built. What they changed, and what they settled.
+
+- **`forms read` was on the wrong side of 0025 §1's role table**, and nothing in
+  this task could have found it. Task 0027 merged while this branch was open;
+  the rebase onto it revealed that `<form>` is a Content argument resolved
+  through `resolvePath`, which does not follow a terminal shortcut. So
+  `forms read "Surveys/link-to-2026"` sent the *shortcut's* id to the Forms API
+  — exactly the silent misfire 0025's Context section opens with. Both commands
+  now resolve through `resolveTargetId`. The lesson is about parallel work, not
+  about Forms: a branch cut before a decision lands must be re-read against it,
+  and only the rebase is where that happens.
+- **Two data-loss defects the first round found.** A grid's answers never
+  reached the response table, because `questionGroupItem` carries no top-level
+  `questionId` while responses key answers by each row question's id. And a
+  question carrying an image projected as fully modelled, with no note and no
+  warning. Both were invisible to the test suite and to the author.
+- **The `unsupported` channel was not widened, and that is the finding.** Review
+  asked whether form-level settings the document cannot represent deserve a note
+  through 0027 §4. They do not: §4's promise is survival, its mechanism is
+  per-item, and settings are *absent* rather than opaque. The evidence is in
+  [`0021`](../../decisions/0021-markdown-writes.md) §3, the record §4 borrows the
+  channel from — its mapping table sends a horizontal rule to *dropped* and
+  reports only the two that stay literal. The channel has never reported what it
+  drops. Widening it is decision-sized, not task-sized
+  ([`0032`](../../decisions/0032-decisions-are-append-only.md)), so the fix was a
+  complete "Not carried" table in `docs/commands.md` stating plainly that a quiz
+  reads with no sign that it is one.
+- **A suggestion that turned out to be a defect.** Round two could not construct
+  an input defeating `disambiguate`'s three-pass bound and honestly downgraded
+  it. The author found one: the suffix separates columns by question id, so a
+  grid listing the same `questionId` twice survives any number of passes.
+  `makeDistinct` now runs last, and round three held it against 200,000
+  randomised adversarial forms.
+- **Tests that were weaker than the claims they stood for.** The `<form>`
+  resolution tests asserted that `resolvePath` was called, not that its result
+  arrived — `getForm("bogus-id")` left all seven green. The key-order test could
+  not tell declaration order from input order, because its input was already in
+  emission order. Both are now falsifiable, and `parseFormDocument` was made
+  order-stable so the two halves of `form-document.ts` agree.
+- **`reportUnsupported` moved to `lib/output.ts`** with `docs` and `forms` as
+  thin wrappers, which is what [`0021`](../../decisions/0021-markdown-writes.md)
+  §3's one channel meant. Note shapes stay per-command; only the routing is
+  shared.
+- **Deferred to task 0030, recorded there**: `settings.quizSettings.isQuiz` is
+  not carried, so a document from a quiz creates a non-quiz and any derived
+  `updateSettings` sends `isQuiz: false`, which deletes all question grading.
 
 ## Verification
 
 - `bun run test src/lib/form-document.test.ts` — the projection, per item type
 - `bun run test src/commands/forms` — both commands, including the call-count
   assertion for `responses`
-- Manual, against a real account: build a form in the UI with a radio question,
-  a checkbox question, a scale, a paragraph, a section break and a video; submit
-  two responses; then `forms read` and `forms responses`. The video item and the
-  checkbox joining are the two things a fake cannot prove.
+- `test:unit` 648 and `test:integration` 33 pass; `typecheck`, `lint`,
+  `lint:casts`, `format:check`, `build` clean. 681 tests in `test:all`.
+- **Manual, against a real account — NOT DONE.** Build a form in the UI with a
+  radio question, a checkbox question, a scale, a paragraph, a section break and
+  a video; submit two responses; then `forms read` and `forms responses`. The
+  video item and the checkbox joining are the two things a fake cannot prove.
+  Four claims rest on fixtures shaped from the generated `forms_v1` types: a
+  live grid, an image-bearing question, a real shortcut to a form, and whether
+  the wire spelling is `CHECKBOX` or `CHECK_BOX` — the generated types leave
+  both fields as bare `string`, so only a live call settles it.
