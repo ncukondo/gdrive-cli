@@ -234,6 +234,24 @@ const CHOICE_TYPE_BY_API: Record<string, ChoiceType> = {
   DROP_DOWN: "dropdown",
 };
 
+/**
+ * The document's name for an API `ChoiceQuestion.type`, or `undefined` for one
+ * this CLI has no name for.
+ *
+ * Exported because a grid's columns are a `ChoiceQuestion` too, and the
+ * response table reads them (`forms-api.ts`). Two maps meant the same form
+ * could read one way as a question and another as a grid.
+ *
+ * `CHECKBOX` is the spelling: it is the public `ChoiceType` enum value, and the
+ * one the `Option.isOther` and `TextAnswer.value` comments use. The
+ * `Grid.columns` comment says `CHECK_BOX`, which is the proto spelling of the
+ * same constant — accepting it here would be guessing at an enum Google
+ * documents only one way.
+ */
+export function choiceTypeOf(apiType: string | null | undefined): ChoiceType | undefined {
+  return CHOICE_TYPE_BY_API[apiType ?? ""];
+}
+
 /** Fields common to every item, so they never name the item's kind. */
 const ITEM_META = new Set(["itemId", "title", "description"]);
 /** Likewise for a question: what is left is the kind. */
@@ -343,7 +361,7 @@ function toQuestionItem(item: ItemRaw, question: QuestionRaw): Projected {
 
   const choice = question.choiceQuestion;
   if (choice !== undefined) {
-    const choiceType = CHOICE_TYPE_BY_API[choice.type ?? ""];
+    const choiceType = choiceTypeOf(choice.type);
     // A choice kind this CLI has no name for is not approximated as another.
     if (choiceType === undefined) return unsupported(item, "choiceQuestion.type", question);
     return {

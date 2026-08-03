@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_PAGES, mapDriveError as mapApiError } from "./api.ts";
+import { choiceTypeOf } from "./form-document.ts";
 import type { FormDocument, FormRaw } from "./form-document.ts";
 
 /**
@@ -142,14 +143,13 @@ const GridRawSchema = z.object({
   }),
 });
 
-/** `CHECKBOX` is the JSON enum; the API's own prose spells it `CHECK_BOX`. */
-const MULTI_CHOICE_TYPES = new Set(["CHECKBOX", "CHECK_BOX"]);
-
 function gridColumns(raw: unknown): ResponseColumn[] {
   const parsed = GridRawSchema.safeParse(raw);
   if (!parsed.success) return [];
   const { title, questionGroupItem } = parsed.data;
-  const multi = MULTI_CHOICE_TYPES.has(questionGroupItem.grid?.columns?.type ?? "");
+  // The same map the projection uses, so a grid and a plain question cannot
+  // disagree about what `CHECKBOX` is (see `choiceTypeOf`).
+  const multi = choiceTypeOf(questionGroupItem.grid?.columns?.type) === "checkbox";
 
   const columns: ResponseColumn[] = [];
   for (const question of questionGroupItem.questions ?? []) {
