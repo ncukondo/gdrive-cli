@@ -22,11 +22,14 @@ Account resolution: `-a` > `$GDRIVE_CLI_ACCOUNT` > `default_account` in config >
 the sole authenticated account. Format resolution: `-f` > `$GDRIVE_CLI_FORMAT` >
 `default_format` in config > `json`.
 
-Only `-f` *names* a format; everything after it is a default, and two things
-outrank a default. `-q` prints the bare value whatever the default is
+Only `-f` *names* a format; everything after it is a default, and three things
+outrank a default. `-q` prints the bare value whatever the default is, a named
+`--as` prints that encoding
 ([`../decisions/0038`](../decisions/0038-quiet-asks-for-a-value.md)), and a
 command whose output is a document prints the document
 ([`../decisions/0036`](../decisions/0036-machine-format-by-default.md) §1).
+`gdrive auth` asks a further question — whether a terminal is there to prompt —
+see [`authentication.md`](authentication.md).
 
 ## Output modes
 
@@ -859,10 +862,11 @@ Quiet: one tab title per line.
 
 `--as` is `table` (default), `csv`, or `json`; `table` is tab-separated.
 
-**`--as` chooses a text encoding, so it needs text mode to be reachable at all.**
-Without `-f text` the envelope comes back and `--as` has no visible effect:
-`gdrive sheets read S "A1:B3" --as csv -f text > out.csv` is the CSV export, and
-`-q` prints CSV too.
+**Naming `--as` selects text**, because an encoding is a preference and a flag a
+default can switch off is not a flag: `gdrive sheets read S "A1:B3" --as csv >
+out.csv` writes CSV with no `-f` needed. A named `-f` still wins, so `--as csv
+-f json` gives the envelope with the values in `data`. `-q` prints CSV whatever
+the default is.
 
 ```console
 $ gdrive sheets read -f text "Reports/2026/Budget" "Sheet1!A1:B3"
@@ -1129,8 +1133,8 @@ find out whether the ID is a [shortcut](#shortcuts); a path pays only when its
 last segment really is one, to check the target is still there.
 
 `--as` is `table` (default), `csv`, or `json`; `table` is tab-separated. As with
-`sheets read`, `--as` chooses a text encoding and needs `-f text` to be
-reachable; `-q` prints CSV whatever the default is.
+`sheets read`, naming `--as` selects text and a named `-f` outranks it; `-q`
+prints CSV whatever the default is.
 
 ```console
 $ gdrive forms responses -f text "Surveys/2026 Engagement"
