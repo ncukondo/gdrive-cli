@@ -1002,9 +1002,11 @@ document has no way to express:
 inside `raw` — enough to tell one opaque node from another in a diff, and enough
 for `forms responses` to head a column with the question's title and join on its
 `question_id`, so its answers are not lost with it. They are not an edit point:
-`forms write` will emit no request at all for an `unsupported` item, so changing
-a `title` there changes nothing in the form and will not appear in the plan that
-`write` reports. Where the two copies disagree, `raw` is the form.
+[`0028`](../decisions/0028-forms-write.md) §2 says `forms write` emits neither an
+update nor a delete for an `unsupported` item — only a `moveItem`, if the item
+changed position, and that carries no content. So changing a `title` there
+changes nothing in the form and will not appear in the plan that `write` reports.
+Where the two copies disagree, `raw` is the form.
 
 Some things are not carried at all, and so do not appear in the `unsupported`
 report either — the report is a per-item list, and these are not items:
@@ -1042,7 +1044,8 @@ Tabulates the responses, one column per question, headed by the question's
 title. The form is fetched as well as the responses — two Forms calls, always,
 whatever the form — because the API keys answers by question ID and never says
 what was asked. A `<form>` given as a bare ID costs one Drive lookup on top, to
-find out whether the ID is a [shortcut](#shortcuts); a path costs nothing extra.
+find out whether the ID is a [shortcut](#shortcuts); a path pays only when its
+last segment really is one, to check the target is still there.
 
 `--as` is `table` (default), `csv`, or `json`.
 
@@ -1058,7 +1061,10 @@ submitted             Which team are you on?  How satisfied are you?
 - A file-upload answer reports Drive file IDs, which `gdrive info` accepts.
 - Two questions with the same title — or one titled `submitted` — get
   ` (<question_id>)` appended rather than a silently duplicated column. An
-  untitled question is headed by its question ID.
+  untitled question is headed by its question ID. Anything still colliding after
+  that — which takes two questions sharing a question ID, so only malformed
+  input — gets ` #2`, ` #3` …, because a distinct header is a guarantee here and
+  the ID rule cannot separate columns that share an ID.
 - A question with no answer in a response is an empty cell (`[]` in `json` for
   a multi-valued column).
 - A **grid** (question group) is one item holding one question per row, so it
