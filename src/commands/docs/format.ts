@@ -1,4 +1,5 @@
 import { parseChoice } from "../../lib/args.ts";
+import { reportUnsupported as report } from "../../lib/output.ts";
 import type { OutputFormat } from "../../types/index.ts";
 import type { DocsRenderFormat } from "../../lib/docs-api.ts";
 import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
@@ -16,17 +17,18 @@ export function parseDocsFormat(value: string | undefined): DocsRenderFormat {
 
 /**
  * What Docs could not hold, kept as literal text (0021 §3). Text mode gets one
- * line on stderr so stdout stays pipeable; JSON mode gets the field instead.
+ * line on stderr so stdout stays pipeable; JSON mode gets the field instead —
+ * the routing itself lives in `lib/output.ts`, shared with `forms`.
  */
 export function reportUnsupported(
   notes: UnsupportedNote[],
   format: OutputFormat,
   warn: (message: string) => void,
 ): { unsupported: UnsupportedNote[] } | Record<string, never> {
-  if (notes.length === 0) return {};
-  if (format === "text") {
-    const listed = notes.map((note) => `${note.kind} (line ${note.line})`).join(", ");
-    warn(`Kept as plain text: ${listed}`);
-  }
-  return { unsupported: notes };
+  return report(notes, {
+    format,
+    warn,
+    prefix: "Kept as plain text",
+    describe: (note) => `${note.kind} (line ${note.line})`,
+  });
 }

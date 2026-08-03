@@ -37,6 +37,33 @@ export function renderSuccess(r: Renderable, format: OutputFormat, quiet: boolea
   return r.text;
 }
 
+/**
+ * The one channel for "this ran, and here is what it could not hold"
+ * (decision 0021 §3): a single line on stderr in text mode, so stdout stays a
+ * document or a table the caller can pipe, and an `unsupported` field in JSON
+ * so nobody has to parse prose.
+ *
+ * The notes keep each command's own shape — a Markdown write counts lines, a
+ * form counts items — so `describe` is what a caller supplies, and the routing
+ * rule is what it does not get to vary.
+ */
+export function reportUnsupported<T>(
+  notes: T[],
+  options: {
+    format: OutputFormat;
+    warn: (message: string) => void;
+    /** Leads the stderr line, e.g. `Kept as plain text`. */
+    prefix: string;
+    describe: (note: T) => string;
+  },
+): { unsupported: T[] } | Record<string, never> {
+  if (notes.length === 0) return {};
+  if (options.format === "text") {
+    options.warn(`${options.prefix}: ${notes.map(options.describe).join(", ")}`);
+  }
+  return { unsupported: notes };
+}
+
 /** Renders an error for stderr in the active format (decision 0007). */
 export function renderError(code: ErrorCode, message: string, format: OutputFormat): string {
   if (format === "json") {

@@ -63,6 +63,7 @@ export function registerForms(program: Command): void {
         format: opts.format,
         quiet: opts.quiet,
         write: stdout,
+        warn: stderr,
         ...(o.as !== undefined ? { as: o.as } : {}),
       });
       process.exit(result.exitCode);

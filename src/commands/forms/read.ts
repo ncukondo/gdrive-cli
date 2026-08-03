@@ -1,30 +1,8 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
 import { renderSuccess } from "../../lib/output.ts";
-import {
-  formDocumentToYaml,
-  toFormDocument,
-  type FormRaw,
-  type UnsupportedItemNote,
-} from "../../lib/form-document.ts";
-
-/**
- * What the schema could not model, kept verbatim under `raw` (0027 §4) and
- * reported through the channel 0021 §3 defines: one line on stderr in text
- * mode, so stdout stays a document a caller can redirect, and a field in JSON.
- */
-export function reportUnsupportedItems(
-  notes: UnsupportedItemNote[],
-  format: OutputFormat,
-  warn: (message: string) => void,
-): { unsupported: UnsupportedItemNote[] } | Record<string, never> {
-  if (notes.length === 0) return {};
-  if (format === "text") {
-    const listed = notes.map((note) => `${note.kind} (item ${note.id})`).join(", ");
-    warn(`Kept as raw: ${listed}`);
-  }
-  return { unsupported: notes };
-}
+import { formDocumentToYaml, toFormDocument, type FormRaw } from "../../lib/form-document.ts";
+import { reportUnsupportedItems } from "./format.ts";
 
 export interface FormsReadDeps {
   resolvePath: (arg: string) => Promise<string>;
