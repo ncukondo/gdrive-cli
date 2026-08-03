@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
-import { line, renderSuccess } from "../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../lib/output.ts";
 
 export interface MkdirDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -21,7 +21,7 @@ export async function handleMkdir(deps: MkdirDeps): Promise<CommandResult> {
       {
         data: { file: folder },
         text: line`Created folder ${folder.name} (${folder.id})`,
-        quiet: folder.id,
+        quiet: formatValues([folder.id]),
       },
       deps.format,
       deps.quiet,

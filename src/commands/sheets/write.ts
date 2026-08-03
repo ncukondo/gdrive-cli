@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { line, renderSuccess } from "../../lib/output.ts";
 import { parseChoice } from "../../lib/args.ts";
 import {
   parseValues,
@@ -66,7 +66,7 @@ export async function handleSheetsWrite(deps: SheetsWriteDeps): Promise<CommandR
     renderSuccess(
       {
         data: { id: spreadsheetId, ...result, message },
-        text: message,
+        text: line`Updated ${String(result.updated_cells)} cells in ${result.updated_range}`,
         quiet: String(result.updated_cells),
       },
       deps.format,

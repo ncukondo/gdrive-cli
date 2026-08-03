@@ -21,7 +21,7 @@ export async function handleRm(deps: RmDeps): Promise<CommandResult> {
   if (deps.permanent) {
     await deps.deleteFile(fileId);
     data = { id: fileId, deleted: true };
-    text = `Permanently deleted ${fileId}`;
+    text = line`Permanently deleted ${fileId}`;
   } else {
     const file = await deps.trashFile(fileId);
     data = { file, trashed: true };

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type DriveFile, type OutputFormat } from "../types/index.ts";
-import { line, renderSuccess } from "../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../lib/output.ts";
 import type { UploadInput } from "../lib/api.ts";
 
 const DOC_MIME = "application/vnd.google-apps.document";
@@ -78,7 +78,7 @@ export async function handleUpload(deps: UploadDeps): Promise<CommandResult> {
       {
         data: { file },
         text: line`Uploaded ${file.name} (${file.id})`,
-        quiet: file.id,
+        quiet: formatValues([file.id]),
       },
       deps.format,
       deps.quiet,

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { line, renderSuccess } from "../../lib/output.ts";
 import {
   resolveRangeWith,
   type InputMode,
@@ -46,7 +46,7 @@ export async function handleSheetsAppend(deps: SheetsAppendDeps): Promise<Comman
     renderSuccess(
       {
         data: { id: spreadsheetId, ...result, message },
-        text: message,
+        text: line`Appended ${String(result.updated_rows)} rows to ${result.updated_range}`,
         quiet: String(result.updated_cells),
       },
       deps.format,

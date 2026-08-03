@@ -72,6 +72,22 @@ describe("handleRm", () => {
     expect(out.output).toBe("Permanently deleted R1");
   });
 
+  /** The `--permanent` branch is the other half of the same claim. */
+  it("cannot be made to claim a second file was deleted", async () => {
+    const out = collect();
+    await handleRm({
+      resolvePath: async () => "ID\nPermanently deleted OTHER",
+      trashFile: async () => file(),
+      deleteFile: async () => {},
+      file: "junk",
+      permanent: true,
+      format: "text",
+      quiet: false,
+      write: out.write,
+    });
+    expect(out.output.split("\n")).toHaveLength(1);
+  });
+
   it("emits nothing in quiet mode", async () => {
     const out = collect();
     await handleRm({

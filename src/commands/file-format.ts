@@ -1,5 +1,5 @@
 import type { DriveFile } from "../types/index.ts";
-import { formatRow, formatTable } from "../lib/output.ts";
+import { formatRow, formatTable, formatValues } from "../lib/output.ts";
 
 /** ISO timestamp → `YYYY-MM-DD HH:mm` (UTC) for compact table display. */
 export function formatModified(iso: string | null): string {
@@ -18,7 +18,7 @@ export function formatFileTable(files: DriveFile[]): string {
 
 /** One file ID per line (quiet mode). */
 export function formatFilesQuiet(files: DriveFile[]): string {
-  return files.map((f) => f.id).join("\n");
+  return formatValues(files.map((f) => f.id));
 }
 
 function detailLine(label: string, value: string): string {

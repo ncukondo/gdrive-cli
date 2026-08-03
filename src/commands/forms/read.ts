@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { formatValues, renderSuccess } from "../../lib/output.ts";
 import { formDocumentToYaml, toFormDocument, type FormRaw } from "../../lib/form-document.ts";
 import { reportUnsupportedItems } from "./format.ts";
 
@@ -28,7 +28,7 @@ export async function handleFormsRead(deps: FormsReadDeps): Promise<CommandResul
           ...reportUnsupportedItems(unsupported, deps.format, deps.warn),
         },
         text: formDocumentToYaml(document),
-        quiet: document.id ?? formId,
+        quiet: formatValues([document.id ?? formId]),
       },
       deps.format,
       deps.quiet,

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../../lib/output.ts";
 import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
 import { parseDocsFormat, reportUnsupported } from "./format.ts";
 
@@ -59,8 +59,8 @@ export async function handleDocsReplace(deps: DocsReplaceDeps): Promise<CommandR
           message,
           ...reportUnsupported(notes, deps.format, deps.warn),
         },
-        text: message,
-        quiet: documentId,
+        text: line`Replaced ${String(replaced)} ${replaced === 1 ? "occurrence" : "occurrences"}`,
+        quiet: formatValues([documentId]),
       },
       deps.format,
       deps.quiet,

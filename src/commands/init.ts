@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../types/index.ts";
-import { line, renderSuccess } from "../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../lib/output.ts";
 import { nodeFs, type FsAdapter } from "../lib/fs.ts";
 import { getDefaultConfigPath, saveConfig, type Config } from "../lib/config.ts";
 import { listTokenEmails } from "../lib/auth.ts";
@@ -73,7 +73,7 @@ export async function handleInit(deps: InitDeps): Promise<CommandResult> {
           created: true,
         },
         text: formatInitText(deps.path, accounts, defaultAccount),
-        quiet: deps.path,
+        quiet: formatValues([deps.path]),
       },
       deps.format,
       deps.quiet,
