@@ -52,6 +52,7 @@ names the relationship its record has to the ones before it.
 | [0031](0031-recursive-copy.md) | `cp -r` copies a folder tree; the error envelope gains `data` (extends 0008, revises 0007) |
 | [0032](0032-decisions-are-append-only.md) | The code is the truth; a decision records why and is never rewritten; a task expires (revises 0001) |
 | [0033](0033-implementation-lands-through-review.md) | Implementation lands through a pull request, reviewed without its context (revises 0001) |
+| [0034](0034-form-is-a-file-type.md) | The type vocabulary tracks what the CLI can act on, not what Drive stores (revises 0008) |
 
 ## Related projects (reference implementations)
 
