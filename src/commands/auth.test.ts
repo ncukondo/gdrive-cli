@@ -117,6 +117,7 @@ describe("handleAuthLogin", () => {
       fs,
       config,
       format: "text",
+      canPrompt: true,
       quiet: false,
       write: out.write,
       promptFn: async () => "",
@@ -142,6 +143,7 @@ describe("handleAuthLogin", () => {
       fs,
       config,
       format: "text",
+      canPrompt: true,
       quiet: false,
       write: () => {},
       promptFn: async () => "",
@@ -152,7 +154,7 @@ describe("handleAuthLogin", () => {
     expect(writeConfig).not.toHaveBeenCalled();
   });
 
-  it("never prompts in JSON mode: throws AUTH_REQUIRED when no client is configured", async () => {
+  it("never prompts when the caller asked for JSON: throws AUTH_REQUIRED instead", async () => {
     const fs = createFakeFs(); // no client_secret, no env
     const promptFn = vi.fn(async () => "typed");
     const runFlow = vi.fn(async () => token("x@x.com"));
@@ -162,6 +164,7 @@ describe("handleAuthLogin", () => {
         fs,
         config: { default_format: "text", accounts: [] },
         format: "json",
+        canPrompt: false,
         quiet: false,
         write: () => {},
         promptFn,
@@ -172,6 +175,42 @@ describe("handleAuthLogin", () => {
 
     expect(promptFn).not.toHaveBeenCalled();
     expect(runFlow).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Decision 0005 suppresses the prompt so automation gets `AUTH_REQUIRED`
+   * rather than hanging, and it was written when JSON could only mean the
+   * caller asked for it. A JSON default nobody named must not reach that
+   * branch, or a fresh install cannot authenticate at all — which is the defect
+   * class decision 0038 is about, one command over.
+   */
+  it("still prompts when JSON is only the default, and uses what was typed", async () => {
+    const fs = createFakeFs();
+    const promptFn = vi.fn(async () => "typed");
+    const runFlow = vi.fn(async () => token("x@x.com"));
+    const out = collect();
+
+    const result = await handleAuthLogin({
+      fs,
+      config: { default_format: "text", accounts: [] },
+      format: "json",
+      canPrompt: true,
+      quiet: false,
+      write: out.write,
+      promptFn,
+      runFlow,
+      writeConfig: () => {},
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(promptFn).toHaveBeenCalled();
+    expect(runFlow).toHaveBeenCalledWith({
+      clientId: "typed",
+      clientSecret: "typed",
+      redirectUri: "http://localhost",
+    });
+    expect(out.output).toContain("No OAuth client configured");
+    expect(out.output).toContain('"authenticated": true');
   });
 });
 

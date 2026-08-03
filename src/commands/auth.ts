@@ -25,7 +25,7 @@ import {
 } from "../lib/auth.ts";
 import { listAuthenticatedAccounts, resolveAccountEmail } from "../lib/account.ts";
 import { createReadlinePrompt } from "../lib/prompt.ts";
-import { resolveGlobalOptions, handleError } from "../index.ts";
+import { canPrompt, resolveGlobalOptions, handleError } from "../index.ts";
 
 /** Maps a full scope URL to a short label (…/auth/drive → "drive"). */
 function shortScope(scope: string): string {
@@ -131,6 +131,11 @@ export interface AuthLoginDeps {
   fs: FsAdapter;
   config: Config;
   format: OutputFormat;
+  /**
+   * Whether the caller left room to be asked for OAuth client credentials.
+   * False only when they named `-f json` — see `canPrompt` in `src/index.ts`.
+   */
+  canPrompt: boolean;
   quiet: boolean;
   write: (msg: string) => void;
   promptFn: PromptFn;
@@ -141,11 +146,13 @@ export interface AuthLoginDeps {
 }
 
 export async function handleAuthLogin(deps: AuthLoginDeps): Promise<CommandResult> {
-  // JSON mode must never prompt: fail with AUTH_REQUIRED instead (decision 0005).
-  const credentials =
-    deps.format === "json"
-      ? getClientCredentials(deps.fs)
-      : await getClientCredentialsOrPrompt(deps.fs, deps.write, deps.promptFn);
+  // A caller who asked for JSON asked not to be prompted, and gets
+  // AUTH_REQUIRED instead (decision 0005). A JSON *default* nobody named is not
+  // that caller: suppressing the prompt for them leaves a fresh install with no
+  // way in, which is the defect decision 0038 names one command over.
+  const credentials = deps.canPrompt
+    ? await getClientCredentialsOrPrompt(deps.fs, deps.write, deps.promptFn)
+    : getClientCredentials(deps.fs);
 
   const isFirstAccount = listAuthenticatedAccounts(deps.fs).length === 0;
   const tokens = await deps.runFlow(credentials);
@@ -190,6 +197,7 @@ export function registerAuth(program: Command): void {
           fs: nodeFs,
           config,
           format: opts.format,
+          canPrompt: canPrompt(opts),
           quiet: opts.quiet,
           write,
           promptFn: createReadlinePrompt(),

@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GlobalOptions } from "./index.ts";
 import {
+  canPrompt,
   createProgram,
   documentFormat,
   isEntryPoint,
@@ -38,17 +39,22 @@ describe("global options", () => {
    * representation. This is 0007's own first paragraph — "the primary consumer
    * is an AI agent" — applied to the flag it never reached.
    *
-   * `HOME` is stubbed at an empty directory because "no config" has to mean the
-   * test machine's config too: whoever runs this may well have one, and it is
-   * `default_format` that would answer instead.
+   * "No config" has to mean the test machine's config too, so every place
+   * `findConfigPath` looks is pointed at one empty directory: `$GDRIVE_CLI_CONFIG`
+   * and the current directory are consulted before `$HOME`, and a developer with
+   * either set would otherwise get `default_format` answering instead.
    */
   function withNoConfig<T>(body: () => T): T {
     const dir = mkdtempSync(join(tmpdir(), "gdrive-home-"));
+    const cwd = process.cwd();
     vi.stubEnv("GDRIVE_CLI_FORMAT", "");
+    vi.stubEnv("GDRIVE_CLI_CONFIG", "");
     vi.stubEnv("HOME", dir);
+    process.chdir(dir);
     try {
       return body();
     } finally {
+      process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true });
       vi.unstubAllEnvs();
     }
@@ -132,6 +138,25 @@ describe("global options", () => {
       expect(parseArgs(["-f", "json", "-q"]).format).toBe("json");
       expect(parseArgs(["-q", "-f", "text"]).format).toBe("text");
     });
+  });
+
+  /**
+   * Decision 0005 stops `gdrive auth` prompting in JSON mode so automation gets
+   * `AUTH_REQUIRED` rather than a hang. Only a JSON the caller *named* means
+   * that; a JSON default would leave a fresh install unable to authenticate at
+   * all, which is decision 0038's defect class one command over.
+   */
+  it("allows a prompt unless -f json named the format", () => {
+    withNoConfig(() => {
+      expect(canPrompt(parseArgs([]))).toBe(true);
+      expect(canPrompt(parseArgs(["-f", "text"]))).toBe(true);
+      expect(canPrompt(parseArgs(["-q"]))).toBe(true);
+      expect(canPrompt(parseArgs(["-f", "json"]))).toBe(false);
+    });
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
+    expect(canPrompt(parseArgs([]))).toBe(true);
+    expect(canPrompt(parseArgs(["-f", "json"]))).toBe(false);
+    vi.unstubAllEnvs();
   });
 
   /**
