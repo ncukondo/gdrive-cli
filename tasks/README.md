@@ -69,7 +69,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0034 What the live verification found](archive/0034-live-verification-fixes.md) | 0027, 0029 | — | done |
 | [0035 The release notes carry the breaking changes](archive/0035-release-notes.md) | — | F | done |
 | [0036 The table stays a table](archive/0036-renderer-properties.md) | 0034 | F | closed unmerged |
-| [0037 The default is machine-readable](0037-machine-format-by-default.md) | 0034 | — | todo |
+| [0037 The default is machine-readable](archive/0037-machine-format-by-default.md) | 0034 | — | done |
 
 ## Parallelism notes
 

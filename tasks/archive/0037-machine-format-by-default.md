@@ -1,6 +1,7 @@
 # Task 0037: The default is machine-readable, and no renderer measures anything
 
-Status: todo (move to `tasks/archive/` when done)
+Status: done — PR [#15](https://github.com/ncukondo/gdrive-cli/pull/15), merged
+2026-08-03, after four review rounds.
 Depends on: 0034 — it derived `TYPE_W` from the vocabulary and added the docs
 transcript test this task deletes. Supersedes task 0036, which is closed unstarted.
 Parallel: no — it touches every renderer, `lib/output.ts` and `lib/config.ts`.
@@ -100,15 +101,60 @@ function in the codebase asks how wide a string draws.
 
 ## Acceptance criteria
 
-- [ ] `gdrive ls` with no config and no flag emits `{"success":true,...}`
-- [ ] `gdrive ls -f text` emits tab-separated rows and pads nothing
-- [ ] A file named `研修医へのフィードバックシート` and one named `Budget` both
+- [x] `gdrive ls` with no config and no flag emits `{"success":true,...}`
+- [x] `gdrive ls -f text` emits tab-separated rows and pads nothing
+- [x] A file named `研修医へのフィードバックシート` and one named `Budget` both
       round-trip through `split("\t")`
-- [ ] A name containing a newline produces one row in text and its real name in JSON
-- [ ] `default_format = "text"` still works; `--quiet` is unchanged
-- [ ] Making one name longer changes that row and no other, for every renderer
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
-- [ ] `docs/`, `README.md` and `CHANGELOG.md` updated in the same pull request
+- [x] A name containing a newline produces one row in text and its real name in JSON
+- [x] `default_format = "text"` still works; `--quiet` is unchanged
+- [x] Making one name longer changes that row and no other, for every renderer
+- [x] `bun run test:all`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
+      (this criterion said `bun run test`, which is watch mode and cannot be met
+      non-interactively; raised in four review rounds, corrected here on the way out)
+- [x] `docs/`, `README.md` and `CHANGELOG.md` updated in the same pull request
+
+## Outcome notes
+
+Four review rounds. Every round found a real defect, and the two that mattered
+most were the author diagnosing their own method rather than answering the list
+they were handed.
+
+- **Six instances of one defect shape**, across three rounds: code branching on
+  the *resolved* format where it should branch on whether the caller **named**
+  one. `--quiet` returned an envelope; `docs read` and `forms read` returned an
+  envelope instead of their documents; and `gdrive auth` stopped prompting for
+  OAuth credentials, so a fresh install could not authenticate. The first fix for
+  `auth` then made it worse — exit 0 having done nothing — because it answered
+  the finding rather than asking what a prompt needs. It needs a terminal. The
+  class was finally closed by deriving the search over *sinks*: five
+  `=== "json"|=== "text"` hits in `src/`, four behavioural, and the full
+  `.option(` inventory showing no fourth kind of preference exists.
+- **`decisions/0040` was written from this pull request**, because eleven `line`
+  sites were named and eleven were converted, leaving `rm.ts` — the one command
+  where a forged second line asserts a deletion. The census that closed it walked
+  every `renderSuccess` call site and printed each `text:` and `quiet:`
+  expression whatever form it took, which found eighteen more the grep could not
+  see. A grep for the sink's *spelling* is not a search for the sink.
+- **Six false claims in the changelog.** Five were traced to a decision's
+  `Context` section, one of them written by the maintainer who had just written
+  the rule forbidding that source. The sixth came from **symmetry** — `docs read`
+  and `forms read` behave alike now, so a row was written for both without asking
+  whether both had a past; `forms read` did not exist in v0.7.0. Twice more a
+  sound mechanism sentence was followed by a tidier consequence than it supported
+  ("every value text mode prints", "a confirmation exactly one"), the second
+  contradicted by a transcript three hundred lines away in the same branch.
+- **`decisions/0039` corrected two of the maintainer's own claims**, measured:
+  U+4DC0 is where Annex #11, Bun and `string-width` *agree* (one column) — the
+  real disagreement is U+1F7F0 — and row independence does not catch
+  constant-width padding, so the field round trip is what guards
+  [`0036`](../../decisions/0036-machine-format-by-default.md) §2.
+- **What the change cost**, recorded because it is the one place a caller loses
+  something they supplied: `init` and `download` now sanitise the caller's own
+  `-o` path in text mode. `-f json` keeps it exact.
+- **Deferred deliberately**: `runFlow` is a second wait-for-a-human that does not
+  pass the `canPrompt` gate, so with `client_secret.json` present and no tty
+  `gdrive auth` blocks on the loopback server. Identical on `main`, inherent to
+  [`0005`](../../decisions/0005-auth-and-scopes.md) step 3, and its own task.
 
 ## Verification
 
