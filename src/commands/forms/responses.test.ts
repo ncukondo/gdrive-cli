@@ -1,0 +1,218 @@
+import { describe, expect, it } from "vitest";
+import { createFakeForms } from "../../../tests/helpers/fake-forms.ts";
+import type { FormRaw } from "../../lib/form-document.ts";
+import { getForm, listResponses, type FormResponseRaw } from "../../lib/forms-api.ts";
+import { handleFormsResponses } from "./responses.ts";
+
+function collect() {
+  const lines: string[] = [];
+  return {
+    write: (m: string) => lines.push(m),
+    get output() {
+      return lines.join("\n");
+    },
+  };
+}
+
+/** A radio, a checkbox and a file upload — the three answer shapes. */
+const form: FormRaw = {
+  formId: "1FoRm",
+  info: { title: "2026 Engagement survey" },
+  items: [
+    {
+      itemId: "i1",
+      title: "Which team are you on?",
+      questionItem: {
+        question: {
+          questionId: "q1",
+          choiceQuestion: { type: "RADIO", options: [{ value: "Sales" }] },
+        },
+      },
+    },
+    {
+      itemId: "i2",
+      title: "Which tools, roughly?",
+      questionItem: {
+        question: {
+          questionId: "q2",
+          choiceQuestion: { type: "CHECKBOX", options: [{ value: "Docs" }] },
+        },
+      },
+    },
+    {
+      itemId: "i3",
+      title: "Attach your slides",
+      questionItem: { question: { questionId: "q3", fileUploadQuestion: { folderId: "F" } } },
+    },
+  ],
+};
+
+const responses: FormResponseRaw[] = [
+  {
+    responseId: "r1",
+    lastSubmittedTime: "2026-07-01T10:22:00Z",
+    answers: {
+      q1: { textAnswers: { answers: [{ value: "Sales" }] } },
+      q2: { textAnswers: { answers: [{ value: "Docs" }, { value: "Sheets" }] } },
+      q3: { fileUploadAnswers: { answers: [{ fileId: "1FiLe" }, { fileId: "2FiLe" }] } },
+    },
+  },
+  {
+    responseId: "r2",
+    lastSubmittedTime: "2026-07-01T11:05:00Z",
+    answers: { q1: { textAnswers: { answers: [{ value: "Engineering" }] } } },
+  },
+];
+
+function deps(overrides: {
+  form?: FormRaw;
+  responses?: FormResponseRaw[];
+  as?: string;
+  format?: "text" | "json";
+  quiet?: boolean;
+  write: (msg: string) => void;
+}) {
+  return {
+    resolvePath: async () => "1FoRm",
+    getForm: async () => overrides.form ?? form,
+    listResponses: async () => overrides.responses ?? responses,
+    file: "Surveys/2026",
+    format: overrides.format ?? ("text" as const),
+    quiet: overrides.quiet ?? false,
+    write: overrides.write,
+    ...(overrides.as !== undefined ? { as: overrides.as } : {}),
+  };
+}
+
+describe("handleFormsResponses", () => {
+  it("heads the table with the question titles and a submitted column", async () => {
+    const out = collect();
+    await handleFormsResponses(deps({ write: out.write }));
+    const [header, first] = out.output.split("\n");
+    expect(header).toBe(
+      "submitted             Which team are you on?  Which tools, roughly?  Attach your slides",
+    );
+    expect(first).toBe(
+      "2026-07-01T10:22:00Z  Sales                   Docs; Sheets           1FiLe; 2FiLe",
+    );
+  });
+
+  it("leaves an unanswered question as an empty cell", async () => {
+    const out = collect();
+    await handleFormsResponses(deps({ write: out.write, as: "csv" }));
+    expect(out.output.split("\n")[2]).toBe("2026-07-01T11:05:00Z,Engineering,,");
+  });
+
+  it("quotes a CSV field that contains a comma", async () => {
+    const out = collect();
+    await handleFormsResponses(deps({ write: out.write, as: "csv" }));
+    const [header] = out.output.split("\n");
+    expect(header).toBe(
+      'submitted,Which team are you on?,"Which tools, roughly?",Attach your slides',
+    );
+  });
+
+  it("keeps checkbox and file-upload answers as arrays in JSON", async () => {
+    const out = collect();
+    await handleFormsResponses(deps({ write: out.write, as: "json" }));
+    expect(JSON.parse(out.output)).toEqual([
+      {
+        submitted: "2026-07-01T10:22:00Z",
+        "Which team are you on?": "Sales",
+        "Which tools, roughly?": ["Docs", "Sheets"],
+        "Attach your slides": ["1FiLe", "2FiLe"],
+      },
+      {
+        submitted: "2026-07-01T11:05:00Z",
+        "Which team are you on?": "Engineering",
+        "Which tools, roughly?": [],
+        "Attach your slides": [],
+      },
+    ]);
+  });
+
+  it("appends the question id when two questions share a title", async () => {
+    const duplicated: FormRaw = {
+      formId: "1FoRm",
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "a",
+          title: "Name",
+          questionItem: { question: { questionId: "qa", textQuestion: {} } },
+        },
+        {
+          itemId: "b",
+          title: "Name",
+          questionItem: { question: { questionId: "qb", textQuestion: {} } },
+        },
+      ],
+    };
+    const out = collect();
+    await handleFormsResponses(
+      deps({ write: out.write, form: duplicated, responses: [], as: "csv" }),
+    );
+    expect(out.output).toBe("submitted,Name (qa),Name (qb)");
+  });
+
+  it("prints a header-only table for a form nobody has answered", async () => {
+    const out = collect();
+    await handleFormsResponses(deps({ write: out.write, responses: [] }));
+    expect(out.output.split("\n")).toHaveLength(1);
+  });
+
+  it("reports an empty array in JSON for a form nobody has answered", async () => {
+    const out = collect();
+    await handleFormsResponses(deps({ write: out.write, responses: [], format: "json" }));
+    expect(JSON.parse(out.output)).toEqual({
+      success: true,
+      data: {
+        id: "1FoRm",
+        columns: [
+          "submitted",
+          "Which team are you on?",
+          "Which tools, roughly?",
+          "Attach your slides",
+        ],
+        responses: [],
+        count: 0,
+      },
+    });
+  });
+
+  it("puts the rows in data.responses for JSON callers", async () => {
+    const out = collect();
+    await handleFormsResponses(deps({ write: out.write, format: "json" }));
+    const { data } = JSON.parse(out.output);
+    expect(data.count).toBe(2);
+    expect(data.responses[0]["Which tools, roughly?"]).toEqual(["Docs", "Sheets"]);
+  });
+
+  it("prints CSV in quiet mode", async () => {
+    const out = collect();
+    await handleFormsResponses(deps({ write: out.write, quiet: true }));
+    expect(out.output.split("\n")[1]).toBe("2026-07-01T10:22:00Z,Sales,Docs; Sheets,1FiLe; 2FiLe");
+  });
+
+  it("rejects an unknown --as", async () => {
+    const out = collect();
+    await expect(handleFormsResponses(deps({ write: out.write, as: "yaml" }))).rejects.toThrow(
+      /Invalid --as/,
+    );
+  });
+
+  it("costs exactly the two API calls decision 0027 §6 states", async () => {
+    const fake = createFakeForms({ form, pages: [responses] });
+    const out = collect();
+    await handleFormsResponses({
+      resolvePath: async () => "1FoRm",
+      getForm: (id) => getForm(fake.client, id),
+      listResponses: (id) => listResponses(fake.client, id),
+      file: "Surveys/2026",
+      format: "text",
+      quiet: false,
+      write: out.write,
+    });
+    expect(fake.calls).toEqual(["forms.get", "forms.responses.list"]);
+  });
+});
