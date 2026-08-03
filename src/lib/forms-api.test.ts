@@ -1,0 +1,236 @@
+import { describe, expect, it } from "vitest";
+import { createFakeForms } from "../../tests/helpers/fake-forms.ts";
+import { AppError } from "../types/index.ts";
+import { toFormDocument, type FormRaw } from "./form-document.ts";
+import {
+  getForm,
+  listResponses,
+  responseGrid,
+  tabulateResponses,
+  type FormResponseRaw,
+} from "./forms-api.ts";
+
+/** The {@link AppError} code an awaited call raises. */
+async function codeOf(run: () => Promise<unknown>): Promise<string> {
+  try {
+    await run();
+  } catch (error) {
+    return error instanceof AppError ? error.code : `not an AppError: ${String(error)}`;
+  }
+  return "no error";
+}
+
+function googleError(code: number): Error & { code: number } {
+  return Object.assign(new Error(`request failed with ${code}`), { code });
+}
+
+const form: FormRaw = {
+  formId: "1FoRm",
+  info: { title: "Survey" },
+  items: [
+    {
+      itemId: "i1",
+      title: "Which team are you on?",
+      questionItem: {
+        question: {
+          questionId: "q1",
+          choiceQuestion: { type: "RADIO", options: [{ value: "Sales" }] },
+        },
+      },
+    },
+    {
+      itemId: "i2",
+      title: "Which tools do you use?",
+      questionItem: {
+        question: {
+          questionId: "q2",
+          choiceQuestion: { type: "CHECKBOX", options: [{ value: "Docs" }] },
+        },
+      },
+    },
+    {
+      itemId: "i3",
+      title: "Attach your slides",
+      questionItem: { question: { questionId: "q3", fileUploadQuestion: { folderId: "F" } } },
+    },
+  ],
+};
+
+describe("getForm", () => {
+  it("requests the form and returns it", async () => {
+    const fake = createFakeForms({ form });
+    expect(await getForm(fake.client, "1FoRm")).toEqual(form);
+    expect(fake.calls).toEqual(["forms.get"]);
+  });
+
+  it("surfaces a 404 as NOT_FOUND and a 403 as PERMISSION_DENIED", async () => {
+    const missing = createFakeForms({ error: googleError(404) });
+    expect(await codeOf(() => getForm(missing.client, "1FoRm"))).toBe("NOT_FOUND");
+    const denied = createFakeForms({ error: googleError(403) });
+    expect(await codeOf(() => getForm(denied.client, "1FoRm"))).toBe("PERMISSION_DENIED");
+  });
+});
+
+describe("listResponses", () => {
+  it("returns every response, following nextPageToken", async () => {
+    const fake = createFakeForms({
+      pages: [[{ responseId: "r1" }, { responseId: "r2" }], [{ responseId: "r3" }]],
+    });
+    const responses = await listResponses(fake.client, "1FoRm");
+    expect(responses.map((r) => r.responseId)).toEqual(["r1", "r2", "r3"]);
+    expect(fake.pageTokens).toEqual([undefined, "1"]);
+  });
+
+  it("returns an empty list for a form nobody has answered", async () => {
+    const fake = createFakeForms({ pages: [[]] });
+    expect(await listResponses(fake.client, "1FoRm")).toEqual([]);
+    expect(fake.calls).toEqual(["forms.responses.list"]);
+  });
+});
+
+describe("tabulateResponses", () => {
+  const { document } = toFormDocument(form);
+
+  const responses: FormResponseRaw[] = [
+    {
+      responseId: "r1",
+      lastSubmittedTime: "2026-07-01T10:22:00Z",
+      answers: {
+        q1: { questionId: "q1", textAnswers: { answers: [{ value: "Sales" }] } },
+        q2: {
+          questionId: "q2",
+          textAnswers: { answers: [{ value: "Docs" }, { value: "Sheets" }] },
+        },
+        q3: {
+          questionId: "q3",
+          fileUploadAnswers: { answers: [{ fileId: "1FiLe", fileName: "deck.pdf" }] },
+        },
+      },
+    },
+    { responseId: "r2", createTime: "2026-07-02T09:00:00Z", answers: {} },
+  ];
+
+  it("heads the table with `submitted` and one column per question", () => {
+    const table = tabulateResponses(document, responses);
+    expect(table.columns.map((c) => c.title)).toEqual([
+      "submitted",
+      "Which team are you on?",
+      "Which tools do you use?",
+      "Attach your slides",
+    ]);
+  });
+
+  it("keeps a checkbox and a file-upload answer as arrays", () => {
+    const [row] = tabulateResponses(document, responses).rows;
+    expect(row).toEqual({
+      submitted: "2026-07-01T10:22:00Z",
+      "Which team are you on?": "Sales",
+      "Which tools do you use?": ["Docs", "Sheets"],
+      "Attach your slides": ["1FiLe"],
+    });
+  });
+
+  it("leaves an unanswered question empty, keeping the column's shape", () => {
+    const rows = tabulateResponses(document, responses).rows;
+    expect(rows[1]).toEqual({
+      submitted: "2026-07-02T09:00:00Z",
+      "Which team are you on?": "",
+      "Which tools do you use?": [],
+      "Attach your slides": [],
+    });
+  });
+
+  it("disambiguates two questions that share a title", () => {
+    const duplicated: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "a",
+          title: "Name",
+          questionItem: { question: { questionId: "qa", textQuestion: {} } },
+        },
+        {
+          itemId: "b",
+          title: "Name",
+          questionItem: { question: { questionId: "qb", textQuestion: {} } },
+        },
+      ],
+    };
+    const table = tabulateResponses(toFormDocument(duplicated).document, []);
+    expect(table.columns.map((c) => c.title)).toEqual(["submitted", "Name (qa)", "Name (qb)"]);
+  });
+
+  it("disambiguates a question titled like the submitted column", () => {
+    const collides: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "a",
+          title: "submitted",
+          questionItem: { question: { questionId: "qa", textQuestion: {} } },
+        },
+      ],
+    };
+    const table = tabulateResponses(toFormDocument(collides).document, []);
+    expect(table.columns.map((c) => c.title)).toEqual(["submitted", "submitted (qa)"]);
+  });
+
+  it("titles an untitled question by its question id", () => {
+    const untitled: FormRaw = {
+      info: { title: "Survey" },
+      items: [{ itemId: "a", questionItem: { question: { questionId: "qa", textQuestion: {} } } }],
+    };
+    const table = tabulateResponses(toFormDocument(untitled).document, []);
+    expect(table.columns.map((c) => c.title)).toEqual(["submitted", "qa"]);
+  });
+
+  it("gives an unmodelled question a column, so its answers are not lost", () => {
+    const rating: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "a",
+          title: "Rate us",
+          questionItem: { question: { questionId: "qa", ratingQuestion: { ratingScaleLevel: 5 } } },
+        },
+      ],
+    };
+    const table = tabulateResponses(toFormDocument(rating).document, [
+      { responseId: "r", answers: { qa: { textAnswers: { answers: [{ value: "4" }] } } } },
+    ]);
+    expect(table.columns.map((c) => c.title)).toEqual(["submitted", "Rate us"]);
+    expect(table.rows[0]).toMatchObject({ "Rate us": "4" });
+  });
+
+  it("gives a page break or a text block no column", () => {
+    const sections: FormRaw = {
+      info: { title: "Survey" },
+      items: [{ itemId: "a", title: "Section 2", pageBreakItem: {} }],
+    };
+    expect(tabulateResponses(toFormDocument(sections).document, []).columns).toHaveLength(1);
+  });
+});
+
+describe("responseGrid", () => {
+  it("joins multi-valued cells with '; ' under a header row", () => {
+    const { document } = toFormDocument(form);
+    const table = tabulateResponses(document, [
+      {
+        responseId: "r1",
+        lastSubmittedTime: "2026-07-01T10:22:00Z",
+        answers: {
+          q2: { textAnswers: { answers: [{ value: "Docs" }, { value: "Sheets" }] } },
+        },
+      },
+    ]);
+    expect(responseGrid(table)).toEqual([
+      ["submitted", "Which team are you on?", "Which tools do you use?", "Attach your slides"],
+      ["2026-07-01T10:22:00Z", "", "Docs; Sheets", ""],
+    ]);
+  });
+
+  it("is the header alone when nobody has answered", () => {
+    const table = tabulateResponses(toFormDocument(form).document, []);
+    expect(responseGrid(table)).toHaveLength(1);
+  });
+});

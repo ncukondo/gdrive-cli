@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { google } from "googleapis";
-import { buildDocsClient, buildDriveClient, buildSheetsClient } from "./google-clients.ts";
+import {
+  buildDocsClient,
+  buildDriveClient,
+  buildFormsClient,
+  buildSheetsClient,
+} from "./google-clients.ts";
 
 /**
  * The real check on these factories is `tsc`: each return-type annotation
@@ -31,6 +36,14 @@ describe("buildDocsClient", () => {
     for (const method of ["get", "create", "batchUpdate"] as const) {
       expect(typeof docs.documents[method]).toBe("function");
     }
+  });
+});
+
+describe("buildFormsClient", () => {
+  it("exposes the form and response methods the port declares", () => {
+    const forms = buildFormsClient(auth);
+    expect(typeof forms.forms.get).toBe("function");
+    expect(typeof forms.forms.responses.list).toBe("function");
   });
 });
 
