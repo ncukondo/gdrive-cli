@@ -108,6 +108,72 @@ Sharing works on shared-drive files too, including the two roles only they have:
 root ID as the `<file>` argument makes that a membership change on the drive
 itself.
 
+### Shortcuts
+
+A Drive **shortcut** is a pointer: a file of its own, with its own ID, name and
+permissions, whose target is another file. The Drive UI does not distinguish one
+from what it points at, so a path can run straight through one:
+
+```sh
+gdrive ls   "Reports/link-to-2026"          # lists the target folder's children
+gdrive ls   "Reports/link-to-2026/Q3"       # …and the path keeps walking
+gdrive docs read "Reports/link-to-doc"      # reads the target document
+```
+
+**Whether a shortcut is followed depends on what the argument is for, not on
+which command it belongs to** — the rule POSIX applies to symlinks, and for the
+same reason: `cat link` should read the target, `rm link` should not delete it.
+
+| Role | Follows | Arguments |
+|------|---------|-----------|
+| **Container** — "look inside this" | always | every intermediate path segment; `ls [folder]`; `--parent` on `mkdir`, `upload`, `docs create`, `sheets create`; the destination of `mv` and `cp` |
+| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear` |
+| **Entry** — "this file, as an entry in a folder" | never | `rm`; `mv <file>`; `cp <file>`; `share list/add/remove/link`; `info` |
+
+The two arguments of `mv link Other` play different roles in one command: the
+source is an entry and moves the pointer, the destination is a container and
+moves *into* whatever it points at.
+
+`rm` is the case worth spelling out. Deleting a link deletes the link:
+
+```console
+$ gdrive info "Reports/link-to-doc"
+Name:      link-to-doc
+Type:      shortcut
+ID:        1LnkAbC...
+MIME:      application/vnd.google-apps.shortcut
+Size:      -
+Target:    1DocXyZ... (doc)
+Trashed:   false
+
+$ gdrive rm "Reports/link-to-doc"     # trashes 1LnkAbC..., not 1DocXyZ...
+$ gdrive info 1DocXyZ...              # the document is untouched
+```
+
+`share` stays with the entries for the same reason: a shortcut carries its own
+ACL, and a `share add` that quietly widened access to the target instead would
+grant a stranger a document rather than a pointer, with nothing in the output to
+say so. `info` stays because it is the command that answers *what is this ID*,
+and it reports `target_id` — the escape hatch whenever you want the target from
+a command that does not follow, since a target ID is just an ID.
+
+Following costs one extra Drive call, and only where it happens: an ID-shaped
+argument that a command follows is fetched once to find out whether it is a
+shortcut at all. A path pays nothing extra, because the walk already learns it.
+
+Two failures name the shortcut rather than leaving you with a mysterious
+`NOT_FOUND` on an ID you can see in `ls`:
+
+```console
+$ gdrive docs read "Reports/link-to-gone"
+Error: Shortcut "Reports/link-to-gone" points at a file that is gone or not
+accessible (target 1DocXyZ...).
+```
+
+and a shortcut to a shortcut is `API_ERROR` — Drive does not create those, so
+the chain is not followed a second time. Creating shortcuts is not supported
+yet. See [`../decisions/0025`](../decisions/0025-shortcuts.md).
+
 ## The file object
 
 `ls`, `search`, `info`, `upload`, `mkdir`, `mv`, `cp`, and `rm` all report files
@@ -126,11 +192,23 @@ Slides, folders):
   "web_view_link": "https://drive.google.com/file/d/1AbCdEf.../view",
   "created": "2026-07-23T23:59:15.000Z",
   "modified": "2026-07-23T23:59:15.000Z",
-  "owners": ["me@gmail.com"]
+  "owners": ["me@gmail.com"],
+  "target_id": null,
+  "target_type": null
 }
 ```
 
-`type` is one of `folder`, `doc`, `sheet`, `slides`, `file`.
+`type` is one of `folder`, `doc`, `sheet`, `slides`, `shortcut`, `file`.
+
+`target_id` and `target_type` are `null` on every file except a
+[shortcut](#shortcuts), where they name what it points at and what kind of thing
+that is:
+
+```json
+{ "id": "1Lnk...", "name": "2026 Budget", "type": "shortcut",
+  "mime_type": "application/vnd.google-apps.shortcut", "size": null,
+  "target_id": "1AbC...", "target_type": "sheet" }
+```
 
 ---
 
@@ -159,7 +237,7 @@ Lists a folder's direct children; My Drive root when the argument is omitted.
 
 | Option | Description |
 |--------|-------------|
-| `--type <t>` | `folder` \| `doc` \| `sheet` \| `slides` \| `file` |
+| `--type <t>` | `folder` \| `doc` \| `sheet` \| `slides` \| `shortcut` \| `file` |
 | `--trashed` | List trashed files instead |
 | `-n, --limit <n>` | Cap the number of results |
 | `--order <o>` | `name` \| `modified` \| `created` |
