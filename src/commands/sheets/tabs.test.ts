@@ -26,6 +26,8 @@ describe("formatTabTable", () => {
     ]);
   });
 
+  // A supplement to the round trip above: constant-width padding leaves rows
+  // independent, so the round trip is what guards decision 0036 §2 (0039 §2).
   it("leaves every other row byte-identical when one title grows", () => {
     const before = formatTabTable(tabs).split("\n");
     const longer = tabs.map((t, i) => (i === 0 ? { ...t, title: "回答 1 — シート" } : t));

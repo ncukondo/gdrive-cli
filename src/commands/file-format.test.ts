@@ -76,6 +76,14 @@ describe("formatFileTable", () => {
 describe("formatFileTable fields", () => {
   const MODIFIED = "2026-07-24 06:17";
 
+  /*
+   * The round trip below is what guards decision 0036 §2. A padded field comes
+   * back from `split("\t")` with its padding, so it fails for every alignment
+   * scheme — constant-width or data-dependent — which the row-independence
+   * property further down does not (decision 0039 §2, measured by restoring
+   * each previous renderer in turn).
+   */
+
   it.each([...FILE_TYPES])("keeps the type its own field: %s", (type) => {
     const [, row = ""] = formatFileTable([file({ type })]).split("\n");
     expect(row.split("\t")).toEqual([type, MODIFIED, "Budget", "id1"]);
@@ -101,9 +109,12 @@ describe("formatFileTable fields", () => {
 });
 
 /**
- * What "no renderer aligns" buys, stated as behaviour rather than as a ban on
- * `padEnd` (decision 0037 §2): widening one name repads every row of an aligned
- * table, so this fails for any alignment scheme however it is built.
+ * A supplement to the round trip above, not a substitute for it. Widening one
+ * name repads every row of a table sized from its data, so this catches that
+ * kind directly and cheaply — but `padEnd` to a *constant* width leaves rows
+ * independent by construction, and four of this project's six renderers used
+ * constants. Decision 0037 §2 called it sufficient; decision 0039 §2 corrects
+ * that after measuring it against each previous renderer.
  */
 describe("a row does not depend on the other rows", () => {
   it("leaves every other row byte-identical when one name grows", () => {

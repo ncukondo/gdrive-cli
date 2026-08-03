@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { line, renderSuccess } from "../lib/output.ts";
 import { nodeFs, type FsAdapter } from "../lib/fs.ts";
 import { getDefaultConfigPath, saveConfig, type Config } from "../lib/config.ts";
 import { listTokenEmails } from "../lib/auth.ts";
@@ -30,12 +30,14 @@ export interface InitDeps {
 }
 
 function formatInitText(path: string, accounts: string[], defaultAccount?: string): string {
-  const lines = [`Created ${path}`];
+  const lines = [line`Created ${path}`];
   if (accounts.length === 0) {
     lines.push("No authenticated accounts yet. Run `gdrive auth`.");
   } else {
-    lines.push(`Accounts: ${accounts.join(", ")}`);
-    if (defaultAccount) lines.push(`Default:  ${defaultAccount}`);
+    lines.push(line`Accounts: ${accounts.join(", ")}`);
+    // `Default:` used to carry a second space so it lined up under `Accounts:`.
+    // Nothing in text output pads (decision 0036 §2), here included.
+    if (defaultAccount) lines.push(line`Default: ${defaultAccount}`);
   }
   return lines.join("\n");
 }

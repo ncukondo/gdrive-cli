@@ -42,7 +42,13 @@ describe("handleInit", () => {
     expect(config.default_account).toBe("work@example.com");
     expect(config.default_format).toBe("json");
     expect(out.output).toContain(`Created ${CONFIG_PATH}`);
-    expect(out.output).toContain("work@example.com");
+    // Nothing in text output pads, here included (decision 0036 §2): the two
+    // spaces after `Default:` were the last hand-alignment in the CLI.
+    expect(out.output.split("\n")).toEqual([
+      `Created ${CONFIG_PATH}`,
+      "Accounts: work@example.com, me@gmail.com",
+      "Default: work@example.com",
+    ]);
   });
 
   it("writes a usable config when no account is authenticated yet", async () => {
