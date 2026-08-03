@@ -32,8 +32,11 @@ export GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 export GOOGLE_CLIENT_SECRET="..."
 ```
 
-The interactive prompt is text-mode only. With `--format json` a missing client
-returns `AUTH_REQUIRED` instead of prompting, so scripted runs never block.
+The prompt is suppressed only when you *name* JSON: `gdrive -f json auth` with a
+missing client returns `AUTH_REQUIRED` instead of prompting, so scripted runs
+never block. JSON being the *default* does not suppress it, or a fresh install
+could never get past this step
+([`../decisions/0038`](../decisions/0038-quiet-asks-for-a-value.md)).
 
 ## 3. Log in
 
@@ -92,7 +95,7 @@ you only log in once per account.
 ```console
 $ gdrive auth status -f text
 Account: me@gmail.com [default]
-Token expires: 2026-07-24 07:16:56
+Token expires: 2026-07-24T07:16:56.079Z
 Scopes: documents, userinfo.email, openid, drive, spreadsheets
 ```
 
