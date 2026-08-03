@@ -57,12 +57,26 @@ bun run changelog 0.8.0   # print one version's CHANGELOG.md section
    permits breaking changes before 1.0 only if the release notes carry them, so
    this file is where that obligation is met. It is written for someone deciding
    whether to upgrade, not as a second copy of the git log.
+
+   **Check every claim against the code, the diff, or a live run.** A decision's
+   `Context` section is never a source: it is dated prose describing what its
+   author believed before the code existed
+   ([`0032`](decisions/0032-decisions-are-append-only.md) §2), and four false
+   claims in 0.8.0's first draft came from one. Task 0035's pull request has the
+   four.
 2. Bump `package.json`'s version, then tag `v<version>`. Both stay outside a
    pull request ([`0033`](decisions/0033-implementation-lands-through-review.md)).
 3. `.github/workflows/release.yml` runs `scripts/changelog.ts` before it builds
    anything, and passes the section to `gh release create --notes-file`;
    GitHub's generated commit list is appended below it. A tag whose version has
    no section fails the job before anything is published.
+
+`CHANGELOG.md` is also in `package.json`'s `files`, so it ships in the npm
+tarball. `0014` does not require that — `--notes-file` discharges §2 — but its
+Consequences make this file the compatibility *record*, and
+[`0003`](decisions/0003-distribution.md) sends npm users to their package
+manager rather than to a release page, so npm is the one channel whose users
+never pass the record. Keep the entry; keep the links in it absolute.
 
 Preview what the release will say with `bun run changelog <version>`.
 
