@@ -39,6 +39,8 @@ instead of restating them.
 | [0024](0024-soft-line-breaks.md) | A soft line break round-trips as a `\` hard break (extends 0021) |
 | [0025](0025-shortcuts.md) | Shortcuts follow by argument role: containers and content yes, entries never (extends 0008) |
 | [0026](0026-ln.md) | `gdrive ln <target> <folder>` creates a shortcut (extends 0025) |
+| [0027](0027-forms-document.md) | A form is one YAML document; `forms read` / `forms responses` |
+| [0028](0028-forms-write.md) | `forms write` applies a form document by item id (extends 0027) |
 
 ## Related projects (reference implementations)
 

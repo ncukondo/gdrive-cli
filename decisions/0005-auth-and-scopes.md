@@ -44,6 +44,13 @@ Full `drive` scope (not `drive.file`) is required so the CLI can read and
 operate on files it did not create. This is a sensitive scope; the consent
 screen will warn accordingly.
 
+That choice pays for more than Drive. **Google Forms needs no scope of its
+own**: `forms.get`, `forms.responses.list` and `forms.batchUpdate` each accept
+`auth/drive`, so the Forms commands ([0027](0027-forms-document.md),
+[0028](0028-forms-write.md)) work on tokens issued before they existed, with no
+re-consent. Recorded here because the list above is where anyone adding a
+Workspace API will look first.
+
 ### Storage layout
 
 ```

@@ -18,8 +18,9 @@ Adopt gcal-cli's stack and tooling:
 | Runtime | Bun |
 | Language | TypeScript (ESM, `"type": "module"`) |
 | CLI framework | `commander` |
-| Google API client | `googleapis` (Drive v3, Docs v1, Sheets v4, OAuth2) |
+| Google API client | `googleapis` (Drive v3, Docs v1, Sheets v4, Forms v1, OAuth2) |
 | Config format | TOML via `smol-toml` |
+| Form documents | YAML via `yaml` ([0027](0027-forms-document.md)) |
 | Input validation | `zod` |
 | Test runner | `vitest` (unit `src/**/*.test.ts`, `tests/integration`, `tests/e2e`) |
 | Lint | `oxlint` |
@@ -34,8 +35,13 @@ APIs in shipped code paths.
 ### Dependency versions (starting point, mirror gcal-cli)
 
 `commander ^12`, `googleapis ^130` (or newer; needs Drive v3, Docs v1,
-Sheets v4, OAuth2), `smol-toml ^1`, `zod ^4`. Dev: `typescript ^5`,
-`vitest ^2`, `oxlint`/`oxfmt` latest, `husky ^9`, `@types/bun` latest.
+Sheets v4, Forms v1, OAuth2), `smol-toml ^1`, `zod ^4`, `yaml ^2`. Dev:
+`typescript ^5`, `vitest ^2`, `oxlint`/`oxfmt` latest, `husky ^9`,
+`@types/bun` latest.
+
+`yaml` is the one addition to gcal-cli's stack, and it exists for exactly one
+surface: the form document ([0027](0027-forms-document.md) §1). Nothing else in
+the CLI reads or writes YAML.
 
 ### tsconfig / vitest (copy from gcal-cli)
 
