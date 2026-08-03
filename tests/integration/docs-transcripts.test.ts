@@ -98,6 +98,24 @@ describe("the ls and search tables in docs/commands.md", () => {
     ]);
     expect(consoleBlock("$ gdrive ls Surveys --type form")).toContain(rendered);
   });
+
+  /**
+   * The row that makes the two-names point: Drive's full-text index covers the
+   * title inside a form, so `search` returns a form under a name its `Name`
+   * column does not show.
+   */
+  it("matches what formatFileTable renders for a search on a form's inner title", () => {
+    const rendered = formatFileTable([
+      fixture({
+        id: "1OtHeR...",
+        name: "Untitled form",
+        mime_type: "application/vnd.google-apps.form",
+        type: "form",
+        modified: "2026-07-11T16:20:00.000Z",
+      }),
+    ]);
+    expect(consoleBlock('$ gdrive search "Onboarding feedback"')).toContain(rendered);
+  });
 });
 
 describe("the info transcripts in docs/commands.md", () => {
