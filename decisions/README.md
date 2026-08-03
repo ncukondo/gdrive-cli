@@ -5,9 +5,15 @@ decision, numbered in the order they were made. These are the source of truth
 for *why* things are the way they are; the user-facing *what* lives in
 [`docs/`](../docs/) and the code.
 
-Format per file: `Date`, `Status` (accepted / superseded by NNNN), `Context`,
-`Decision`, `Consequences`. Keep records short; link to them from task files
-instead of restating them.
+Format per file: `Date`, `Status` (`accepted`, plus `— revises NNNN` or
+`— extends NNNN` where it applies), `Context`, `Decision`, `Consequences`. Keep
+records short; link to them from task files instead of restating them.
+
+The code is the source of truth for *what*; these records hold the *why* the code
+cannot show ([0032](0032-decisions-are-append-only.md)). A committed decision is
+never edited again, and the current position on a topic is found by reading down
+from the highest number. The index below is the map for that walk, so each row
+names the relationship its record has to the ones before it.
 
 ## Index
 
@@ -44,6 +50,8 @@ instead of restating them.
 | [0029](0029-slides-document.md) | A deck is one YAML document of placeholders; `slides read` |
 | [0030](0030-slides-write.md) | `slides write` applies a deck document by object id (extends 0029) |
 | [0031](0031-recursive-copy.md) | `cp -r` copies a folder tree; the error envelope gains `data` (extends 0008, revises 0007) |
+| [0032](0032-decisions-are-append-only.md) | The code is the truth; a decision records why and is never rewritten; a task expires (revises 0001) |
+| [0033](0033-implementation-lands-through-review.md) | Implementation lands through a pull request, reviewed without its context (revises 0001) |
 
 ## Related projects (reference implementations)
 
