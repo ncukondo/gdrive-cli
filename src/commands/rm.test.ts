@@ -99,4 +99,25 @@ describe("handleRm", () => {
     });
     expect(JSON.parse(out.output)).toMatchObject({ success: true, data: { trashed: true } });
   });
+
+  /**
+   * The worst case of the confirmation defect: a name Drive accepts can forge a
+   * second `Trashed …` line, asserting a destructive act that never happened.
+   * `rm` is the one command where such a line reads as a claim about what was
+   * deleted, and it was the one site the round-one fix did not reach.
+   */
+  it("cannot be made to claim a second file was trashed", async () => {
+    const out = collect();
+    await handleRm({
+      resolvePath: async () => "ID123",
+      trashFile: async () => file({ name: "budget\nTrashed innocent.txt (1AAA)" }),
+      deleteFile: async () => {},
+      file: "budget",
+      format: "text",
+      quiet: false,
+      write: out.write,
+    });
+    expect(out.output.split("\n")).toHaveLength(1);
+    expect(out.output).toBe("Trashed budget Trashed innocent.txt (1AAA) (ID123)");
+  });
 });

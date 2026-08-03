@@ -8,6 +8,7 @@ import { getForm, listResponses, type FormsClient } from "../../lib/forms-api.ts
 import { resolveTargetId } from "../../lib/resolve-path.ts";
 import {
   documentFormat,
+  encodingFormat,
   resolveGlobalOptions,
   handleError,
   type GlobalOptions,
@@ -68,6 +69,9 @@ export function registerForms(program: Command): void {
   responses.action(async (file: string) => {
     const opts = resolveGlobalOptions(program);
     const o = responses.opts<{ as?: string }>();
+    // As for `sheets read`: `--as` names a text encoding, so it selects text
+    // unless `-f` named a format (decision 0038, generalised).
+    const format = encodingFormat(opts, o.as !== undefined);
     try {
       const { drive, forms: formsClient } = await buildClients(opts);
       const result = await handleFormsResponses({
@@ -75,7 +79,7 @@ export function registerForms(program: Command): void {
         getForm: (id) => getForm(formsClient, id),
         listResponses: (id) => listResponses(formsClient, id),
         file,
-        format: opts.format,
+        format,
         quiet: opts.quiet,
         write: stdout,
         warn: stderr,
@@ -83,7 +87,7 @@ export function registerForms(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, format);
     }
   });
   forms.addCommand(responses);

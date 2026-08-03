@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { line, renderSuccess } from "../lib/output.ts";
 
 export interface RmDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -25,7 +25,7 @@ export async function handleRm(deps: RmDeps): Promise<CommandResult> {
   } else {
     const file = await deps.trashFile(fileId);
     data = { file, trashed: true };
-    text = `Trashed ${file.name} (${fileId})`;
+    text = line`Trashed ${file.name} (${fileId})`;
   }
 
   // Quiet rm emits nothing (decision 0008); JSON still prints the envelope.

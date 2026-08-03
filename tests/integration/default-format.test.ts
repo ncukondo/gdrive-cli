@@ -6,9 +6,11 @@ import { createProgram } from "../../src/index.ts";
 import { registerDriveRead } from "../../src/commands/drive-read.ts";
 import { registerDocs } from "../../src/commands/docs/index.ts";
 import { registerForms } from "../../src/commands/forms/index.ts";
+import { registerSheets } from "../../src/commands/sheets/index.ts";
 import type { DriveClient } from "../../src/lib/api.ts";
 import type { DocsClient } from "../../src/lib/docs-api.ts";
 import type { FormsClient } from "../../src/lib/forms-api.ts";
+import type { SheetsClient } from "../../src/lib/sheets-api.ts";
 import { createTreeDrive, type DriveNode } from "../helpers/fake-drive.ts";
 import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
 
@@ -25,7 +27,12 @@ import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
  */
 
 const clients = vi.hoisted(() => {
-  const state: { drive?: DriveClient; docs?: DocsClient; forms?: FormsClient } = {};
+  const state: {
+    drive?: DriveClient;
+    docs?: DocsClient;
+    forms?: FormsClient;
+    sheets?: SheetsClient;
+  } = {};
   return state;
 });
 
@@ -33,6 +40,7 @@ vi.mock("../../src/lib/google-clients.ts", () => ({
   buildDriveClient: () => clients.drive,
   buildDocsClient: () => clients.docs,
   buildFormsClient: () => clients.forms,
+  buildSheetsClient: () => clients.sheets,
 }));
 
 vi.mock("../../src/lib/account.ts", () => ({
@@ -54,6 +62,12 @@ const tree: DriveNode[] = [
     parents: ["root"],
   },
   { id: "frm1", name: "Survey", mimeType: "application/vnd.google-apps.form", parents: ["root"] },
+  {
+    id: "sh1",
+    name: "Budget",
+    mimeType: "application/vnd.google-apps.spreadsheet",
+    parents: ["root"],
+  },
 ];
 
 /** One heading, so the Markdown is recognisable as Markdown and not as prose. */
@@ -89,6 +103,32 @@ const formsClient: FormsClient = {
   },
 };
 
+const sheetsClient: SheetsClient = {
+  spreadsheets: {
+    get: async ({ spreadsheetId }) => ({
+      data: {
+        spreadsheetId,
+        sheets: [{ properties: { index: 0, title: "Sheet1", gridProperties: {} } }],
+      },
+    }),
+    create: async () => ({ data: {} }),
+    values: {
+      get: async ({ range }) => ({
+        data: {
+          range,
+          values: [
+            ["name", "score"],
+            ["alice", "90"],
+          ],
+        },
+      }),
+      update: async () => ({ data: {} }),
+      append: async () => ({ data: {} }),
+      clear: async () => ({ data: {} }),
+    },
+  },
+};
+
 const workDir = mkdtempSync(join(tmpdir(), "gdrive-format-"));
 const emptyConfig = join(workDir, "empty.toml");
 writeFileSync(emptyConfig, "");
@@ -107,6 +147,7 @@ beforeEach(() => {
   clients.drive = createTreeDrive(tree);
   clients.docs = docsClient;
   clients.forms = formsClient;
+  clients.sheets = sheetsClient;
   stdout = [];
   mockProcessExit();
   vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
@@ -126,6 +167,7 @@ async function run(config: string, args: string[]): Promise<string> {
   registerDriveRead(program);
   registerDocs(program);
   registerForms(program);
+  registerSheets(program);
   try {
     await program.parseAsync(["node", "gdrive", "--config", config, ...args]);
   } catch (error) {
@@ -145,6 +187,7 @@ describe("a command that returns records (decision 0036 §1)", () => {
       "plain",
       "doc1",
       "frm1",
+      "sh1",
     ]);
   });
 
@@ -196,20 +239,63 @@ describe("a command whose output is a document (decision 0036 §1)", () => {
  */
 describe("--quiet against the default (decision 0038)", () => {
   it("prints bare ids with no config and no -f", async () => {
-    expect((await ls(emptyConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1");
+    expect((await ls(emptyConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nsh1");
   });
 
   it("prints bare ids even when the config prefers json", async () => {
-    expect((await ls(jsonConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1");
+    expect((await ls(jsonConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nsh1");
   });
 
   it("still prints bare ids under a text config or an explicit -f text", async () => {
-    expect((await ls(textConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1");
-    expect((await ls(emptyConfig, ["-q", "-f", "text"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1");
+    expect((await ls(textConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nsh1");
+    expect((await ls(emptyConfig, ["-q", "-f", "text"])).trim()).toBe(
+      "rep1\nplain\ndoc1\nfrm1\nsh1",
+    );
   });
 
   it("yields to an explicit -f json, which is 0007's rule (§2)", async () => {
-    expect(JSON.parse(await ls(emptyConfig, ["-q", "-f", "json"])).data.files).toHaveLength(4);
+    expect(JSON.parse(await ls(emptyConfig, ["-q", "-f", "json"])).data.files).toHaveLength(5);
     expect(JSON.parse(await ls(textConfig, ["-f", "json", "-q"])).success).toBe(true);
+  });
+});
+
+/**
+ * `--as csv` names an encoding for text output. Decision 0038's rule, stated
+ * generally in its Consequences — a default applies where the caller expressed
+ * no preference — makes it a preference like `-q`: nobody types `--as csv`
+ * wanting an envelope, and `sheets read S --as csv > out.csv` silently writing
+ * JSON is the same defect.
+ */
+describe("--as names an encoding, which is a preference", () => {
+  it("prints CSV with no -f, where the same command without --as prints the envelope", async () => {
+    expect((await run(emptyConfig, ["sheets", "read", "Budget", "--as", "csv"])).trim()).toBe(
+      "name,score\nalice,90",
+    );
+    expect(JSON.parse(await run(emptyConfig, ["sheets", "read", "Budget"])).success).toBe(true);
+  });
+
+  it("prints CSV even when the config prefers json", async () => {
+    expect((await run(jsonConfig, ["sheets", "read", "Budget", "--as", "csv"])).trim()).toBe(
+      "name,score\nalice,90",
+    );
+  });
+
+  it("yields to a named -f json, which still wraps the values", async () => {
+    const parsed = JSON.parse(
+      await run(emptyConfig, ["-f", "json", "sheets", "read", "Budget", "--as", "csv"]),
+    );
+    expect(parsed.data.values).toEqual([
+      ["name", "score"],
+      ["alice", "90"],
+    ]);
+  });
+
+  it("prints the bare 2-D array for --as json, which is what that flag means", async () => {
+    expect(
+      JSON.parse(await run(emptyConfig, ["sheets", "read", "Budget", "--as", "json"])),
+    ).toEqual([
+      ["name", "score"],
+      ["alice", "90"],
+    ]);
   });
 });

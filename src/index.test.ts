@@ -8,6 +8,7 @@ import {
   canPrompt,
   createProgram,
   documentFormat,
+  encodingFormat,
   isEntryPoint,
   resolveGlobalOptions,
   handleError,
@@ -142,20 +143,66 @@ describe("global options", () => {
 
   /**
    * Decision 0005 stops `gdrive auth` prompting in JSON mode so automation gets
-   * `AUTH_REQUIRED` rather than a hang. Only a JSON the caller *named* means
-   * that; a JSON default would leave a fresh install unable to authenticate at
-   * all, which is decision 0038's defect class one command over.
+   * `AUTH_REQUIRED` rather than a hang. The question that rule is really asking
+   * is *is a human present*, which the output format only ever approximated:
+   * `GDRIVE_CLI_FORMAT=json` and `default_format = "json"` are how a CI
+   * environment says nobody is, and with no terminal a prompt cannot be
+   * answered whatever the format says.
    */
-  it("allows a prompt unless -f json named the format", () => {
-    withNoConfig(() => {
+  function withStdin<T>(isTTY: boolean | undefined, body: () => T): T {
+    const original = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: isTTY, configurable: true });
+    try {
+      return body();
+    } finally {
+      Object.defineProperty(process.stdin, "isTTY", { value: original, configurable: true });
+    }
+  }
+
+  it("allows a prompt only at a terminal, and never when -f json named the format", () => {
+    withStdin(true, () => {
+      withNoConfig(() => {
+        expect(canPrompt(parseArgs([]))).toBe(true);
+        expect(canPrompt(parseArgs(["-f", "text"]))).toBe(true);
+        expect(canPrompt(parseArgs(["-q"]))).toBe(true);
+        expect(canPrompt(parseArgs(["-f", "json"]))).toBe(false);
+      });
+      // A format the environment named, at a terminal: still a human to ask.
+      vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
       expect(canPrompt(parseArgs([]))).toBe(true);
-      expect(canPrompt(parseArgs(["-f", "text"]))).toBe(true);
-      expect(canPrompt(parseArgs(["-q"]))).toBe(true);
-      expect(canPrompt(parseArgs(["-f", "json"]))).toBe(false);
+      vi.unstubAllEnvs();
+    });
+  });
+
+  it("refuses to prompt with no terminal, whatever the format is", () => {
+    withStdin(undefined, () => {
+      withNoConfig(() => {
+        expect(canPrompt(parseArgs([]))).toBe(false);
+        expect(canPrompt(parseArgs(["-f", "text"]))).toBe(false);
+        expect(canPrompt(parseArgs(["-f", "json"]))).toBe(false);
+      });
+      vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
+      expect(canPrompt(parseArgs([]))).toBe(false);
+      vi.unstubAllEnvs();
+    });
+  });
+
+  /**
+   * Decision 0038's rule generalised: a default applies where the caller
+   * expressed no preference, and `--as csv` is a preference. Nobody types it
+   * wanting an envelope, and `sheets read S --as csv > out.csv` writing JSON is
+   * the same bug `--quiet` had.
+   */
+  it("lets a named --as select text, and yields to a named -f", () => {
+    withNoConfig(() => {
+      expect(encodingFormat(parseArgs([]), true)).toBe("text");
+      expect(encodingFormat(parseArgs([]), false)).toBe("json");
+      expect(encodingFormat(parseArgs(["-f", "json"]), true)).toBe("json");
+      expect(encodingFormat(parseArgs(["-f", "text"]), true)).toBe("text");
     });
     vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
-    expect(canPrompt(parseArgs([]))).toBe(true);
-    expect(canPrompt(parseArgs(["-f", "json"]))).toBe(false);
+    expect(encodingFormat(parseArgs([]), true)).toBe("text");
+    expect(encodingFormat(parseArgs([]), false)).toBe("json");
     vi.unstubAllEnvs();
   });
 

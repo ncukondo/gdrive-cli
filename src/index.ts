@@ -40,14 +40,35 @@ export function documentFormat(opts: GlobalOptions): OutputFormat {
 }
 
 /**
- * Whether a command may stop and ask the user something. Decision 0005 keeps
- * `gdrive auth` from prompting in JSON mode, so a script gets `AUTH_REQUIRED`
- * rather than a process waiting on a stdin nobody is typing into — a rule
- * written when JSON could only mean the caller asked for it. A JSON default
- * nobody named must not reach it, or a fresh install cannot authenticate.
+ * Whether a command may stop and ask the user something.
+ *
+ * Decision 0005 suppresses `gdrive auth`'s credential prompt in JSON mode "to
+ * preserve automation", and the format was only ever a proxy for the question
+ * that rule is really asking: *is a human present*. Asking it directly covers
+ * what the proxy missed in both directions — a fresh install that named no
+ * format still gets prompted, and `GDRIVE_CLI_FORMAT=json`, `default_format`,
+ * or any cron job with no terminal gets `AUTH_REQUIRED` and exit 2 instead of a
+ * process waiting on a stdin nobody is typing into.
+ *
+ * A named `-f json` refuses on its own, terminal or not: that caller asked for
+ * a machine answer and a prompt is not one.
  */
 export function canPrompt(opts: GlobalOptions): boolean {
-  return !(opts.formatNamed && opts.format === "json");
+  if (opts.formatNamed && opts.format === "json") return false;
+  return process.stdin.isTTY === true;
+}
+
+/**
+ * The format for a command whose `--as` names a text encoding — `sheets read`,
+ * `forms responses`. Decision 0038's rule generalised from its Consequences: a
+ * default applies where the caller expressed no preference, and `--as csv` is a
+ * preference said out loud. Nobody types it wanting an envelope, and
+ * `sheets read S --as csv > out.csv` writing JSON is the defect 0038 §1
+ * describes — a default the flag cannot survive. A named `-f` still wins, as it
+ * does over `--quiet`.
+ */
+export function encodingFormat(opts: GlobalOptions, encodingNamed: boolean): OutputFormat {
+  return encodingNamed && !opts.formatNamed ? "text" : opts.format;
 }
 
 export function createProgram(): Command {
