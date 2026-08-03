@@ -6,7 +6,12 @@ import { getAccountClient } from "../../lib/account.ts";
 import type { DriveClient } from "../../lib/api.ts";
 import { getForm, listResponses, type FormsClient } from "../../lib/forms-api.ts";
 import { resolveTargetId } from "../../lib/resolve-path.ts";
-import { resolveGlobalOptions, handleError, type GlobalOptions } from "../../index.ts";
+import {
+  documentFormat,
+  resolveGlobalOptions,
+  handleError,
+  type GlobalOptions,
+} from "../../index.ts";
 import { createFormsReadCommand, handleFormsRead } from "./read.ts";
 import { createFormsResponsesCommand, handleFormsResponses } from "./responses.ts";
 
@@ -37,20 +42,24 @@ export function registerForms(program: Command): void {
   const read = createFormsReadCommand();
   read.action(async (file: string) => {
     const opts = resolveGlobalOptions(program);
+    // A form reads as one YAML document (0027 §5) — already exact, already
+    // parseable — so the JSON default does not apply (0036 §1) and
+    // `forms read X > form.yaml` keeps writing YAML.
+    const format = documentFormat(opts);
     try {
       const { drive, forms: formsClient } = await buildClients(opts);
       const result = await handleFormsRead({
         resolvePath: (arg) => resolveTargetId(drive, arg),
         getForm: (id) => getForm(formsClient, id),
         file,
-        format: opts.format,
+        format,
         quiet: opts.quiet,
         write: stdout,
         warn: stderr,
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, format);
     }
   });
   forms.addCommand(read);

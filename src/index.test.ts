@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GlobalOptions } from "./index.ts";
-import { createProgram, isEntryPoint, resolveGlobalOptions, handleError } from "./index.ts";
+import {
+  createProgram,
+  documentFormat,
+  isEntryPoint,
+  resolveGlobalOptions,
+  handleError,
+} from "./index.ts";
 import { AppError, ExitCode } from "./types/index.ts";
 import pkg from "../package.json" with { type: "json" };
 import { ExitSignal, mockProcessExit } from "../tests/helpers/mock.ts";
@@ -88,13 +94,61 @@ describe("global options", () => {
     vi.unstubAllEnvs();
   });
 
-  it("--quiet defaults to false and sets true with -q, whatever the format is", () => {
+  it("--quiet defaults to false and sets true with -q", () => {
     expect(parseArgs([]).quiet).toBe(false);
     expect(parseArgs(["-q"]).quiet).toBe(true);
     expect(parseArgs(["-q", "-f", "text"]).quiet).toBe(true);
+  });
+
+  /**
+   * Decision 0038 §1: `-q` asks for the bare value, and it gets it whatever the
+   * configured or built-in default is. A flag the default can switch off is not
+   * a default, it is a bug — `gdrive ls -q` returning an envelope was one.
+   */
+  it("resolves -q to text whatever the unnamed default is", () => {
     withNoConfig(() => {
-      expect(parseArgs(["-q"]).format).toBe("json");
+      expect(parseArgs(["-q"]).format).toBe("text");
     });
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
+    expect(parseArgs(["-q"]).format).toBe("text");
+    vi.unstubAllEnvs();
+
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "");
+    const dir = mkdtempSync(join(tmpdir(), "gdrive-quiet-"));
+    const path = join(dir, "json.toml");
+    writeFileSync(path, 'default_format = "json"\n');
+    try {
+      expect(parseArgs(["--config", path, "-q"]).format).toBe("text");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      vi.unstubAllEnvs();
+    }
+  });
+
+  /** Decision 0038 §2: a format the caller named beats an unnamed terseness. */
+  it("yields to an explicit -f json, in either order", () => {
+    withNoConfig(() => {
+      expect(parseArgs(["-q", "-f", "json"]).format).toBe("json");
+      expect(parseArgs(["-f", "json", "-q"]).format).toBe("json");
+      expect(parseArgs(["-q", "-f", "text"]).format).toBe("text");
+    });
+  });
+
+  /**
+   * Decision 0036 §1's other side: a command whose output *is* a document keeps
+   * printing the document unless a format is named, so `forms read > form.yaml`
+   * still writes YAML.
+   */
+  it("hands a document command text unless -f named the format", () => {
+    withNoConfig(() => {
+      expect(documentFormat(parseArgs([]))).toBe("text");
+      expect(documentFormat(parseArgs(["-f", "json"]))).toBe("json");
+      expect(documentFormat(parseArgs(["-f", "text"]))).toBe("text");
+    });
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
+    expect(documentFormat(parseArgs([]))).toBe("text");
+    expect(documentFormat(parseArgs(["-f", "json"]))).toBe("json");
+    vi.unstubAllEnvs();
   });
 
   it("--account defaults to undefined and reads -a", () => {

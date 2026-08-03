@@ -15,7 +15,12 @@ import {
 } from "../../lib/docs-api.ts";
 import { readInput, readProcessStdin } from "../../lib/input.ts";
 import { resolveTargetId } from "../../lib/resolve-path.ts";
-import { resolveGlobalOptions, handleError, type GlobalOptions } from "../../index.ts";
+import {
+  documentFormat,
+  resolveGlobalOptions,
+  handleError,
+  type GlobalOptions,
+} from "../../index.ts";
 import { createDocsReadCommand, handleDocsRead } from "./read.ts";
 import { createDocsCreateCommand, handleDocsCreate } from "./create.ts";
 import { createDocsAppendCommand, handleDocsAppend } from "./append.ts";
@@ -50,6 +55,10 @@ export function registerDocs(program: Command): void {
   const read = createDocsReadCommand();
   read.action(async (file: string) => {
     const opts = resolveGlobalOptions(program);
+    // This command's output *is* the document, so Markdown already is its
+    // machine representation and the JSON default has nothing to add
+    // (decision 0036 §1). Only a named `-f json` wraps it in the envelope.
+    const format = documentFormat(opts);
     const o = read.opts<{ as?: string }>();
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
@@ -57,14 +66,14 @@ export function registerDocs(program: Command): void {
         resolvePath: (arg) => resolveTargetId(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
         file,
-        format: opts.format,
+        format,
         quiet: opts.quiet,
         write: stdout,
         ...(o.as !== undefined ? { as: o.as } : {}),
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, format);
     }
   });
   docs.addCommand(read);

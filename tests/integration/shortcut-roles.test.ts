@@ -508,7 +508,7 @@ describe("entry arguments never follow a shortcut (decision 0025 §1)", () => {
 
 describe("a dangling shortcut, end to end (decision 0025 §6)", () => {
   it("renders an error naming the shortcut as the user typed it", async () => {
-    await attempt(["-f", "text", "docs", "read", "Reports/link-to-gone"]);
+    await attempt(["docs", "read", "Reports/link-to-gone"]);
     expect(stderr.join("")).toContain(
       'Error: Shortcut "Reports/link-to-gone" points at a file that is gone or not accessible (target 1GoneDoc).',
     );

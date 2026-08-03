@@ -4,24 +4,35 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProgram } from "../../src/index.ts";
 import { registerDriveRead } from "../../src/commands/drive-read.ts";
+import { registerDocs } from "../../src/commands/docs/index.ts";
+import { registerForms } from "../../src/commands/forms/index.ts";
 import type { DriveClient } from "../../src/lib/api.ts";
+import type { DocsClient } from "../../src/lib/docs-api.ts";
+import type { FormsClient } from "../../src/lib/forms-api.ts";
 import { createTreeDrive, type DriveNode } from "../helpers/fake-drive.ts";
 import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
 
 /**
- * What a caller gets when it asks for nothing. Decision 0036 §1 moved that from
- * the convenience layer to the machine one, and the move happens between
- * `resolveGlobalOptions` and the handler — so it is asserted through the real
- * commander program, with only the Drive client replaced.
+ * What a caller gets when it asks for nothing. Three records meet here and the
+ * meeting point is `resolveGlobalOptions`, so this exercises the real commander
+ * program with only the Google clients replaced:
+ *
+ * - [0036](../../decisions/0036-machine-format-by-default.md) §1 — unasked, a
+ *   command emits its machine representation: the envelope for a command that
+ *   returns records, the document itself for `docs read` and `forms read`.
+ * - [0038](../../decisions/0038-quiet-asks-for-a-value.md) §1 — `-q` selects the
+ *   terse output whatever the default is, and §2 — a named `-f` still wins.
  */
 
 const clients = vi.hoisted(() => {
-  const state: { drive?: DriveClient } = {};
+  const state: { drive?: DriveClient; docs?: DocsClient; forms?: FormsClient } = {};
   return state;
 });
 
 vi.mock("../../src/lib/google-clients.ts", () => ({
   buildDriveClient: () => clients.drive,
+  buildDocsClient: () => clients.docs,
+  buildFormsClient: () => clients.forms,
 }));
 
 vi.mock("../../src/lib/account.ts", () => ({
@@ -36,13 +47,55 @@ const tree: DriveNode[] = [
     parents: ["root"],
   },
   { id: "plain", name: "plain.txt", parents: ["root"] },
+  {
+    id: "doc1",
+    name: "Notes",
+    mimeType: "application/vnd.google-apps.document",
+    parents: ["root"],
+  },
+  { id: "frm1", name: "Survey", mimeType: "application/vnd.google-apps.form", parents: ["root"] },
 ];
+
+/** One heading, so the Markdown is recognisable as Markdown and not as prose. */
+const docsClient: DocsClient = {
+  documents: {
+    get: async ({ documentId }) => ({
+      data: {
+        documentId,
+        title: "Meeting notes",
+        body: {
+          content: [
+            {
+              paragraph: {
+                paragraphStyle: { namedStyleType: "HEADING_1" },
+                elements: [{ textRun: { content: "Meeting notes\n" } }],
+              },
+            },
+          ],
+        },
+      },
+    }),
+    create: async () => ({ data: { documentId: "newDoc", title: "Draft" } }),
+    batchUpdate: async () => ({ data: { replies: [] } }),
+  },
+};
+
+const formsClient: FormsClient = {
+  forms: {
+    get: async ({ formId }) => ({
+      data: { formId, info: { title: "2026 Engagement survey" }, items: [] },
+    }),
+    responses: { list: async () => ({ data: { responses: [] } }) },
+  },
+};
 
 const workDir = mkdtempSync(join(tmpdir(), "gdrive-format-"));
 const emptyConfig = join(workDir, "empty.toml");
 writeFileSync(emptyConfig, "");
 const textConfig = join(workDir, "text.toml");
 writeFileSync(textConfig, 'default_format = "text"\n');
+const jsonConfig = join(workDir, "json.toml");
+writeFileSync(jsonConfig, 'default_format = "json"\n');
 
 afterAll(() => {
   rmSync(workDir, { recursive: true, force: true });
@@ -52,6 +105,8 @@ let stdout: string[];
 
 beforeEach(() => {
   clients.drive = createTreeDrive(tree);
+  clients.docs = docsClient;
+  clients.forms = formsClient;
   stdout = [];
   mockProcessExit();
   vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
@@ -65,23 +120,32 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function ls(config: string, args: string[] = []): Promise<string> {
+async function run(config: string, args: string[]): Promise<string> {
   stdout = [];
   const program = createProgram();
   registerDriveRead(program);
+  registerDocs(program);
+  registerForms(program);
   try {
-    await program.parseAsync(["node", "gdrive", "--config", config, "ls", ...args]);
+    await program.parseAsync(["node", "gdrive", "--config", config, ...args]);
   } catch (error) {
     if (!(error instanceof ExitSignal)) throw error;
   }
   return stdout.join("");
 }
 
-describe("the format a command uses when it is not told one (decision 0036 §1)", () => {
+const ls = (config: string, args: string[] = []) => run(config, ["ls", ...args]);
+
+describe("a command that returns records (decision 0036 §1)", () => {
   it("emits the JSON envelope with no config and no -f", async () => {
     const parsed = JSON.parse(await ls(emptyConfig));
     expect(parsed.success).toBe(true);
-    expect(parsed.data.files.map((f: { id: string }) => f.id)).toEqual(["rep1", "plain"]);
+    expect(parsed.data.files.map((f: { id: string }) => f.id)).toEqual([
+      "rep1",
+      "plain",
+      "doc1",
+      "frm1",
+    ]);
   });
 
   it("emits tab-separated text when default_format asks for it", async () => {
@@ -91,19 +155,61 @@ describe("the format a command uses when it is not told one (decision 0036 §1)"
   });
 
   it("lets -f text override a json config, and -f json a text one", async () => {
-    expect((await ls(emptyConfig, ["-f", "text"])).split("\n")[0]).toContain("Type\tModified");
+    expect((await ls(jsonConfig, ["-f", "text"])).split("\n")[0]).toContain("Type\tModified");
     expect(JSON.parse(await ls(textConfig, ["-f", "json"])).success).toBe(true);
   });
+});
 
-  /**
-   * `--quiet` itself is untouched: decision 0007 has always said JSON mode
-   * ignores it, and text mode emits bare ids. What changed underneath is which
-   * of the two `-q` composes with when nothing else is said, so a caller that
-   * wanted bare ids now asks for the mode they belong to.
-   */
-  it("keeps --quiet meaning what it always did in each format", async () => {
-    expect((await ls(textConfig, ["-q"])).trim()).toBe("rep1\nplain");
-    expect((await ls(emptyConfig, ["-q", "-f", "text"])).trim()).toBe("rep1\nplain");
-    expect(JSON.parse(await ls(emptyConfig, ["-q"])).data.files).toHaveLength(2);
+/**
+ * The document commands are the exemption 0036 §1 spells out: their machine
+ * representation *is* the document, so an unasked-for default cannot be JSON.
+ * `gdrive forms read X > form.yaml` has to keep writing YAML.
+ */
+describe("a command whose output is a document (decision 0036 §1)", () => {
+  it("prints Markdown, not an envelope, when no format is named", async () => {
+    expect((await run(emptyConfig, ["docs", "read", "Notes"])).trim()).toBe("# Meeting notes");
+  });
+
+  it("prints YAML, not an envelope, when no format is named", async () => {
+    expect(await run(emptyConfig, ["forms", "read", "Survey"])).toContain(
+      "title: 2026 Engagement survey",
+    );
+  });
+
+  it("keeps printing the document when the config prefers json", async () => {
+    expect((await run(jsonConfig, ["docs", "read", "Notes"])).trim()).toBe("# Meeting notes");
+    expect(await run(jsonConfig, ["forms", "read", "Survey"])).toContain("title:");
+  });
+
+  it("wraps it in the envelope when -f json names the format", async () => {
+    const doc = JSON.parse(await run(emptyConfig, ["-f", "json", "docs", "read", "Notes"]));
+    expect(doc.data.content).toBe("# Meeting notes");
+    const form = JSON.parse(await run(emptyConfig, ["-f", "json", "forms", "read", "Survey"]));
+    expect(form.data.form.title).toBe("2026 Engagement survey");
+  });
+});
+
+/**
+ * Decision 0038: `-q` asks for a value. A flag the default can switch off is
+ * not a default, it is a bug — so the only thing that outranks `-q` is a format
+ * the caller named.
+ */
+describe("--quiet against the default (decision 0038)", () => {
+  it("prints bare ids with no config and no -f", async () => {
+    expect((await ls(emptyConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1");
+  });
+
+  it("prints bare ids even when the config prefers json", async () => {
+    expect((await ls(jsonConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1");
+  });
+
+  it("still prints bare ids under a text config or an explicit -f text", async () => {
+    expect((await ls(textConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1");
+    expect((await ls(emptyConfig, ["-q", "-f", "text"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1");
+  });
+
+  it("yields to an explicit -f json, which is 0007's rule (§2)", async () => {
+    expect(JSON.parse(await ls(emptyConfig, ["-q", "-f", "json"])).data.files).toHaveLength(4);
+    expect(JSON.parse(await ls(textConfig, ["-f", "json", "-q"])).success).toBe(true);
   });
 });
