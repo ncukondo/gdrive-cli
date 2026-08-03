@@ -15,9 +15,28 @@ const FormatSchema = z.enum(["text", "json"]);
 
 export interface GlobalOptions {
   format: OutputFormat;
+  /**
+   * True when `-f/--format` named the format on the command line. Everything
+   * else — `$GDRIVE_CLI_FORMAT`, `default_format`, the built-in fallback — is a
+   * default, which is to say a preference the caller never expressed. Two rules
+   * turn on the difference: `--quiet` outranks a default but not a named format
+   * (decision 0038), and a command whose output *is* a document keeps printing
+   * the document until a format is named (decision 0036 §1).
+   */
+  formatNamed: boolean;
   quiet: boolean;
   account?: string;
   config?: string;
+}
+
+/**
+ * The format for a command whose output *is* a document — `docs read`'s
+ * Markdown, `forms read`'s YAML. Those already are the machine representation
+ * (decision 0036 §1), so the JSON default has nothing to offer them and only a
+ * named `-f json` wraps one in the envelope.
+ */
+export function documentFormat(opts: GlobalOptions): OutputFormat {
+  return opts.formatNamed ? opts.format : "text";
 }
 
 export function createProgram(): Command {
@@ -66,8 +85,8 @@ export function resolveGlobalOptions(program: Command): GlobalOptions {
     config?: string;
   }>();
 
-  const explicitFormat = program.getOptionValueSource("format") !== "default";
-  const format = explicitFormat ? raw.format : defaultFormat(raw.config);
+  const formatNamed = program.getOptionValueSource("format") !== "default";
+  const format = formatNamed ? raw.format : defaultFormat(raw.config);
 
   const formatResult = FormatSchema.safeParse(format);
   if (!formatResult.success) {
@@ -75,8 +94,14 @@ export function resolveGlobalOptions(program: Command): GlobalOptions {
     process.exit(ExitCode.ARGUMENT);
   }
 
+  // `-q` asks for the bare value, and gets it whatever the unnamed default is
+  // (decision 0038 §1). A named format still wins, because the caller said it
+  // out loud and terseness was only ever implied (§2).
+  const resolved = raw.quiet && !formatNamed ? "text" : formatResult.data;
+
   const opts: GlobalOptions = {
-    format: formatResult.data,
+    format: resolved,
+    formatNamed,
     quiet: raw.quiet,
   };
   if (raw.account !== undefined) opts.account = raw.account;
