@@ -46,6 +46,11 @@ export function formatFileDetail(file: DriveFile): string {
     detailLine("Modified", file.modified ?? "-"),
     detailLine("Created", file.created ?? "-"),
   ];
+  // What a shortcut points at, so an `info` that deliberately does not follow
+  // still hands the caller the id to follow with (decision 0025 §2).
+  if (file.target_id !== null) {
+    lines.push(detailLine("Target", `${file.target_id} (${file.target_type ?? "file"})`));
+  }
   if (file.owners.length > 0) lines.push(detailLine("Owners", file.owners.join(", ")));
   lines.push(detailLine("Trashed", String(file.trashed)));
   if (file.web_view_link) lines.push(detailLine("Link", file.web_view_link));
