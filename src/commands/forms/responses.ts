@@ -38,7 +38,9 @@ export interface FormsResponsesDeps {
 /**
  * Tabulates a form's responses. The form is fetched as well as the responses,
  * unconditionally: the API keys answers by question id and never says what was
- * asked, so the join is the command (decision 0027 §6). Two calls, always.
+ * asked, so the join is the command (decision 0027 §6). Two Forms calls,
+ * always — `resolvePath` adds a Drive lookup for a bare id, which is what
+ * decision 0025 §4 prices for a content argument.
  */
 export async function handleFormsResponses(deps: FormsResponsesDeps): Promise<CommandResult> {
   const as = parseResponsesAs(deps.as);

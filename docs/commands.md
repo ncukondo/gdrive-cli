@@ -997,12 +997,27 @@ document has no way to express:
 | `choiceQuestion.type` | A choice kind newer than this CLI |
 | `scaleQuestion` | A scale the API returned without both of its bounds |
 
-An unmodelled item still carries its `id`, and an unmodelled *question* still
-carries its `question_id`, so `forms responses` can still head a column with it
-and its answers are not lost with it.
+**On an `unsupported` node, `raw` is the only field that counts.** The `id`,
+`question_id`, `title` and `description` beside it are a legible echo of what is
+inside `raw` — enough to tell one opaque node from another in a diff, and enough
+for `forms responses` to head a column with the question's title and join on its
+`question_id`, so its answers are not lost with it. They are not an edit point:
+`forms write` will emit no request at all for an `unsupported` item, so changing
+a `title` there changes nothing in the form and will not appear in the plan that
+`write` reports. Where the two copies disagree, `raw` is the form.
 
-Quiz grading (`grading`, and a response's scores) is not projected; a quiz reads
-as its questions.
+Some things are not carried at all, and so do not appear in the `unsupported`
+report either — the report is a per-item list, and these are not items:
+
+| Not carried | What that means |
+|---|---|
+| `settings.quizSettings.isQuiz`, `settings.emailCollectionType` | Form-level settings. A form reads as its items; whether it is a quiz, and whether it collects email addresses, are simply not in the document |
+| `grading` on a question, and a response's scores | Deferred by [`0027`](../decisions/0027-forms-document.md); a quiz reads as its questions |
+| `document_title` | The Drive file name, which `gdrive info` and `gdrive ls` report. Nothing can change it through this API, so nothing here loses it |
+| `publish_settings` | Output-only, and form lifecycle rather than content |
+
+A form that is a quiz therefore reads with no sign that it is one. If you edit a
+quiz's document, keep in mind that these settings live outside it.
 
 ### `gdrive forms read <form>`
 
@@ -1024,8 +1039,10 @@ Quiet: the form ID.
 ### `gdrive forms responses <form>`
 
 Tabulates the responses, one column per question, headed by the question's
-title. The form is fetched as well as the responses — always two round trips —
-because the API keys answers by question ID and never says what was asked.
+title. The form is fetched as well as the responses — two Forms calls, always,
+whatever the form — because the API keys answers by question ID and never says
+what was asked. A `<form>` given as a bare ID costs one Drive lookup on top, to
+find out whether the ID is a [shortcut](#shortcuts); a path costs nothing extra.
 
 `--as` is `table` (default), `csv`, or `json`.
 
@@ -1050,8 +1067,8 @@ submitted             Which team are you on?  How satisfied are you?
   will be able to edit — but its answers are all here.
 - A form with no responses prints the header row alone.
 - A form need not have a linked spreadsheet; this works either way.
-- Column titles are always distinct, so no answer can overwrite another in
-  `json`'s title-keyed rows.
+- Column titles are always distinct — by construction, not by convention — so
+  no answer can overwrite another in `json`'s title-keyed rows.
 
 ```json
 { "id": "1FoRm...",
