@@ -27,6 +27,24 @@ id, reports what it did as a plan, refuses to delete without `--prune`, and
   argument; `--file` should not grow a fourth convention.
 - Also relevant: [`0015`](../decisions/0015-no-type-assertions.md) (params
   checked against `forms_v1`), [`0007`](../decisions/0007-output-and-errors.md).
+- **What 0029's review found, that lands on this task.** The document does not
+  carry `settings.quizSettings.isQuiz`. 0027 defers *response* grading data
+  (`totalScore`, per-answer `grade`), which is a different field, so this one was
+  simply not projected. Two consequences are yours, and both destroy data
+  silently if missed: `forms create` from a document that came out of a quiz
+  produces a form that is not a quiz, and any `updateSettings` derived from the
+  document sends `isQuiz: false`, which per Google's own field documentation
+  "deletes all question Grading". The same applies to `question.grading`, which
+  0027 defers legitimately. Decide before writing code whether this task carries
+  the setting, refuses to touch settings it cannot represent, or scopes its
+  `updateMask` so an absent field is never sent — and if the answer changes what
+  the document holds, that is a new decision, not an edit to 0027
+  ([`0032`](../decisions/0032-decisions-are-append-only.md)).
+- An item that reads as `type: unsupported` must emit no request at all. 0029
+  routes an image-bearing question, an unknown `choiceQuestion.type` and a scale
+  missing a bound through that channel precisely because they cannot round-trip,
+  and it relies on [`0028`](../decisions/0028-forms-write.md) §2 to make the
+  reliance safe. Verify §2 actually says so before building on it.
 
 ## Scope
 
