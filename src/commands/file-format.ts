@@ -209,6 +209,21 @@ function padTo(text: string, width: number): string {
 }
 
 /**
+ * A row is one line, so a name is too. Drive accepts a newline in a file name —
+ * observed, not inferred — and a name carrying one ends the row early and starts
+ * a second line with no columns in it at all, which no amount of padding fixes.
+ * Every C0/C1 control and both Unicode line separators become a space.
+ *
+ * The name printed is lossy where this happens. That is a table, whose job is to
+ * be read as columns; `-f json` carries the name Drive actually holds (0007).
+ */
+const CONTROL = /[\p{Cc}\u2028\u2029]/gu;
+
+function oneLine(text: string): string {
+  return text.replace(CONTROL, " ");
+}
+
+/**
  * Derived from the vocabulary rather than written down: a hard-coded 8 was
  * exactly the width of `shortcut`, so `padEnd` added nothing and a real listing
  * printed `shortcut2026-08-03 04:51`. Reading the widest label keeps the column
@@ -231,13 +246,14 @@ export function formatFileTable(files: DriveFile[]): string {
   // one long row run on instead would put its ID where no other row's is, which
   // is the defect and not a fix for it; truncating is a change to the table that
   // needs its own decision (task 0036, out of scope).
-  const nameW = Math.max(NAME_MIN_W, ...files.map((f) => displayWidth(f.name) + COL_GAP));
+  const names = files.map((f) => oneLine(f.name));
+  const nameW = Math.max(NAME_MIN_W, ...names.map((n) => displayWidth(n) + COL_GAP));
   const header = padTo("Type", TYPE_W) + padTo("Modified", MOD_W) + padTo("Name", nameW) + "ID";
   const rows = files.map(
-    (f) =>
+    (f, i) =>
       padTo(f.type, TYPE_W) +
       padTo(formatModified(f.modified), MOD_W) +
-      padTo(f.name, nameW) +
+      padTo(names[i] ?? "", nameW) +
       f.id,
   );
   return [header, ...rows].join("\n");

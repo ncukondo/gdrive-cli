@@ -211,4 +211,27 @@ describe("formatFileTable is a table for any name Drive permits", () => {
       headerStarts,
     );
   });
+
+  /**
+   * Drive accepts a newline in a file name — this was observed against a real
+   * account, not inferred from the API docs. Rendered as-is it ends the row and
+   * puts the ID at column 0 of a line with no columns at all, so the table stops
+   * being a table for reasons that have nothing to do with width. The name shown
+   * is lossy where this happens; `-f json` still carries the real one (0007).
+   */
+  it("keeps a name containing a newline on one row", () => {
+    const lines = formatFileTable([file({ id: "1LoNgEr", name: "line1\nline2" }), SHORT]).split(
+      "\n",
+    );
+    const [header = "", ...rows] = lines;
+
+    expect(rows).toHaveLength(2);
+    const headerStarts = columnStarts(header, HEADER_FIELDS);
+    expect(columnStarts(rows[0] ?? "", ["sheet", "2026-07-24 06:17", "line1", "1LoNgEr"])).toEqual(
+      headerStarts,
+    );
+    expect(columnStarts(rows[1] ?? "", ["sheet", "2026-07-24 06:17", "Budget", "1ShOrT"])).toEqual(
+      headerStarts,
+    );
+  });
 });
