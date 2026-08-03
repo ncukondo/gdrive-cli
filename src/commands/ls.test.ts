@@ -130,6 +130,35 @@ describe("handleLs", () => {
     expect(parsed.data.files.map((f: DriveFile) => f.id)).toEqual(["f1", "f2"]);
   });
 
+  /**
+   * The two modes are allowed to disagree, and this is where they do. Drive
+   * accepts a newline in a name; a line-oriented format cannot carry one, so
+   * text mode mangles it and `-f json` is the exact channel (decision 0036 §2).
+   */
+  it("mangles a newline in a name in text and carries it verbatim in JSON", async () => {
+    const awkward = [file({ id: "f3", name: "Q1\nreport" })];
+    const text = collect();
+    const json = collect();
+    await handleLs({
+      resolvePath: vi.fn(),
+      listChildren: async () => awkward,
+      format: "text",
+      quiet: false,
+      write: text.write,
+    });
+    await handleLs({
+      resolvePath: vi.fn(),
+      listChildren: async () => awkward,
+      format: "json",
+      quiet: false,
+      write: json.write,
+    });
+    expect(text.output.split("\n")).toHaveLength(2);
+    expect(text.output).toContain("Q1 report");
+    expect(text.output).not.toContain("Q1\nreport");
+    expect(JSON.parse(json.output).data.files[0].name).toBe("Q1\nreport");
+  });
+
   it("renders quiet as one id per line", async () => {
     const out = collect();
     await handleLs({

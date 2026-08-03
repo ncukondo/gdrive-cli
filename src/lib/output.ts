@@ -11,6 +11,23 @@ export function formatJsonError(code: ErrorCode, message: string): string {
 }
 
 /**
+ * Anything that would end a field or a line: the C0 and C1 control characters
+ * (`\t`, `\n` and `\r` among them) plus the two Unicode line breaks a reader
+ * may treat as newlines.
+ */
+const FIELD_BREAKING = /[\p{Cc}\u2028\u2029]/gu;
+
+/**
+ * Text mode is line-oriented, so a value cannot be allowed to invent a field or
+ * a row that no record ever had — Drive accepts a newline in a file name, and
+ * one there used to split a row in half. The real value is still exact in
+ * `-f json`; text is lossy on purpose (decision 0036 §2).
+ */
+function textField(value: string): string {
+  return value.replace(FIELD_BREAKING, " ");
+}
+
+/**
  * One row of text output: a single tab between fields, and nothing else
  * (decision 0036 §2). Nothing is padded, so no display width is computed and no
  * display width can be wrong — the whole class of defect the aligned tables had
@@ -18,7 +35,7 @@ export function formatJsonError(code: ErrorCode, message: string): string {
  * exactly what the renderer put in.
  */
 export function formatRow(fields: string[]): string {
-  return fields.join("\t");
+  return fields.map(textField).join("\t");
 }
 
 /**

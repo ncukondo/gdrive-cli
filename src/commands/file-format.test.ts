@@ -118,6 +118,25 @@ describe("a row does not depend on the other rows", () => {
   });
 });
 
+describe("a file name cannot forge a field or a row", () => {
+  it("keeps a name holding a tab and a newline inside one field of one row", () => {
+    const table = formatFileTable([file({ name: "quarter\tone\nreport" })]);
+    const lines = table.split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[1]?.split("\t")).toEqual([
+      "sheet",
+      "2026-07-24 06:17",
+      "quarter one report",
+      "id1",
+    ]);
+  });
+
+  it("keeps such a name on one line of a detail too", () => {
+    const lines = formatFileDetail(file({ name: "quarter\tone\nreport" })).split("\n");
+    expect(lines[0]?.split("\t")).toEqual(["Name:", "quarter one report"]);
+  });
+});
+
 describe("formatFileDetail fields", () => {
   it.each(AWKWARD_NAMES)("round-trips a label and its value: %s", (name) => {
     const lines = formatFileDetail(file({ name })).split("\n");
