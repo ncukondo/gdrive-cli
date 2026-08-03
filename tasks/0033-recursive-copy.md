@@ -18,7 +18,9 @@ when it cannot finish, says exactly how far it got.
   — stopping early is only defensible because the report is complete, so do not
   implement one without the other.
 - [`0007`](../decisions/0007-output-and-errors.md)'s error envelope gains an
-  optional `data`; that is an edit to 0007's Decision section, not just to code.
+  optional `data`. That change is recorded in
+  [`0031`](../decisions/0031-recursive-copy.md) §4 and nowhere else: 0007 is not
+  edited ([`0032`](../decisions/0032-decisions-are-append-only.md)).
 - Prior art: `sharedDriveHint` in `lib/resolve-path.ts` is §1's pattern —
   a hint computed only after the real operation failed, which must never replace
   the caller's error when the hint's own lookup fails.
@@ -84,11 +86,11 @@ when it cannot finish, says exactly how far it got.
    - **Red** — `cp -r <file> <dest>` copies the file normally.
    - **Green** — implement.
 
-4. **Docs and decisions**
-   - `decisions/0007` — the error envelope's optional `data`, with a pointer to
-     0031 §4.
-   - `decisions/0008` — the `cp` row gains `-r`, and "Out of scope (deferred)"
-     loses folder copying.
+4. **Docs**
+   - No decision file is edited
+     ([`0032`](../decisions/0032-decisions-are-append-only.md)). 0031 already
+     records the envelope's optional `data` (§4) and that 0008 noted `cp`
+     without its folder limit; 0007 and 0008 stay as written.
    - `docs/commands.md` — `cp -r`, the partial-result envelope, and the fact
      that a stopped run leaves a valid partial subtree.
    - `README.md` — the Drive highlight line.
@@ -106,7 +108,8 @@ when it cannot finish, says exactly how far it got.
 - [ ] `gdrive cp -r A A/B` fails before copying anything
 - [ ] Every pre-existing error-envelope test passes unchanged
 - [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
-- [ ] `decisions/0007`, `decisions/0008`, `docs/commands.md`, `README.md` updated
+- [ ] `docs/commands.md` and `README.md` updated, in the same pull request as the
+      code ([`0033`](../decisions/0033-implementation-lands-through-review.md) §1)
 
 ## Verification
 

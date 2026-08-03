@@ -97,8 +97,9 @@ readable as a table whose columns are question titles.
      field per `type` (0027 §2 delegates the exhaustive list here), `read`,
      `responses`, and the `unsupported` behavior.
    - `README.md` highlights gain a Forms bullet.
-   - `decisions/0002` lists `yaml`; `decisions/0005` notes that Forms needs no
-     new scope, so nobody re-derives it.
+   - No decision file is edited ([`0032`](../decisions/0032-decisions-are-append-only.md)).
+     0027 already records both the `yaml` dependency and the fact that Forms
+     needs no new scope; 0002 and 0005 stay as written.
 
 ## Acceptance criteria
 
@@ -111,7 +112,8 @@ readable as a table whose columns are question titles.
       titles; `--as csv` and `--as json` agree with it
 - [ ] A form with no linked response sheet still returns responses
 - [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
-- [ ] `docs/commands.md`, `README.md`, `decisions/0002`, `decisions/0005` updated
+- [ ] `docs/commands.md` and `README.md` updated, in the same pull request as the
+      code ([`0033`](../decisions/0033-implementation-lands-through-review.md) §1)
 
 ## Verification
 
