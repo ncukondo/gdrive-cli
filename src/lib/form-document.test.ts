@@ -323,6 +323,110 @@ describe("toFormDocument with an item the schema does not model", () => {
   });
 });
 
+/**
+ * A field *below* the item level that the schema cannot hold is the same
+ * failure 0027 §4 exists to prevent: projecting the question and dropping the
+ * field would report the document as fully modelled while a write destroyed
+ * the part that was dropped. Neither an image's `contentUri` (output only, and
+ * short-lived) nor `sourceUri` (input only) can round-trip through a document,
+ * so the item goes through §4's channel instead.
+ */
+describe("toFormDocument with a field it cannot model inside a question", () => {
+  const withQuestionImage: FormRaw = {
+    info: { title: "Geography" },
+    items: [
+      {
+        itemId: "i-img",
+        title: "Capital of France?",
+        questionItem: {
+          image: { contentUri: "https://lh3.example/map", altText: "map" },
+          question: {
+            questionId: "q-img",
+            choiceQuestion: { type: "RADIO", options: [{ value: "Paris" }, { value: "Rome" }] },
+          },
+        },
+      },
+    ],
+  };
+
+  const withOptionImage: FormRaw = {
+    info: { title: "Geography" },
+    items: [
+      {
+        itemId: "i-opt",
+        title: "Which flag?",
+        questionItem: {
+          question: {
+            questionId: "q-opt",
+            choiceQuestion: {
+              type: "RADIO",
+              options: [{ value: "France", image: { contentUri: "https://lh3.example/fr" } }],
+            },
+          },
+        },
+      },
+    ],
+  };
+
+  it("does not report a question carrying an image as fully modelled", () => {
+    const { document, unsupported } = toFormDocument(withQuestionImage);
+    expect(unsupported).toEqual([{ id: "i-img", kind: "questionItem.image" }]);
+    expect(document.items[0]).toMatchObject({
+      id: "i-img",
+      question_id: "q-img",
+      type: "unsupported",
+      title: "Capital of France?",
+    });
+  });
+
+  it("keeps that question's whole resource, image included, under `raw`", () => {
+    const [item] = toFormDocument(withQuestionImage).document.items;
+    expect(item?.type).toBe("unsupported");
+    expect(item?.type === "unsupported" ? item.raw : undefined).toEqual(
+      withQuestionImage.items?.[0],
+    );
+  });
+
+  it("does the same for an image attached to one option", () => {
+    const { document, unsupported } = toFormDocument(withOptionImage);
+    expect(unsupported).toEqual([{ id: "i-opt", kind: "option.image" }]);
+    expect(document.items[0]).toMatchObject({ type: "unsupported", question_id: "q-opt" });
+  });
+
+  it("names an unknown choice type rather than approximating it", () => {
+    const unknownChoice: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "i-new",
+          questionItem: {
+            question: { questionId: "q-new", choiceQuestion: { type: "SOMETHING_NEW" } },
+          },
+        },
+      ],
+    };
+    expect(toFormDocument(unknownChoice).unsupported).toEqual([
+      { id: "i-new", kind: "choiceQuestion.type" },
+    ]);
+  });
+
+  it("does not invent a bound for a scale the API did not bound", () => {
+    const boundless: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "i-scale",
+          title: "How satisfied?",
+          questionItem: { question: { questionId: "q-scale", scaleQuestion: { low: 1 } } },
+        },
+      ],
+    };
+    const { document, unsupported } = toFormDocument(boundless);
+    expect(unsupported).toEqual([{ id: "i-scale", kind: "scaleQuestion" }]);
+    expect(document.items[0]).toMatchObject({ type: "unsupported" });
+  });
+});
+
 describe("formDocumentToYaml", () => {
   it("round-trips through a YAML parser unchanged", () => {
     const { document } = toFormDocument(form);
