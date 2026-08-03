@@ -902,6 +902,149 @@ Quiet: the new spreadsheet ID.
 
 ---
 
+## Forms (`gdrive forms`)
+
+A form is **one YAML document** (see
+[`../decisions/0027`](../decisions/0027-forms-document.md)). `read` prints it,
+and there are no per-question commands: to change question 3, read the form,
+edit that node, and write the document back.
+
+The Forms API must be enabled on your Google Cloud project
+([`authentication.md`](authentication.md)); no new OAuth scope is needed, so an
+existing login keeps working.
+
+### The document
+
+```yaml
+id: 1FoRm...
+title: 2026 Engagement survey
+description: |-
+  Takes about five minutes.
+  Answers are anonymous.
+revision_id: "00000007"
+responder_uri: https://docs.google.com/forms/d/e/1FAIpQ.../viewform
+linked_sheet_id: 1ShEeT...
+items:
+  - id: 1a2b3c4d
+    question_id: 5e6f7g8h
+    type: choice
+    choice_type: radio
+    title: Which team are you on?
+    required: true
+    options:
+      - Sales
+      - Engineering
+      - value: Other
+        other: true
+```
+
+Top level:
+
+| Field | Description |
+|-------|-------------|
+| `id` | The form ID. Output only |
+| `title` | The title responders see |
+| `description` | Optional; block scalars keep paragraphs readable |
+| `revision_id` | The revision `read` saw. Output only here; a later `forms write` sends it back so a concurrent browser edit fails instead of being clobbered |
+| `responder_uri` | The link to share. Output only |
+| `linked_sheet_id` | The response spreadsheet, when the form has one — `gdrive sheets read` on it is often what you want. Output only |
+| `items` | The form's items, in order |
+
+Every item carries `id` (the API's item ID) and a `type`; every question also
+carries `question_id`, which is the key responses are joined on. Both are output
+only. `title` and `description` are optional on every item, and `required`
+(default `false`) on every question.
+
+| `type` | Fields |
+|--------|--------|
+| `choice` | `choice_type`: `radio` \| `checkbox` \| `dropdown`; `options`; `shuffle` |
+| `scale` | `low`, `high`, `low_label`, `high_label` |
+| `text` | `paragraph` — `true` is the multi-line answer box |
+| `date` | `include_time`, `include_year` |
+| `time` | `duration` — `true` is an elapsed time rather than a time of day |
+| `file_upload` | `folder_id`, `max_files`, `max_file_size`, `types` |
+| `page_break` | — (a section; its `title`/`description` head the new page) |
+| `text_item` | — (a title and description block, asks nothing) |
+| `unsupported` | `raw` (see below) |
+
+An `options` entry is a plain string, or a mapping when it is more than its
+label: `value` plus `other: true` (the "Other…" write-in) and the section
+navigation `go_to_action` / `go_to_section_id`.
+
+### What is not modelled
+
+An item whose kind the schema does not cover — a video, an image, a grid
+(question group) — reads as `type: unsupported` with the API resource verbatim
+under `raw`. It is never dropped or approximated, so a round trip cannot
+destroy it, and `read` says so: one line on stderr in text mode, an
+`unsupported` array in JSON.
+
+```console
+$ gdrive forms read "Surveys/2026" > form.yaml
+Kept as raw: videoItem (item 3c4d5e6f)
+```
+
+Within a question, quiz grading, per-question images, and the individual
+questions of a grid are not projected; a quiz reads as its questions.
+
+### `gdrive forms read <form>`
+
+Text output **is** the document, ready to redirect to a file. `-f json` carries
+the same structure — not a YAML string — in `data.form`, so a JSON caller never
+needs a YAML parser to read a form.
+
+```console
+$ gdrive forms read "Surveys/2026 Engagement" > form.yaml
+```
+
+```json
+{ "id": "1FoRm...", "form": { "title": "2026 Engagement survey", "items": [ ... ] },
+  "unsupported": [ { "id": "3c4d5e6f", "kind": "videoItem" } ] }
+```
+
+Quiet: the form ID.
+
+### `gdrive forms responses <form>`
+
+Tabulates the responses, one column per question, headed by the question's
+title. The form is fetched as well as the responses — always two round trips —
+because the API keys answers by question ID and never says what was asked.
+
+`--as` is `table` (default), `csv`, or `json`.
+
+```console
+$ gdrive forms responses "Surveys/2026 Engagement"
+submitted             Which team are you on?  How satisfied are you?
+2026-07-01T10:22:00Z  Sales                   4
+2026-07-01T11:05:00Z  Engineering             5
+```
+
+- A checkbox or file-upload answer is several values: `table` and `csv` join
+  them with `; `, `json` keeps the array.
+- A file-upload answer reports Drive file IDs, which `gdrive info` accepts.
+- Two questions with the same title — or one titled `submitted` — get
+  ` (<question_id>)` appended rather than a silently duplicated column. An
+  untitled question is headed by its question ID.
+- A question with no answer in a response is an empty cell (`[]` in `json` for
+  a multi-valued column).
+- A form with no responses prints the header row alone.
+- A form need not have a linked spreadsheet; this works either way.
+
+```json
+{ "id": "1FoRm...",
+  "columns": ["submitted", "Which team are you on?"],
+  "responses": [ { "submitted": "2026-07-01T10:22:00Z", "Which team are you on?": "Sales" },
+                 { "submitted": "2026-07-01T11:05:00Z", "Which team are you on?": "Engineering" } ],
+  "count": 2 }
+```
+
+Quiet: CSV to stdout.
+
+Response filtering, fetching one response by ID, and quiz grades are not
+implemented; neither is writing a form (`forms write` / `forms create`).
+
+---
+
 ## Setup & maintenance
 
 ### `gdrive init [--local] [--force]`

@@ -25,7 +25,7 @@ export function createProgram(): Command {
 
   program
     .name("gdrive")
-    .description("CLI for Google Drive, Docs, and Sheets with multi-account switching")
+    .description("CLI for Google Drive, Docs, Sheets, and Forms with multi-account switching")
     .version(pkg.version)
     .option("-a, --account <email|alias>", "Account to use (overrides the default)")
     .option("-f, --format <format>", "Output format: text | json", "text")

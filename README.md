@@ -1,8 +1,8 @@
 # gdrive-cli
 
-A command-line tool for **Google Drive, Docs, and Sheets** — listing and
-managing files, reading and making simple edits to Documents and Spreadsheets —
-with **multiple-account switching**. A sibling of
+A command-line tool for **Google Drive, Docs, Sheets, and Forms** — listing and
+managing files, reading and making simple edits to Documents and Spreadsheets,
+reading Forms and their responses — with **multiple-account switching**. A sibling of
 [`gcal-cli`](https://github.com/ncukondo/gcal-cli), designed for both human and
 AI-agent use.
 
@@ -25,6 +25,9 @@ AI-agent use.
   lists, and links. `--as text` writes the exact bytes instead.
 - **Sheets** — `tabs`, `read` (table/CSV/JSON), `write`, `append`, `clear`,
   `create`.
+- **Forms** — `forms read` prints a whole form as one YAML document, ids and
+  all; `forms responses` tabulates the answers with the question titles as
+  column headers (table/CSV/JSON), with or without a linked spreadsheet.
 - **Sharing** — `share list / add / remove / link` to manage permissions.
 - **Agent-first** — the primary consumer is an AI agent: `-f json` is a stable,
   first-class interface, with `-q` quiet piping and stable exit codes.
@@ -55,7 +58,7 @@ package manager instead. See [`decisions/0003`](decisions/0003-distribution.md).
 ## Google Cloud setup
 
 `gdrive` uses **your own** OAuth client. Create a Google Cloud project, enable
-the **Drive**, **Docs**, and **Sheets** APIs, create **OAuth 2.0 Desktop app**
+the **Drive**, **Docs**, **Sheets**, and **Forms** APIs, create **OAuth 2.0 Desktop app**
 credentials, and provide the Client ID / Secret when `gdrive auth` prompts (or
 via `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`). Step-by-step:
 [`docs/authentication.md`](docs/authentication.md).
@@ -82,6 +85,8 @@ gdrive rm "Reports/link-to-2026"     # …but this trashes the shortcut
 gdrive docs read "Notes/Meeting"     # Markdown to stdout
 gdrive docs append "Notes/Meeting" @draft.md   # …and Markdown back in
 gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:C10" --as csv
+gdrive forms read "Surveys/2026" > form.yaml          # the whole form as YAML
+gdrive forms responses "Surveys/2026" --as csv        # answers, by question title
 gdrive share link "Reports/2026/Budget"
 ```
 
