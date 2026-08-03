@@ -1,6 +1,7 @@
-import { AppError } from "../types/index.ts";
+import { AppError, type DriveFile } from "../types/index.ts";
 import {
   escapeQueryValue,
+  getFile,
   listSharedDrives,
   mapDriveError,
   normalizeFile,
@@ -213,5 +214,93 @@ async function walk(client: DriveClient, arg: string): Promise<Walked> {
  */
 export async function resolvePath(client: DriveClient, arg: string): Promise<string> {
   const { id } = await walk(client, arg);
+  return id;
+}
+
+/** What {@link resolveTarget} answers: the id to act on, and what is known of it. */
+export interface ResolvedTarget {
+  /** The shortcut's target when the argument named one, else the file itself. */
+  id: string;
+  /**
+   * Metadata for `id`, when resolving had to fetch it anyway — `null` when it
+   * did not, so a caller that needs metadata falls back to its own `getFile`
+   * rather than paying twice (decision 0025 §4).
+   */
+  file: DriveFile | null;
+}
+
+function danglingTarget(arg: string, targetId: string): AppError {
+  return new AppError(
+    "NOT_FOUND",
+    `Shortcut "${arg}" points at a file that is gone or not accessible (target ${targetId}).`,
+  );
+}
+
+/**
+ * Fetches what a shortcut points at, in the one hop decision 0025 §5 allows.
+ * Both failures name the shortcut, so a `NOT_FOUND` never sends the user
+ * hunting for an id they can see in `ls` (§6).
+ */
+async function fetchTarget(
+  client: DriveClient,
+  arg: string,
+  shortcut: { id: string; targetId: string | null },
+): Promise<ResolvedTarget> {
+  const { targetId } = shortcut;
+  if (targetId === null || targetId === "") {
+    throw new AppError(
+      "API_ERROR",
+      `Drive reports ${shortcut.id} as a shortcut but names no target (from "${arg}").`,
+    );
+  }
+
+  let target: DriveFile;
+  try {
+    target = await getFile(client, targetId);
+  } catch (error) {
+    // Drive answers 404 both for a deleted file and for one this account
+    // cannot see; 0025 §6 gives them the same message.
+    if (error instanceof AppError && error.code === "NOT_FOUND")
+      throw danglingTarget(arg, targetId);
+    throw error;
+  }
+  if (target.trashed) throw danglingTarget(arg, targetId);
+  if (target.type === "shortcut") {
+    throw new AppError(
+      "API_ERROR",
+      `Shortcut "${arg}" points at another shortcut (target ${targetId}); Drive does not create those.`,
+    );
+  }
+  return { id: targetId, file: target };
+}
+
+/**
+ * Resolves a `<file>` argument the way the container and content roles of
+ * decision 0025 §1 need it: the same walk as {@link resolvePath}, then one hop
+ * through a shortcut named by the argument itself.
+ *
+ * Nothing in an id-shaped argument says "shortcut", so that form costs one
+ * `files.get` — which is why the result carries the metadata it fetched
+ * (decision 0025 §4).
+ */
+export async function resolveTarget(client: DriveClient, arg: string): Promise<ResolvedTarget> {
+  const { id, candidate } = await walk(client, arg);
+
+  if (candidate !== null) {
+    if (!candidate.isShortcut) return { id, file: null };
+    return fetchTarget(client, arg, candidate);
+  }
+
+  // A root is a folder by construction, so it is the one id worth not asking about.
+  if (id === ROOT_ID || SHARED_DRIVE_ROOT_ID.test(id)) return { id, file: null };
+
+  const file = await getFile(client, id);
+  if (file.type !== "shortcut") return { id, file };
+  return fetchTarget(client, arg, { id, targetId: file.target_id });
+}
+
+/** {@link resolveTarget} for the callers that only need the id (every registry). */
+export async function resolveTargetId(client: DriveClient, arg: string): Promise<string> {
+  const { id } = await resolveTarget(client, arg);
   return id;
 }
