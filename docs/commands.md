@@ -22,19 +22,28 @@ Account resolution: `-a` > `$GDRIVE_CLI_ACCOUNT` > `default_account` in config >
 the sole authenticated account. Format resolution: `-f` > `$GDRIVE_CLI_FORMAT` >
 `default_format` in config > `json`.
 
+Only `-f` *names* a format; everything after it is a default, and two things
+outrank a default. `-q` prints the bare value whatever the default is
+([`../decisions/0038`](../decisions/0038-quiet-asks-for-a-value.md)), and a
+command whose output is a document prints the document
+([`../decisions/0036`](../decisions/0036-machine-format-by-default.md) §1).
+
 ## Output modes
 
 Three modes, chosen with `-f` and `-q`:
 
-- **json** (default) — a stable envelope. `--quiet` is ignored in JSON mode.
+- **json** (default) — a stable envelope. A JSON mode you asked for by name
+  ignores `--quiet`; a JSON mode that is merely the default yields to it.
 - **`-f text`** — the convenience layer: one record per line, fields separated
   by a single tab. Nothing is padded and no column is measured, so a field's
   boundary is always recoverable — and when you want columns on screen, pipe it
   through something that aligns: `gdrive ls -f text | column -t -s $'\t'`.
 - **`-q` quiet** — one value per line, made for pipes: usually IDs. Some
-  commands (`rm`, `share remove`, `sheets clear`) print nothing at all. It is
-  a variant of text mode, so `-q` on its own emits the envelope: pair it with
-  `-f text` when you want the bare values.
+  commands (`rm`, `share remove`, `sheets clear`) print nothing at all. `-q`
+  asks for the bare value and gets it whatever the default is, so
+  `FOLDER=$(gdrive mkdir 2027 -q)` needs no `-f`. A format you *name* still
+  wins: `gdrive ls -f json -q` is JSON
+  ([`../decisions/0038`](../decisions/0038-quiet-asks-for-a-value.md)).
 
 ```json
 { "success": true, "data": { } }
@@ -43,11 +52,16 @@ Three modes, chosen with `-f` and `-q`:
 
 The `data` shapes below are what goes in that envelope.
 
-**Every `console` transcript on this page passes `-f text`**, because a
+**Most `console` transcripts on this page pass `-f text`**, because a
 transcript is only worth showing when it shows the text. Without it — or without
-`default_format = "text"` in your config — each of those commands prints the
-envelope instead. See
-[`../decisions/0036`](../decisions/0036-machine-format-by-default.md).
+`default_format = "text"` in your config — those commands print the envelope
+instead.
+
+The exception is a command whose output **is** a document: `gdrive docs read`
+prints Markdown and `gdrive forms read` prints YAML with no flag at all, because
+those already are the machine representation and there is nothing for the JSON
+default to improve. `-f json` wraps one in the envelope when you want it there.
+See [`../decisions/0036`](../decisions/0036-machine-format-by-default.md) §1.
 
 Text is lossy on purpose. A tab or a newline in a file name — Drive accepts
 both — becomes a space, so one record can never render as two rows; `-f json`
@@ -190,7 +204,7 @@ Two failures name the shortcut rather than leaving you with a mysterious
 `NOT_FOUND` on an ID you can see in `ls`:
 
 ```console
-$ gdrive docs read -f text "Reports/link-to-gone"
+$ gdrive docs read "Reports/link-to-gone"
 Error: Shortcut "Reports/link-to-gone" points at a file that is gone or not
 accessible (target 1DocXyZ...).
 ```
@@ -614,7 +628,7 @@ real table. Every one of them takes `--as <markdown|text>`, defaulting to
 `markdown`, which makes the obvious pipe do the obvious thing:
 
 ```console
-$ gdrive docs read -f text A | gdrive docs append B -    # structure survives
+$ gdrive docs read A | gdrive docs append B -    # structure survives
 ```
 
 Use `--as text` for content that was never meant as Markdown — logs, code,
@@ -682,8 +696,9 @@ $ printf '1\\. not a list item\n' | gdrive docs append "Notes/Ops" -
 
 `--as markdown` (default) maps headings, bold/italic, links, bulleted and
 numbered lists, and — best effort — tables. `--as text` emits plain paragraph
-text. Both print the body to stdout under `-f text`, in quiet mode too; `-f
-json`, which is what you get unasked, carries the same body in `data.content`.
+text. Both print the body to stdout with no flag, in quiet mode too: the body
+*is* this command's machine output. `-f json` carries the same body in
+`data.content` for a caller that wants the id and title alongside it.
 
 A numbered item prints its real ordinal — its position in its list, from
 wherever that list starts — so a list that continues across intervening
@@ -694,7 +709,7 @@ and documents converted from HTML report no glyph information, so their numbered
 lists come back as `-`.
 
 ```console
-$ gdrive docs read -f text "Notes/Meeting"
+$ gdrive docs read "Notes/Meeting"
 # Meeting notes
 Discussed the **budget** and [the plan](https://example.com).
 - ship on Friday
@@ -1041,7 +1056,7 @@ trip cannot destroy it, and **both** commands say so: one line on stderr in text
 mode, an `unsupported` array in JSON.
 
 ```console
-$ gdrive forms read -f text "Surveys/2026" > form.yaml
+$ gdrive forms read "Surveys/2026" > form.yaml
 Kept as raw: videoItem (item 3c4d5e6f)
 ```
 
@@ -1082,13 +1097,14 @@ quiz's document, keep in mind that these settings live outside it.
 
 ### `gdrive forms read <form>`
 
-Text output **is** the document, ready to redirect to a file — which now takes
-`-f text`, since JSON is what a command emits when it is not told otherwise.
-`-f json` carries the same structure — not a YAML string — in `data.form`, so a
-JSON caller never needs a YAML parser to read a form.
+Text output **is** the document, ready to redirect to a file with no flag: a
+form's YAML is already exact and already parseable, so it is what this command
+emits unasked ([`../decisions/0036`](../decisions/0036-machine-format-by-default.md)
+§1). `-f json` carries the same structure — not a YAML string — in `data.form`,
+so a JSON caller never needs a YAML parser to read a form.
 
 ```console
-$ gdrive forms read -f text "Surveys/2026 Engagement" > form.yaml
+$ gdrive forms read "Surveys/2026 Engagement" > form.yaml
 ```
 
 ```json
