@@ -46,7 +46,25 @@ bun run test:unit      # src unit tests
 bun run test:integration
 bun run test:e2e       # requires auth
 bun run lint / format / format:check / typecheck
+bun run changelog 0.8.0   # print one version's CHANGELOG.md section
 ```
+
+## Releasing
+
+1. **Write the `CHANGELOG.md` section first**, newest at the top, under a
+   heading of exactly `## <version> — <YYYY-MM-DD>`. List every breaking change
+   with what a consumer must do about it: [`0014`](decisions/0014-pre-1.0-compatibility.md)
+   permits breaking changes before 1.0 only if the release notes carry them, so
+   this file is where that obligation is met. It is written for someone deciding
+   whether to upgrade, not as a second copy of the git log.
+2. Bump `package.json`'s version, then tag `v<version>`. Both stay outside a
+   pull request ([`0033`](decisions/0033-implementation-lands-through-review.md)).
+3. `.github/workflows/release.yml` runs `scripts/changelog.ts` before it builds
+   anything, and passes the section to `gh release create --notes-file`;
+   GitHub's generated commit list is appended below it. A tag whose version has
+   no section fails the job before anything is published.
+
+Preview what the release will say with `bun run changelog <version>`.
 
 ## Development Rules (see `decisions/0001`, `0032`, `0033`)
 
