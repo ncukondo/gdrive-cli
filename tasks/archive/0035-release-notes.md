@@ -1,6 +1,7 @@
 # Task 0035: The release notes carry the breaking changes
 
-Status: todo (move to `tasks/archive/` when done)
+Status: done — PR [#13](https://github.com/ncukondo/gdrive-cli/pull/13), merged
+2026-08-03. The workflow itself is unproven until a tag; see Verification.
 Depends on: —
 Parallel: yes (worktree-safe) — `.github/workflows/release.yml` and one new file
 at the repo root. It touches nothing any other task owns.
@@ -92,14 +93,46 @@ The unit under test is a script, not a command, so the tests live beside it.
 
 ## Acceptance criteria
 
-- [ ] `CHANGELOG.md` exists with a 0.8.0 section listing all four breaking changes
-- [ ] The extractor returns exactly one version's body, and errors by name on a
+- [x] `CHANGELOG.md` exists with a 0.8.0 section listing all four breaking changes
+- [x] The extractor returns exactly one version's body, and errors by name on a
       missing version or a drifted heading
-- [ ] `release.yml` passes the extracted section as the release body
-- [ ] Tagging a version with no changelog section fails the release job before
+- [x] `release.yml` passes the extracted section as the release body
+- [x] Tagging a version with no changelog section fails the release job before
       anything is published
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
-- [ ] `CLAUDE.md` says where the changelog entry is written and when
+- [x] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
+- [x] `CLAUDE.md` says where the changelog entry is written and when
+
+## Outcome notes
+
+- **Four claims in the first draft were false, and all four came from a
+  decision's `Context` section.** `decisions/0025`'s Context says
+  `download <shortcut>` exported the pointer; running the `v0.7.0` tag against a
+  real account shows it threw `INVALID_ARGS` and wrote nothing. A Context section
+  is dated prose describing what its author believed before the code existed
+  ([`0032`](../../decisions/0032-decisions-are-append-only.md) §2), so it is never
+  a source for a claim about shipped behaviour. That rule now lives in
+  `CLAUDE.md`'s Releasing step 1 — it was first recorded in a commit message,
+  which 0032 §4 makes the one place the reading protocol guarantees nobody walks.
+- **The extractor's failure modes were the whole job, and three review rounds
+  each found more of the same class.** Silent truncation from a `## ` inside a
+  fence; a fence opened in one section and closed two later; an indented heading
+  invisible to a column-anchored regex; a heading inside an HTML comment. Each
+  returned a wrong body and exited 0, which is what a release job then publishes.
+- **A reviewer's prescription was refused, and the refusal was right.** Review
+  asked for "refuse when a region is open at a would-be section break". The
+  author implemented it verbatim and four round-1 tests went red: it refuses the
+  ordinary illustrations that fence tracking had been added to preserve. The
+  rule that shipped keys on the declaration rather than the heading, and the same
+  `versionNamedBy` predicate both records a version outside a region and refuses
+  it inside one — one identity by construction instead of two rules kept in
+  agreement. Review verified the refusal against nineteen constructions and
+  withdrew its own prescription.
+- **`CHANGELOG.md` ships in the npm tarball**, which `0014` does not require —
+  `--notes-file` discharges §2. The argument that carries it is that 0014's
+  Consequences make this file the compatibility *record* and
+  [`0003`](../../decisions/0003-distribution.md) sends npm users to their package
+  manager rather than to a release page, so npm is the one channel whose users
+  never pass the record.
 
 ## Verification
 

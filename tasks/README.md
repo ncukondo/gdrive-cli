@@ -67,7 +67,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0032 `slides write` / `slides create`](0032-slides-write.md) | 0031, 0030 | E | todo |
 | [0033 `cp -r` copies a folder tree](0033-recursive-copy.md) | 0027 | — | todo |
 | [0034 What the live verification found](archive/0034-live-verification-fixes.md) | 0027, 0029 | — | done |
-| [0035 The release notes carry the breaking changes](0035-release-notes.md) | — | F | todo |
+| [0035 The release notes carry the breaking changes](archive/0035-release-notes.md) | — | F | done |
 | [0036 The table stays a table](0036-renderer-properties.md) | 0034 | F | todo |
 
 ## Parallelism notes
