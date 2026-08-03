@@ -120,6 +120,8 @@ describe("handleShareList", () => {
     ]);
   });
 
+  // A supplement to the round trip above: constant-width padding leaves rows
+  // independent, so the round trip is what guards decision 0036 §2 (0039 §2).
   it("leaves every other row byte-identical when one grantee grows", () => {
     const before = formatPermissionTable(wide).split("\n");
     const after = formatPermissionTable([
