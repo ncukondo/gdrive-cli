@@ -1,11 +1,12 @@
 # Changelog
 
 While the version is 0.x, [decision
-0014](decisions/0014-pre-1.0-compatibility.md) allows a breaking change in a
-minor release, on the condition that it is called out in the release notes for
-the version that ships it. That makes this file the compatibility record for
-0.x rather than a summary of the git log: it lists what a consumer has to change
-and what shipped, not every commit.
+0014](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0014-pre-1.0-compatibility.md)
+allows a breaking change in a minor release, on the condition that it is called
+out in the release notes for the version that ships it. That makes this file the
+compatibility record for 0.x rather than a summary of the git log: it lists what
+a consumer has to change and what shipped, not every commit. It ships in the npm
+package as well as on GitHub, so links here are absolute.
 
 `.github/workflows/release.yml` extracts the section matching the tag with
 `bun run changelog <version>` and publishes it as the release body, with
@@ -54,7 +55,7 @@ log for 0.x.
    0025](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0025-shortcuts.md)
    §2). This is additive, so it only bites a consumer that rejects unknown
    fields or compares whole objects. In text output, `gdrive info` on a shortcut
-   gains a `Target: <id> (<type>)` line between `Created` and `Owners`.
+   gains a `Target: <id> (<type>)` line directly after `Created`.
 
 3. **A shortcut is followed, or not, according to what the argument is for.**
    Previously nothing was followed, and the commands that should have followed
@@ -69,11 +70,18 @@ log for 0.x.
    What changes for an existing script: a command that used to fail or do
    nothing on a shortcut now acts on the target, and a path that traverses a
    folder shortcut now resolves instead of returning `NOT_FOUND`. Nothing that
-   used to succeed does something different, and in particular `rm <shortcut>`
-   trashed the shortcut before and still does. Two new failures exist, both
-   naming the shortcut rather than an id you cannot see: a shortcut whose target
-   is gone or invisible is `NOT_FOUND`, and a shortcut pointing at another
-   shortcut is `API_ERROR`.
+   used to succeed on a file you can read does something different, and in
+   particular `rm <shortcut>` trashed the shortcut before and still does. Three
+   new failures exist, each naming the shortcut rather than an id you cannot
+   see: a shortcut whose target is gone or invisible is `NOT_FOUND`, a shortcut
+   pointing at another shortcut is `API_ERROR`, and a shortcut Drive reports
+   with no target at all is `API_ERROR`.
+
+   One cost, not a break: an argument given as a bare **file ID** in a following
+   role now costs an extra `files.get`, because nothing in an ID says whether it
+   is a shortcut ([decision
+   0025](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0025-shortcuts.md)
+   §4). A path pays it only when its last segment really is one.
 
 4. **The `ls` / `search` text table's `Type` column is two characters wider**
    (8 → 10), because `shortcut` is eight characters and would otherwise run
@@ -110,12 +118,11 @@ calls them bugs rather than missing features):
   fine in the Drive UI.
 - `gdrive ls <folder shortcut>` listed nothing, because a shortcut has no
   children of its own.
-- `gdrive download <shortcut>` exported the pointer instead of the file, and
-  `docs read <shortcut>` / `sheets read <shortcut>` answered 404 for a document
-  that plainly exists.
-- The rendered transcripts in `docs/commands.md` are now re-rendered and checked
-  by a test, so a change to a formatter can no longer leave the documentation
-  quietly wrong.
+- `gdrive download <shortcut>` refused to run — a shortcut reported `type: file`
+  with a Google-native MIME, so it asked for an `--export-as` that could not have
+  worked either — and `docs read <shortcut>` / `sheets read <shortcut>` answered
+  404 for a document that plainly exists. Nothing was ever written to disk, so
+  there is nothing on yours to re-download.
 
 ### Known gaps
 
@@ -132,7 +139,12 @@ calls them bugs rather than missing features):
   has no export. Use `gdrive forms read`.
 - **Creating a shortcut is not supported** (`gdrive ln`), and neither is writing
   a form. Both are planned.
-- **Pre-existing:** a file name containing full-width characters misaligns the
-  `Name` column of the `ls` / `search` table, because the padding counts UTF-16
-  units rather than display width. Not introduced here, but it is the second
-  reason to parse `-f json` rather than the table.
+- **Pre-existing, and worse than the column this release widened:** the `Name`
+  column of the `ls` / `search` table has the same defect the `Type` column had,
+  twice over. A name of 27 or more UTF-16 units meets the column width exactly,
+  so the padding adds nothing and the ID abuts the name — `…xxxxxxx1AbCdEf`,
+  with no way to tell where one ends. And a full-width character costs one
+  UTF-16 unit but two display columns, so a name containing them pushes every
+  column to its right out by that much, and rows in one table disagree about
+  where the ID starts. Neither is introduced here, both hit ordinary names, and
+  together they are the reason to parse `-f json` rather than the table.
