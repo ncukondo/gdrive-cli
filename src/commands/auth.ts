@@ -136,8 +136,9 @@ export interface AuthLoginDeps {
   config: Config;
   format: OutputFormat;
   /**
-   * Whether the caller left room to be asked for OAuth client credentials.
-   * False only when they named `-f json` — see `canPrompt` in `src/index.ts`.
+   * Whether there is a human at a terminal to ask for OAuth client credentials.
+   * False with no tty on stdin, and false when the caller named `-f json` — see
+   * `canPrompt` in `src/index.ts`, which is where the rule lives.
    */
   canPrompt: boolean;
   quiet: boolean;
@@ -150,10 +151,11 @@ export interface AuthLoginDeps {
 }
 
 export async function handleAuthLogin(deps: AuthLoginDeps): Promise<CommandResult> {
-  // A caller who asked for JSON asked not to be prompted, and gets
-  // AUTH_REQUIRED instead (decision 0005). A JSON *default* nobody named is not
-  // that caller: suppressing the prompt for them leaves a fresh install with no
-  // way in, which is the defect decision 0038 names one command over.
+  // Decision 0005 keeps this from prompting where nothing can answer, so a
+  // script gets AUTH_REQUIRED rather than a process waiting on stdin. The
+  // caller passes the answer in: no terminal, or a named `-f json`, means no
+  // prompt. Note that `runFlow` below waits for a browser and does *not* pass
+  // this gate — 0005 step 3 is interactive by construction.
   const credentials = deps.canPrompt
     ? await getClientCredentialsOrPrompt(deps.fs, deps.write, deps.promptFn)
     : getClientCredentials(deps.fs);
