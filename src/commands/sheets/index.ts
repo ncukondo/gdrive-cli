@@ -15,7 +15,12 @@ import {
 } from "../../lib/sheets-api.ts";
 import { readInput, readProcessStdin } from "../../lib/input.ts";
 import { resolveTargetId } from "../../lib/resolve-path.ts";
-import { resolveGlobalOptions, handleError, type GlobalOptions } from "../../index.ts";
+import {
+  encodingFormat,
+  resolveGlobalOptions,
+  handleError,
+  type GlobalOptions,
+} from "../../index.ts";
 import { createSheetsTabsCommand, handleSheetsTabs } from "./tabs.ts";
 import { createSheetsReadCommand, handleSheetsRead } from "./read.ts";
 import { createSheetsWriteCommand, handleSheetsWrite } from "./write.ts";
@@ -68,6 +73,9 @@ export function registerSheets(program: Command): void {
   read.action(async (file: string, range: string | undefined) => {
     const opts = resolveGlobalOptions(program);
     const o = read.opts<{ tab?: string; as?: string }>();
+    // `--as csv` names a text encoding, so it selects text unless `-f` named a
+    // format: a flag a default can switch off is not a flag (decision 0038).
+    const format = encodingFormat(opts, o.as !== undefined);
     try {
       const { drive, sheets: sheetsClient } = await buildClients(opts);
       const result = await handleSheetsRead({
@@ -75,7 +83,7 @@ export function registerSheets(program: Command): void {
         listTabs: (id) => listTabs(sheetsClient, id),
         readValues: (id, a1) => readValues(sheetsClient, id, a1),
         file,
-        format: opts.format,
+        format,
         quiet: opts.quiet,
         write: stdout,
         ...(range !== undefined ? { range } : {}),
@@ -84,7 +92,7 @@ export function registerSheets(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, format);
     }
   });
   sheets.addCommand(read);
