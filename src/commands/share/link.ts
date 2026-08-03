@@ -6,7 +6,7 @@ import type {
   OutputFormat,
   ShareRole,
 } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { line, renderSuccess } from "../../lib/output.ts";
 import type { PermissionCreateInput } from "../../lib/api.ts";
 import { parseLinkRole } from "./add.ts";
 
@@ -53,7 +53,7 @@ export async function handleShareLink(deps: ShareLinkDeps): Promise<CommandResul
     renderSuccess(
       {
         data: { id: fileId, web_view_link: url, permission },
-        text: `Anyone with the link (${permission.role})\n${url}`,
+        text: line`Anyone with the link (${permission.role})\n${url}`,
         quiet: url,
       },
       deps.format,

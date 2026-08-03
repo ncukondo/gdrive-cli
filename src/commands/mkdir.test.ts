@@ -97,4 +97,33 @@ describe("handleMkdir", () => {
     });
     expect(quiet.output).toBe("F1");
   });
+
+  /**
+   * The confirmation is one line and a caller reads it as one. Drive accepts a
+   * newline in a folder name, so the name is sanitised on its way into the
+   * message: a table is not the only place a name can forge a row.
+   */
+  it("keeps a name holding a newline on one line, and exact in JSON", async () => {
+    const text = collect();
+    await handleMkdir({
+      resolvePath: vi.fn(),
+      createFolder: async () => folder({ id: "F1", name: "Q1\nreport" }),
+      name: "Q1\nreport",
+      format: "text",
+      quiet: false,
+      write: text.write,
+    });
+    expect(text.output).toBe("Created folder Q1 report (F1)");
+
+    const json = collect();
+    await handleMkdir({
+      resolvePath: vi.fn(),
+      createFolder: async () => folder({ id: "F1", name: "Q1\nreport" }),
+      name: "Q1\nreport",
+      format: "json",
+      quiet: false,
+      write: json.write,
+    });
+    expect(JSON.parse(json.output).data.file.name).toBe("Q1\nreport");
+  });
 });

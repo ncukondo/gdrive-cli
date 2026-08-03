@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { line, renderSuccess } from "../lib/output.ts";
 
 export interface CpDeps {
   /** The file to copy, as an entry in a folder: a shortcut copies itself. */
@@ -26,7 +26,7 @@ export async function handleCp(deps: CpDeps): Promise<CommandResult> {
     renderSuccess(
       {
         data: { file: copy },
-        text: `Copied to ${copy.name} (${copy.id})`,
+        text: line`Copied to ${copy.name} (${copy.id})`,
         quiet: copy.id,
       },
       deps.format,
