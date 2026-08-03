@@ -47,6 +47,20 @@ export function formatTable(header: string[], rows: string[][]): string {
 }
 
 /**
+ * A text message with values interpolated into it — `Created folder ${name}
+ * (${id})` and its kin. Every interpolated value is sanitised while the literal
+ * parts are left alone, so a message that wants a newline keeps it and a name
+ * Drive chose cannot add one. A table is not the only place a value can forge a
+ * row (decision 0036 §2).
+ */
+export function line(strings: TemplateStringsArray, ...values: string[]): string {
+  return strings.reduce(
+    (out, part, i) => out + part + (i < values.length ? textField(values[i] ?? "") : ""),
+    "",
+  );
+}
+
+/**
  * A command result ready for rendering in any output mode. Command-specific
  * text lives with each command; this only routes between modes.
  */

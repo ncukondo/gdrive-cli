@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { line, renderSuccess } from "../../lib/output.ts";
 import { endOfBody, type DocumentRaw } from "../../lib/docs-api.ts";
 import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
 import { parseDocsFormat, reportUnsupported } from "./format.ts";
@@ -49,7 +49,7 @@ export async function handleDocsAppend(deps: DocsAppendDeps): Promise<CommandRes
     renderSuccess(
       {
         data: { id: documentId, title, ...reportUnsupported(notes, deps.format, deps.warn) },
-        text: `Appended to ${title} (${documentId})`,
+        text: line`Appended to ${title} (${documentId})`,
         quiet: documentId,
       },
       deps.format,

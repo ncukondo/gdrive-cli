@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { line, renderSuccess } from "../../lib/output.ts";
 
 export interface SheetsCreateDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -31,7 +31,7 @@ export async function handleSheetsCreate(deps: SheetsCreateDeps): Promise<Comman
           title: created.title,
           ...(parentId !== undefined ? { parent_id: parentId } : {}),
         },
-        text: `Created ${created.title} (${created.id})`,
+        text: line`Created ${created.title} (${created.id})`,
         quiet: created.id,
       },
       deps.format,

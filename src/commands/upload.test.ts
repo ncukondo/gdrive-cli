@@ -113,6 +113,19 @@ describe("handleUpload", () => {
     });
     expect(out.output).toBe("Uploaded notes.txt (U1)");
 
+    // Drive accepts a newline in a name; the confirmation stays one line.
+    const awkward = collect();
+    await handleUpload({
+      resolvePath: vi.fn(),
+      readLocalFile: () => local(),
+      uploadMedia: async () => file({ id: "U1", name: "Q1\nreport" }),
+      local: "./notes.txt",
+      format: "text",
+      quiet: false,
+      write: awkward.write,
+    });
+    expect(awkward.output).toBe("Uploaded Q1 report (U1)");
+
     const q = collect();
     await handleUpload({
       resolvePath: vi.fn(),

@@ -37,6 +37,14 @@ describe("handleDocsCreate", () => {
     expect(out.output).toBe("Created Plan (NEW)");
   });
 
+  /** A title carrying a newline must not turn one confirmation into two. */
+  it("keeps a title holding a newline on one line", async () => {
+    const d = baseDeps();
+    const out = collect();
+    await handleDocsCreate({ ...d, title: "Q1\nplan", write: out.write });
+    expect(out.output).toBe("Created Q1 plan (NEW)");
+  });
+
   it("inserts --content as Markdown at the start of the body", async () => {
     const d = baseDeps();
     await handleDocsCreate({ ...d, content: "@notes.md" });

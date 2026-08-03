@@ -6,7 +6,7 @@ import {
   type OutputFormat,
   type ShareRole,
 } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { line, renderSuccess } from "../../lib/output.ts";
 import { parseChoice } from "../../lib/args.ts";
 import { inferGrantee, type PermissionCreateInput } from "../../lib/api.ts";
 
@@ -90,7 +90,7 @@ export async function handleShareAdd(deps: ShareAddDeps): Promise<CommandResult>
     renderSuccess(
       {
         data: { id: fileId, permission },
-        text: `Granted ${role} to ${grantTarget(input)} (${permission.id})`,
+        text: line`Granted ${role} to ${grantTarget(input)} (${permission.id})`,
         quiet: permission.id,
       },
       deps.format,

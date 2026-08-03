@@ -4,6 +4,7 @@ import {
   formatJsonError,
   formatRow,
   formatTable,
+  line,
   renderSuccess,
   renderError,
 } from "./output.ts";
@@ -53,6 +54,24 @@ describe("a value cannot forge a field or a row", () => {
       ],
     );
     expect(table.split("\n")).toHaveLength(3);
+  });
+
+  /**
+   * A table is not the only thing a name can break. The one-line confirmations
+   * — `Created folder <name> (<id>)` and its kin — interpolate a name Drive
+   * chose, and a newline there prints two lines where a caller reads one.
+   */
+  it("keeps a value interpolated into a message on one line", () => {
+    const message = line`Created folder ${"Q1\nreport"} (${"F1"})`;
+    expect(message).toBe("Created folder Q1 report (F1)");
+    expect(message.split("\n")).toHaveLength(1);
+  });
+
+  /** `share link` prints two lines on purpose; only the values are sanitised. */
+  it("leaves a newline the message itself asked for", () => {
+    expect(line`Anyone with the link (${"writer"})\n${"https://x/\ny"}`).toBe(
+      "Anyone with the link (writer)\nhttps://x/ y",
+    );
   });
 
   it("leaves everything else exactly as it was given", () => {

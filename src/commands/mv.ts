@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { line, renderSuccess } from "../lib/output.ts";
 
 export interface MvDeps {
   /** The file to move, as an entry in a folder: a shortcut moves itself. */
@@ -28,7 +28,7 @@ export async function handleMv(deps: MvDeps): Promise<CommandResult> {
     renderSuccess(
       {
         data: { file },
-        text: `Moved ${file.name} to ${destId}`,
+        text: line`Moved ${file.name} to ${destId}`,
         quiet: file.id,
       },
       deps.format,
