@@ -3,7 +3,10 @@ import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
 import { renderSuccess } from "../lib/output.ts";
 
 export interface MvDeps {
+  /** The file to move, as an entry in a folder: a shortcut moves itself. */
   resolvePath: (arg: string) => Promise<string>;
+  /** The destination, as a container: a shortcut to a folder moves *into* it. */
+  resolveFolder: (arg: string) => Promise<string>;
   moveFile: (fileId: string, newParentId: string) => Promise<DriveFile>;
   file: string;
   dest: string;
@@ -12,9 +15,13 @@ export interface MvDeps {
   write: (msg: string) => void;
 }
 
+/**
+ * `mv` is why decision 0025 attaches following to the argument rather than the
+ * command: its two arguments play different roles, so they get different deps.
+ */
 export async function handleMv(deps: MvDeps): Promise<CommandResult> {
   const fileId = await deps.resolvePath(deps.file);
-  const destId = await deps.resolvePath(deps.dest);
+  const destId = await deps.resolveFolder(deps.dest);
   const file = await deps.moveFile(fileId, destId);
 
   deps.write(

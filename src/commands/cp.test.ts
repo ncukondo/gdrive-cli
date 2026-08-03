@@ -32,11 +32,14 @@ function collect() {
 }
 
 describe("handleCp", () => {
-  it("resolves source and destination and passes the optional name", async () => {
-    const resolvePath = vi.fn(async (a: string) => (a === "src" ? "S1" : "DEST"));
+  it("resolves source and destination separately and passes the optional name", async () => {
+    // The source is an entry, the destination a container (decision 0025 §1).
+    const resolvePath = vi.fn(async () => "S1");
+    const resolveFolder = vi.fn(async () => "DEST");
     const copyFile = vi.fn(async (_id: string, _p: string, _n?: string) => file());
     await handleCp({
       resolvePath,
+      resolveFolder,
       copyFile,
       file: "src",
       dest: "Folder",
@@ -45,13 +48,17 @@ describe("handleCp", () => {
       quiet: false,
       write: () => {},
     });
+    expect(resolvePath).toHaveBeenCalledWith("src");
+    expect(resolvePath).not.toHaveBeenCalledWith("Folder");
+    expect(resolveFolder).toHaveBeenCalledWith("Folder");
     expect(copyFile).toHaveBeenCalledWith("S1", "DEST", "renamed");
   });
 
   it("renders text and quiet", async () => {
     const out = collect();
     await handleCp({
-      resolvePath: async (a) => (a === "src" ? "S1" : "DEST"),
+      resolvePath: async () => "S1",
+      resolveFolder: async () => "DEST",
       copyFile: async () => file({ id: "C1", name: "copy" }),
       file: "src",
       dest: "Folder",
@@ -64,6 +71,7 @@ describe("handleCp", () => {
     const q = collect();
     await handleCp({
       resolvePath: async () => "S1",
+      resolveFolder: async () => "DEST",
       copyFile: async () => file({ id: "C1" }),
       file: "src",
       dest: "Folder",

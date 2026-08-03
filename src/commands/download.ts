@@ -8,6 +8,7 @@ import {
 } from "../types/index.ts";
 import { renderSuccess } from "../lib/output.ts";
 import { parseChoice } from "../lib/args.ts";
+import type { ResolvedTarget } from "../lib/resolve-path.ts";
 
 export type ExportAs = "pdf" | "docx" | "xlsx" | "csv" | "md" | "txt";
 
@@ -41,7 +42,11 @@ function byteLengthOf(content: unknown): number | null {
 }
 
 export interface DownloadDeps {
-  resolvePath: (arg: string) => Promise<string>;
+  /**
+   * `<file>` is content — "read what is in this" — so it follows a shortcut
+   * (decision 0025 §1), and hands back any metadata it had to fetch on the way.
+   */
+  resolveTarget: (arg: string) => Promise<ResolvedTarget>;
   getFile: (fileId: string) => Promise<DriveFile>;
   downloadMedia: (fileId: string) => Promise<unknown>;
   exportFile: (fileId: string, mimeType: string) => Promise<unknown>;
@@ -56,8 +61,10 @@ export interface DownloadDeps {
 }
 
 export async function handleDownload(deps: DownloadDeps): Promise<CommandResult> {
-  const fileId = await deps.resolvePath(deps.file);
-  const meta = await deps.getFile(fileId);
+  const { id: fileId, file } = await deps.resolveTarget(deps.file);
+  // Resolving an id-shaped argument, or a shortcut, already fetched exactly the
+  // metadata this needs; only a plain path leaves it to be fetched (0025 §4).
+  const meta = file ?? (await deps.getFile(fileId));
   const isGoogleNative = meta.mime_type.startsWith("application/vnd.google-apps");
 
   if (deps.exportAs !== undefined && !isGoogleNative) {

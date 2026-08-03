@@ -39,7 +39,9 @@ interface Sink {
 function makeBaseDeps(meta: DriveFile) {
   const sink: Sink = { written: [], stdout: [], messages: [] };
   const deps = {
-    resolvePath: vi.fn(async (a: string) => a),
+    // A path resolves without fetching anything, so `file` comes back null and
+    // the handler falls back to its own `getFile` (decision 0025 §4).
+    resolveTarget: vi.fn(async (a: string) => ({ id: a, file: null })),
     getFile: vi.fn(async () => meta),
     downloadMedia: vi.fn(async () => "BINARY"),
     exportFile: vi.fn(async (_id: string, _mime: string) => "EXPORTED"),
@@ -107,6 +109,23 @@ describe("handleDownload", () => {
     await handleDownload({ ...deps, file: "id1", output: "out.png", format: "json", quiet: false });
     const parsed = JSON.parse(sink.messages.join("\n"));
     expect(parsed.data).toMatchObject({ file: "photo.png", path: "out.png", bytes: 6 });
+  });
+
+  it("exports the shortcut's target, using the metadata resolving already fetched", async () => {
+    // The round trip resolveTarget spent on a shortcut is the one `download`
+    // would otherwise spend itself — assert it is not spent twice.
+    const { deps } = makeBaseDeps(file());
+    const resolveTarget = vi.fn(async () => ({ id: "d1", file: doc() }));
+    await handleDownload({
+      ...deps,
+      resolveTarget,
+      file: "Reports/link-to-doc",
+      output: "doc.pdf",
+      format: "text",
+      quiet: false,
+    });
+    expect(deps.getFile).not.toHaveBeenCalled();
+    expect(deps.exportFile).toHaveBeenCalledWith("d1", "application/pdf");
   });
 
   it("quiet prints the output path when writing to a file", async () => {

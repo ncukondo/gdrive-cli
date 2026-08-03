@@ -11,7 +11,8 @@ import { parseChoice } from "../lib/args.ts";
 import type { DriveScope, ListOptions, OrderKey } from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
 
-const VALID_TYPES: FileType[] = ["folder", "doc", "sheet", "slides", "file"];
+/** Shared by `ls` and `search`. `file` still includes shortcuts (decision 0025 §7). */
+const VALID_TYPES: FileType[] = ["folder", "doc", "sheet", "slides", "shortcut", "file"];
 const VALID_ORDERS: OrderKey[] = ["name", "modified", "created"];
 
 export function parseType(value: string | undefined): FileType | undefined {
@@ -96,7 +97,7 @@ export function createLsCommand(): Command {
   return new Command("ls")
     .description("List a folder's children (My Drive root if omitted)")
     .argument("[folder]", "Folder ID or path")
-    .option("--type <type>", "Filter by type: folder | doc | sheet | slides | file")
+    .option("--type <type>", "Filter by type: folder | doc | sheet | slides | shortcut | file")
     .option("--trashed", "List trashed files")
     .option("-n, --limit <n>", "Maximum number of files")
     .option("--order <order>", "Sort: name | modified | created")

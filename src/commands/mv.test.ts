@@ -32,11 +32,15 @@ function collect() {
 }
 
 describe("handleMv", () => {
-  it("resolves both source and destination, then moves", async () => {
-    const resolvePath = vi.fn(async (a: string) => (a === "doc" ? "M1" : "DEST"));
+  it("resolves the source and the destination separately, then moves", async () => {
+    // Two deps because the two arguments play different roles: the source is an
+    // entry, the destination a container (decision 0025 §1, §3).
+    const resolvePath = vi.fn(async () => "M1");
+    const resolveFolder = vi.fn(async () => "DEST");
     const moveFile = vi.fn(async (_id: string, _p: string) => file());
     await handleMv({
       resolvePath,
+      resolveFolder,
       moveFile,
       file: "doc",
       dest: "Folder",
@@ -45,14 +49,16 @@ describe("handleMv", () => {
       write: () => {},
     });
     expect(resolvePath).toHaveBeenCalledWith("doc");
-    expect(resolvePath).toHaveBeenCalledWith("Folder");
+    expect(resolvePath).not.toHaveBeenCalledWith("Folder");
+    expect(resolveFolder).toHaveBeenCalledWith("Folder");
     expect(moveFile).toHaveBeenCalledWith("M1", "DEST");
   });
 
   it("renders text and quiet", async () => {
     const out = collect();
     await handleMv({
-      resolvePath: async (a) => (a === "doc" ? "M1" : "DEST"),
+      resolvePath: async () => "M1",
+      resolveFolder: async () => "DEST",
       moveFile: async () => file({ id: "M1", name: "doc" }),
       file: "doc",
       dest: "Folder",
@@ -65,6 +71,7 @@ describe("handleMv", () => {
     const q = collect();
     await handleMv({
       resolvePath: async () => "M1",
+      resolveFolder: async () => "DEST",
       moveFile: async () => file({ id: "M1" }),
       file: "doc",
       dest: "Folder",

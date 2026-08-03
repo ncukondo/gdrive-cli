@@ -26,6 +26,12 @@ async function buildDrive(opts: GlobalOptions): Promise<DriveClient> {
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
 
+/**
+ * `share` sits entirely with the entries, so nothing here follows
+ * (decision 0025 §1): a shortcut carries its own ACL, and a `share add` that
+ * quietly widened access to the target instead would grant a stranger a
+ * document rather than a pointer, with nothing in the output to show it.
+ */
 export function registerShare(program: Command): void {
   const share = program.command("share").description("Manage file permissions");
 

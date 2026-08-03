@@ -43,7 +43,7 @@ export function createSearchCommand(): Command {
   return new Command("search")
     .description("Search files by name or full text")
     .argument("<query>", "Search query")
-    .option("--type <type>", "Filter by type: folder | doc | sheet | slides | file")
+    .option("--type <type>", "Filter by type: folder | doc | sheet | slides | shortcut | file")
     .option("-n, --limit <n>", "Maximum number of files")
     .option("--order <order>", "Sort: name | modified | created")
     .option("--all-drives", "Search every shared drive as well as My Drive")

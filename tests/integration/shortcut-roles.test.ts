@@ -1,0 +1,436 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { Readable } from "node:stream";
+import { join } from "node:path";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Command } from "commander";
+import { createProgram } from "../../src/index.ts";
+import { registerDriveRead } from "../../src/commands/drive-read.ts";
+import { registerDriveWrite } from "../../src/commands/drive-write.ts";
+import { registerDocs } from "../../src/commands/docs/index.ts";
+import { registerSheets } from "../../src/commands/sheets/index.ts";
+import { registerShare } from "../../src/commands/share/index.ts";
+import type { DriveClient, DriveFileRaw } from "../../src/lib/api.ts";
+import type { DocsClient } from "../../src/lib/docs-api.ts";
+import type { SheetsClient } from "../../src/lib/sheets-api.ts";
+import { createTreeDrive, type DriveNode } from "../helpers/fake-drive.ts";
+import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
+
+/**
+ * Decision 0025 §1 wires *arguments*, not commands: the same `mv` resolves its
+ * source without following a shortcut and its destination by following one. The
+ * wiring lives in the five registry files, so this exercises it there — through
+ * the real commander program, with only the Google clients replaced.
+ */
+
+const clients = vi.hoisted(() => {
+  const state: { drive?: DriveClient; docs?: DocsClient; sheets?: SheetsClient } = {};
+  return state;
+});
+
+vi.mock("../../src/lib/google-clients.ts", () => ({
+  buildDriveClient: () => clients.drive,
+  buildDocsClient: () => clients.docs,
+  buildSheetsClient: () => clients.sheets,
+}));
+
+vi.mock("../../src/lib/account.ts", () => ({
+  getAccountClient: async () => ({ email: "me@example.com", client: {} }),
+}));
+
+const FOLDER = "application/vnd.google-apps.folder";
+const DOC = "application/vnd.google-apps.document";
+const SHEET = "application/vnd.google-apps.spreadsheet";
+
+// root/
+//   Reports/                (rep1)
+//     2026/                 (y2026)
+//     Notes        (doc1)   a Doc
+//     Budget       (sh1)    a Sheet
+//     link-to-2026   -> 2026    (lnkFolder)
+//     link-to-doc    -> Notes   (lnkDoc)
+//     link-to-sheet  -> Budget  (lnkSheet)
+//   Other/                  (other)
+//   plain.txt               (plain)
+const tree: DriveNode[] = [
+  { id: "rep1", name: "Reports", mimeType: FOLDER, parents: ["root"] },
+  { id: "y2026", name: "2026", mimeType: FOLDER, parents: ["rep1"] },
+  { id: "doc1", name: "Notes", mimeType: DOC, parents: ["rep1"] },
+  { id: "sh1", name: "Budget", mimeType: SHEET, parents: ["rep1"] },
+  { id: "lnkFolder", name: "link-to-2026", parents: ["rep1"], target: "y2026" },
+  { id: "lnkDoc", name: "link-to-doc", parents: ["rep1"], target: "doc1" },
+  { id: "lnkSheet", name: "link-to-sheet", parents: ["rep1"], target: "sh1" },
+  { id: "other", name: "Other", mimeType: FOLDER, parents: ["root"] },
+  { id: "plain", name: "plain.txt", parents: ["root"] },
+  // The ids the Docs/Sheets fakes hand back, so the follow-up Drive move finds them.
+  { id: "newDoc", name: "Draft", mimeType: DOC, parents: [] },
+  { id: "newSheet", name: "Draft", mimeType: SHEET, parents: [] },
+];
+
+interface DriveSpies {
+  client: DriveClient;
+  list: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  copy: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+  export: ReturnType<typeof vi.fn>;
+  permissionCreate: ReturnType<typeof vi.fn>;
+}
+
+const madeUp = (id: string): DriveFileRaw => ({ id, name: "made-up", mimeType: "text/plain" });
+
+/** The tree fake plus recording stubs for everything that writes. */
+function createDriveSpies(): DriveSpies {
+  const base = createTreeDrive(tree);
+  const list = vi.fn(base.files.list);
+  const get = vi.fn(base.files.get);
+  const create = vi.fn(async (params: { media?: { body?: unknown } }) => {
+    // `upload` hands over a live read stream. Nothing here consumes it, so it
+    // is closed now — and its late "the temp file is gone" error ignored —
+    // rather than surfacing after this suite has cleaned up.
+    const body = params.media?.body;
+    if (body instanceof Readable) {
+      body.on("error", () => {});
+      body.destroy();
+    }
+    return { data: madeUp("created") };
+  });
+  const copy = vi.fn(async () => ({ data: madeUp("copied") }));
+  const update = vi.fn(async () => ({ data: madeUp("updated") }));
+  const exported = vi.fn(async () => ({ data: "EXPORTED" }));
+  const permissionCreate = vi.fn(async () => ({
+    data: { id: "p1", type: "user", role: "writer" },
+  }));
+  const client: DriveClient = {
+    ...base,
+    files: { ...base.files, list, get, create, copy, update, export: exported },
+    permissions: { ...base.permissions, create: permissionCreate },
+  };
+  return { client, list, create, copy, update, get, export: exported, permissionCreate };
+}
+
+interface DocsSpies {
+  client: DocsClient;
+  get: ReturnType<typeof vi.fn>;
+  batchUpdate: ReturnType<typeof vi.fn>;
+}
+
+function createDocsSpies(): DocsSpies {
+  const get = vi.fn(async ({ documentId }: { documentId: string }) => ({
+    data: { documentId, title: "Notes", body: { content: [] } },
+  }));
+  const batchUpdate = vi.fn(async () => ({ data: { replies: [] } }));
+  const create = vi.fn(async () => ({ data: { documentId: "newDoc", title: "Draft" } }));
+  return { client: { documents: { get, create, batchUpdate } }, get, batchUpdate };
+}
+
+interface SheetsSpies {
+  client: SheetsClient;
+  get: ReturnType<typeof vi.fn>;
+  values: {
+    get: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    append: ReturnType<typeof vi.fn>;
+    clear: ReturnType<typeof vi.fn>;
+  };
+}
+
+function createSheetsSpies(): SheetsSpies {
+  const get = vi.fn(async ({ spreadsheetId }: { spreadsheetId: string }) => ({
+    data: {
+      spreadsheetId,
+      properties: { title: "Budget" },
+      sheets: [
+        {
+          properties: {
+            sheetId: 0,
+            index: 0,
+            title: "Sheet1",
+            gridProperties: { rowCount: 10, columnCount: 3 },
+          },
+        },
+      ],
+    },
+  }));
+  const valuesGet = vi.fn(async ({ range }: { range: string }) => ({
+    data: { range, values: [["a"]] },
+  }));
+  const valuesUpdate = vi.fn(async ({ range }: { range: string }) => ({
+    data: { updatedRange: range, updatedRows: 1, updatedColumns: 1, updatedCells: 1 },
+  }));
+  const valuesAppend = vi.fn(async ({ range }: { range: string }) => ({
+    data: { updates: { updatedRange: range, updatedRows: 1, updatedColumns: 1, updatedCells: 1 } },
+  }));
+  const valuesClear = vi.fn(async ({ range }: { range: string }) => ({
+    data: { clearedRange: range },
+  }));
+  const create = vi.fn(async () => ({
+    data: { spreadsheetId: "newSheet", properties: { title: "Draft" } },
+  }));
+  return {
+    client: {
+      spreadsheets: {
+        get,
+        create,
+        values: {
+          get: valuesGet,
+          update: valuesUpdate,
+          append: valuesAppend,
+          clear: valuesClear,
+        },
+      },
+    },
+    get,
+    values: { get: valuesGet, update: valuesUpdate, append: valuesAppend, clear: valuesClear },
+  };
+}
+
+const workDir = mkdtempSync(join(tmpdir(), "gdrive-shortcut-"));
+const localFile = join(workDir, "note.txt");
+writeFileSync(localFile, "hello");
+// An empty config, so nothing on the developer's machine changes the answers.
+const noConfig = join(workDir, "gdrive-cli.toml");
+writeFileSync(noConfig, "");
+
+afterAll(() => {
+  rmSync(workDir, { recursive: true, force: true });
+});
+
+let drive: DriveSpies;
+let docs: DocsSpies;
+let sheets: SheetsSpies;
+let stdout: string[];
+let stderr: string[];
+
+beforeEach(() => {
+  drive = createDriveSpies();
+  docs = createDocsSpies();
+  sheets = createSheetsSpies();
+  clients.drive = drive.client;
+  clients.docs = docs.client;
+  clients.sheets = sheets.client;
+  stdout = [];
+  stderr = [];
+  mockProcessExit();
+  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    stdout.push(String(chunk));
+    return true;
+  });
+  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+    stderr.push(String(chunk));
+    return true;
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function build(): Command {
+  const program = createProgram();
+  registerDriveRead(program);
+  registerDriveWrite(program);
+  registerDocs(program);
+  registerSheets(program);
+  registerShare(program);
+  return program;
+}
+
+/**
+ * Runs one command to completion. A handler's own `process.exit(0)` surfaces as
+ * an `ExitSignal` that the registry's catch turns into an error line, so the
+ * real failures are the ones that do *not* mention the fake exit.
+ */
+async function run(args: string[]): Promise<void> {
+  const program = build();
+  try {
+    await program.parseAsync(["node", "gdrive", "--config", noConfig, ...args]);
+  } catch (error) {
+    if (!(error instanceof ExitSignal)) throw error;
+  }
+  const failures = stderr.filter((line) => !line.includes("process.exit") && line.trim() !== "");
+  if (failures.length > 0) throw new Error(`command failed: ${failures.join(" ")}`);
+}
+
+/** The `q` of the nth `files.list` that pinned a parent (path walks come first). */
+function listedParents(): string[] {
+  return drive.list.mock.calls
+    .flatMap((call) => (typeof call[0]?.q === "string" ? [call[0].q] : []))
+    .flatMap((q: string) => {
+      const [, parent] = /'([^']*)' in parents/.exec(q) ?? [];
+      return parent === undefined ? [] : [parent];
+    });
+}
+
+function firstArg(fn: ReturnType<typeof vi.fn>, index = 0): Record<string, unknown> {
+  const call = fn.mock.calls[index];
+  if (call === undefined) throw new Error(`expected at least ${index + 1} call(s)`);
+  const [params] = call;
+  if (typeof params !== "object" || params === null) throw new Error("expected object params");
+  return { ...params };
+}
+
+describe("container arguments follow a shortcut (decision 0025 §1)", () => {
+  it("`ls <link-to-folder>` lists the target's children", async () => {
+    await run(["ls", "Reports/link-to-2026"]);
+    // The last listing is the actual `ls`; the earlier ones walked the path.
+    expect(listedParents().at(-1)).toBe("y2026");
+  });
+
+  it("`mkdir --parent <link>` creates inside the target", async () => {
+    await run(["mkdir", "2027", "--parent", "Reports/link-to-2026"]);
+    expect(firstArg(drive.create).requestBody).toMatchObject({ parents: ["y2026"] });
+  });
+
+  it("`upload --parent <link>` uploads into the target", async () => {
+    await run(["upload", localFile, "--parent", "Reports/link-to-2026"]);
+    expect(firstArg(drive.create).requestBody).toMatchObject({ parents: ["y2026"] });
+  });
+
+  it("`docs create --parent <link>` moves the new doc into the target", async () => {
+    await run(["docs", "create", "Draft", "--parent", "Reports/link-to-2026"]);
+    expect(firstArg(drive.update)).toMatchObject({ fileId: "newDoc", addParents: "y2026" });
+  });
+
+  it("`sheets create --parent <link>` moves the new sheet into the target", async () => {
+    await run(["sheets", "create", "Draft", "--parent", "Reports/link-to-2026"]);
+    expect(firstArg(drive.update)).toMatchObject({ fileId: "newSheet", addParents: "y2026" });
+  });
+
+  it("`mv <file> <link-to-folder>` lands in the target", async () => {
+    await run(["mv", "plain.txt", "Reports/link-to-2026"]);
+    expect(firstArg(drive.update)).toMatchObject({ fileId: "plain", addParents: "y2026" });
+  });
+
+  it("`cp <file> <link-to-folder>` lands in the target", async () => {
+    await run(["cp", "plain.txt", "Reports/link-to-2026"]);
+    expect(firstArg(drive.copy)).toMatchObject({ fileId: "plain" });
+    expect(firstArg(drive.copy).requestBody).toMatchObject({ parents: ["y2026"] });
+  });
+});
+
+describe("content arguments follow a shortcut (decision 0025 §1)", () => {
+  it("`download <link>` exports the target", async () => {
+    await run(["download", "Reports/link-to-doc"]);
+    expect(firstArg(drive.export)).toMatchObject({ fileId: "doc1" });
+  });
+
+  it("`docs read <link>` reads the target document", async () => {
+    await run(["docs", "read", "Reports/link-to-doc"]);
+    expect(firstArg(docs.get)).toMatchObject({ documentId: "doc1" });
+  });
+
+  it("`docs append <link>` edits the target document", async () => {
+    await run(["docs", "append", "Reports/link-to-doc", "hello"]);
+    expect(firstArg(docs.batchUpdate)).toMatchObject({ documentId: "doc1" });
+  });
+
+  it("`docs insert <link>` edits the target document", async () => {
+    await run(["docs", "insert", "Reports/link-to-doc", "hello", "--index", "1"]);
+    expect(firstArg(docs.batchUpdate)).toMatchObject({ documentId: "doc1" });
+  });
+
+  it("`docs replace <link>` edits the target document", async () => {
+    // `--as text` goes straight to a batchUpdate; the Markdown path would first
+    // read the document, and this fake's body holds no marker to replace.
+    await run([
+      "docs",
+      "replace",
+      "Reports/link-to-doc",
+      "--find",
+      "a",
+      "--replace",
+      "b",
+      "--as",
+      "text",
+    ]);
+    expect(firstArg(docs.batchUpdate)).toMatchObject({ documentId: "doc1" });
+  });
+
+  it("`sheets tabs <link>` reads the target spreadsheet", async () => {
+    await run(["sheets", "tabs", "Reports/link-to-sheet"]);
+    expect(firstArg(sheets.get)).toMatchObject({ spreadsheetId: "sh1" });
+  });
+
+  it("`sheets read <link>` reads the target spreadsheet", async () => {
+    await run(["sheets", "read", "Reports/link-to-sheet"]);
+    expect(firstArg(sheets.values.get)).toMatchObject({ spreadsheetId: "sh1" });
+  });
+
+  it("`sheets write <link>` writes to the target spreadsheet", async () => {
+    await run(["sheets", "write", "Reports/link-to-sheet", "A1", "--values", "x"]);
+    expect(firstArg(sheets.values.update)).toMatchObject({ spreadsheetId: "sh1" });
+  });
+
+  it("`sheets append <link>` appends to the target spreadsheet", async () => {
+    await run(["sheets", "append", "Reports/link-to-sheet", "--values", "x"]);
+    expect(firstArg(sheets.values.append)).toMatchObject({ spreadsheetId: "sh1" });
+  });
+
+  it("`sheets clear <link>` clears in the target spreadsheet", async () => {
+    await run(["sheets", "clear", "Reports/link-to-sheet", "A1"]);
+    expect(firstArg(sheets.values.clear)).toMatchObject({ spreadsheetId: "sh1" });
+  });
+});
+
+describe("entry arguments never follow a shortcut (decision 0025 §1)", () => {
+  it("`rm <link>` trashes the shortcut, leaving the target alone", async () => {
+    await run(["rm", "Reports/link-to-doc"]);
+    expect(firstArg(drive.update)).toMatchObject({
+      fileId: "lnkDoc",
+      requestBody: { trashed: true },
+    });
+  });
+
+  it("`mv <link> <folder>` moves the shortcut itself", async () => {
+    await run(["mv", "Reports/link-to-doc", "Other"]);
+    expect(firstArg(drive.update)).toMatchObject({ fileId: "lnkDoc", addParents: "other" });
+  });
+
+  it("`cp <link> <folder>` copies the shortcut itself", async () => {
+    await run(["cp", "Reports/link-to-doc", "Other"]);
+    expect(firstArg(drive.copy)).toMatchObject({ fileId: "lnkDoc" });
+  });
+
+  it("`share add <link>` permissions the shortcut, not the target", async () => {
+    await run(["share", "add", "Reports/link-to-doc", "--to", "you@example.com"]);
+    expect(firstArg(drive.permissionCreate)).toMatchObject({ fileId: "lnkDoc" });
+  });
+
+  it("`info <link>` reports the shortcut and what it points at", async () => {
+    await run(["-f", "json", "info", "Reports/link-to-doc"]);
+    const parsed: unknown = JSON.parse(stdout.join(""));
+    expect(parsed).toMatchObject({
+      success: true,
+      data: {
+        file: { id: "lnkDoc", type: "shortcut", target_id: "doc1", target_type: "doc" },
+      },
+    });
+  });
+
+  it("`info <link>` names the target in text output too", async () => {
+    await run(["info", "Reports/link-to-doc"]);
+    const text = stdout.join("");
+    expect(text).toContain("Type:      shortcut");
+    expect(text).toContain("doc1");
+  });
+});
+
+describe("--type shortcut", () => {
+  it("filters `ls` to shortcuts", async () => {
+    await run(["ls", "Reports", "--type", "shortcut"]);
+    const [q] = drive.list.mock.calls
+      .flatMap((call) => (typeof call[0]?.q === "string" ? [call[0].q] : []))
+      .filter((query: string) => query.includes("mimeType"));
+    expect(q).toContain("application/vnd.google-apps.shortcut");
+  });
+
+  it("filters `search` to shortcuts", async () => {
+    await run(["search", "link", "--type", "shortcut"]);
+    const [q] = drive.list.mock.calls.flatMap((call) =>
+      typeof call[0]?.q === "string" ? [call[0].q] : [],
+    );
+    expect(q).toContain("application/vnd.google-apps.shortcut");
+  });
+});
