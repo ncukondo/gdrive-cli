@@ -66,6 +66,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0031 `slides read`](0031-slides-read.md) | 0029 | E | todo |
 | [0032 `slides write` / `slides create`](0032-slides-write.md) | 0031, 0030 | E | todo |
 | [0033 `cp -r` copies a folder tree](0033-recursive-copy.md) | 0027 | — | todo |
+| [0034 What the live verification found](0034-live-verification-fixes.md) | 0027, 0029 | — | todo |
 
 ## Parallelism notes
 
