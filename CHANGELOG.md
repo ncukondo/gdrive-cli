@@ -77,11 +77,13 @@ log for 0.x.
    pointing at another shortcut is `API_ERROR`, and a shortcut Drive reports
    with no target at all is `API_ERROR`.
 
-   One cost, not a break: an argument given as a bare **file ID** in a following
-   role now costs an extra `files.get`, because nothing in an ID says whether it
-   is a shortcut ([decision
+   One cost, not a break: on `ls`, `docs *`, `sheets *`, `forms *`, every
+   `--parent`, and the destination of `mv` / `cp`, an argument given as a bare
+   **file ID** now costs an extra `files.get`, because nothing in an ID says
+   whether it is a shortcut ([decision
    0025](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0025-shortcuts.md)
-   §4). A path pays it only when its last segment really is one.
+   §4). A path pays it only when its last segment really is one, and `download`
+   pays nothing either way — it reuses the metadata the lookup already fetched.
 
 4. **The `ls` / `search` text table's `Type` column is two characters wider**
    (8 → 10), because `shortcut` is eight characters and would otherwise run
