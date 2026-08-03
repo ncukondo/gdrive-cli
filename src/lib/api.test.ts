@@ -6,6 +6,7 @@ import {
   downloadMedia,
   escapeQueryValue,
   exportFile,
+  FILE_FIELDS,
   getFile,
   listChildren,
   mapDriveError,
@@ -13,6 +14,7 @@ import {
   moveFile,
   normalizeFile,
   searchFiles,
+  SHORTCUT_MIME,
   trashFile,
   typeFilterClause,
   uploadMedia,
@@ -111,6 +113,8 @@ describe("mimeToType / normalizeFile", () => {
       created: "2026-01-01T00:00:00Z",
       modified: "2026-02-01T00:00:00Z",
       owners: ["me@x.com"],
+      target_id: null,
+      target_type: null,
     });
   });
 
@@ -118,6 +122,50 @@ describe("mimeToType / normalizeFile", () => {
     const file = normalizeFile(raw({ mimeType: "application/vnd.google-apps.document" }));
     expect(file.size).toBeNull();
     expect(file.type).toBe("doc");
+  });
+});
+
+describe("normalizeFile on a shortcut (decision 0025 §2)", () => {
+  it("reports type shortcut with the target's id and type", () => {
+    const file = normalizeFile(
+      raw({
+        id: "1Lnk",
+        name: "2026 Budget",
+        mimeType: SHORTCUT_MIME,
+        shortcutDetails: {
+          targetId: "1AbC",
+          targetMimeType: "application/vnd.google-apps.spreadsheet",
+        },
+      }),
+    );
+    expect(file.type).toBe("shortcut");
+    expect(file.target_id).toBe("1AbC");
+    expect(file.target_type).toBe("sheet");
+  });
+
+  it("runs the target MIME through the same map, so an unknown one is `file`", () => {
+    const file = normalizeFile(
+      raw({
+        mimeType: SHORTCUT_MIME,
+        shortcutDetails: { targetId: "1AbC", targetMimeType: "application/zip" },
+      }),
+    );
+    expect(file.target_type).toBe("file");
+  });
+
+  it("leaves both target fields null on anything that is not a shortcut", () => {
+    const file = normalizeFile(raw({ mimeType: "image/png" }));
+    expect(file.target_id).toBeNull();
+    expect(file.target_type).toBeNull();
+  });
+
+  it("maps the shortcut MIME on its own", () => {
+    expect(mimeToType(SHORTCUT_MIME)).toBe("shortcut");
+  });
+
+  it("asks Drive for the target on every file read", () => {
+    // Without this field the target id never arrives, whatever normalizeFile does.
+    expect(FILE_FIELDS).toContain("shortcutDetails(targetId,targetMimeType)");
   });
 });
 
@@ -131,6 +179,12 @@ describe("query helpers", () => {
     expect(typeFilterClause("folder")).toBe("mimeType = 'application/vnd.google-apps.folder'");
     expect(typeFilterClause("file")).toBe("mimeType != 'application/vnd.google-apps.folder'");
     expect(typeFilterClause(undefined)).toBeNull();
+  });
+
+  it("filters shortcuts by their own MIME, leaving `file` inclusive (decision 0025 §7)", () => {
+    expect(typeFilterClause("shortcut")).toBe(`mimeType = '${SHORTCUT_MIME}'`);
+    // `file` still means "anything that is not a folder", shortcuts included.
+    expect(typeFilterClause("file")).not.toContain("shortcut");
   });
 });
 

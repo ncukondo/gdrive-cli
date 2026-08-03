@@ -17,6 +17,8 @@ function file(overrides: Partial<DriveFile> = {}): DriveFile {
     created: "2026-07-20T14:03:00.000Z",
     modified: "2026-07-20T14:03:00.000Z",
     owners: ["me@x.com"],
+    target_id: null,
+    target_type: null,
     ...overrides,
   };
 }

@@ -46,8 +46,12 @@ export interface CommandResult {
   exitCode: number;
 }
 
-/** Friendly file-type label derived from a Drive MIME type (decision 0008). */
-export type FileType = "folder" | "doc" | "sheet" | "slides" | "file";
+/**
+ * Friendly file-type label derived from a Drive MIME type (decision 0008).
+ * `shortcut` joined the set in decision 0025 — a minor-release break for a
+ * consumer that switches exhaustively on it (decision 0014).
+ */
+export type FileType = "folder" | "doc" | "sheet" | "slides" | "shortcut" | "file";
 
 /** Normalized Drive file (decision 0008). Byte size is null for Google-native files. */
 export interface DriveFile {
@@ -62,6 +66,14 @@ export interface DriveFile {
   created: string | null;
   modified: string | null;
   owners: string[];
+  /**
+   * What a shortcut points at, `null` on every other file (decision 0025 §2).
+   * Two flat fields rather than a nested object: the pair a caller acts on is
+   * *what it points at* and *what kind of thing that is*, and
+   * `gdrive info <target_id>` answers everything else.
+   */
+  target_id: string | null;
+  target_type: FileType | null;
 }
 
 /** A shared drive, as `gdrive drives` reports it (decision 0016). */

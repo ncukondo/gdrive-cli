@@ -17,6 +17,8 @@ function file(overrides: Partial<DriveFile> = {}): DriveFile {
     created: null,
     modified: null,
     owners: [],
+    target_id: null,
+    target_type: null,
     ...overrides,
   };
 }

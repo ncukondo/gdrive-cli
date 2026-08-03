@@ -11,9 +11,13 @@ import {
 
 export const MAX_PAGES = 100;
 
-/** Fields requested for every file metadata response. */
+/**
+ * Fields requested for every file metadata response. `shortcutDetails` rides
+ * along on every read (decision 0025 §2): without it a shortcut is
+ * indistinguishable from a plain file, and the target id never arrives.
+ */
 export const FILE_FIELDS =
-  "id,name,mimeType,size,parents,trashed,webViewLink,createdTime,modifiedTime,owners(emailAddress)";
+  "id,name,mimeType,size,parents,trashed,webViewLink,createdTime,modifiedTime,owners(emailAddress),shortcutDetails(targetId,targetMimeType)";
 const LIST_FIELDS = `nextPageToken,files(${FILE_FIELDS})`;
 
 // --- Raw googleapis shapes (only the fields we read) -----------------------
@@ -34,6 +38,12 @@ export const DriveFileRawSchema = z.object({
   createdTime: z.string().nullish(),
   modifiedTime: z.string().nullish(),
   owners: z.array(z.object({ emailAddress: z.string().nullish() })).nullish(),
+  shortcutDetails: z
+    .object({
+      targetId: z.string().nullish(),
+      targetMimeType: z.string().nullish(),
+    })
+    .nullish(),
 });
 
 export type DriveFileRaw = z.infer<typeof DriveFileRawSchema>;
@@ -244,11 +254,16 @@ export function mapDriveError(error: unknown): never {
 export const SHARED_DRIVE_ROOT_ID = /^0A[A-Za-z0-9_-]{17}$/;
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
+
+/** A pointer to another file, not a file of its own (decision 0025). */
+export const SHORTCUT_MIME = "application/vnd.google-apps.shortcut";
+
 const MIME_TYPE_MAP: Record<string, FileType> = {
   "application/vnd.google-apps.folder": "folder",
   "application/vnd.google-apps.document": "doc",
   "application/vnd.google-apps.spreadsheet": "sheet",
   "application/vnd.google-apps.presentation": "slides",
+  [SHORTCUT_MIME]: "shortcut",
 };
 
 export function mimeToType(mimeType: string): FileType {
@@ -261,6 +276,9 @@ export function normalizeFile(raw: DriveFileRaw): DriveFile {
   const isGoogleNative = mimeType.startsWith("application/vnd.google-apps");
   const size =
     !isGoogleNative && typeof raw.size === "string" ? Number.parseInt(raw.size, 10) : null;
+  // The target runs through the same map as `type`, so the two labels can never
+  // disagree about what a MIME type is called (decision 0025 §2).
+  const target = mimeType === SHORTCUT_MIME ? raw.shortcutDetails : undefined;
   return {
     id: raw.id ?? "",
     name: raw.name ?? "",
@@ -273,6 +291,8 @@ export function normalizeFile(raw: DriveFileRaw): DriveFile {
     created: raw.createdTime ?? null,
     modified: raw.modifiedTime ?? null,
     owners: (raw.owners ?? []).map((o) => o.emailAddress ?? "").filter((e) => e !== ""),
+    target_id: target?.targetId ?? null,
+    target_type: target ? mimeToType(target.targetMimeType ?? "") : null,
   };
 }
 
@@ -302,7 +322,8 @@ export function typeFilterClause(type?: FileType): string | null {
   if (type === "doc") return `mimeType = 'application/vnd.google-apps.document'`;
   if (type === "sheet") return `mimeType = 'application/vnd.google-apps.spreadsheet'`;
   if (type === "slides") return `mimeType = 'application/vnd.google-apps.presentation'`;
-  // "file": anything that is not a folder
+  if (type === "shortcut") return `mimeType = '${SHORTCUT_MIME}'`;
+  // "file": anything that is not a folder — shortcuts included (decision 0025 §7)
   return `mimeType != '${FOLDER_MIME}'`;
 }
 
