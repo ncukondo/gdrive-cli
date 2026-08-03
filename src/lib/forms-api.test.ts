@@ -81,6 +81,13 @@ describe("listResponses", () => {
     expect(fake.pageTokens).toEqual([undefined, "1"]);
   });
 
+  it("maps its errors the same way, so a mid-page failure is not swallowed", async () => {
+    const denied = createFakeForms({ error: googleError(403) });
+    expect(await codeOf(() => listResponses(denied.client, "1FoRm"))).toBe("PERMISSION_DENIED");
+    const missing = createFakeForms({ error: googleError(404) });
+    expect(await codeOf(() => listResponses(missing.client, "1FoRm"))).toBe("NOT_FOUND");
+  });
+
   it("returns an empty list for a form nobody has answered", async () => {
     const fake = createFakeForms({ pages: [[]] });
     expect(await listResponses(fake.client, "1FoRm")).toEqual([]);
