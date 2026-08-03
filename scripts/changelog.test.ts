@@ -127,7 +127,7 @@ describe("a `##` line inside a fenced code block", () => {
       "Here is the format we use:",
       "",
       "```",
-      "## 0.9.0 — 2026-09-01",
+      "## <version> — <YYYY-MM-DD>",
       "```",
       "",
       "## 0.9.0 — 2026-09-01",
@@ -137,6 +137,17 @@ describe("a `##` line inside a fenced code block", () => {
     ].join("\n");
 
     expect(extractVersionNotes(fenced, "0.9.0")).toBe("The real 0.9.0 notes.");
+  });
+
+  it("refuses a fenced example that is a real version heading, rather than guessing", () => {
+    // Indistinguishable from a fence somebody forgot to close, and the two have
+    // opposite consequences — so the placeholder above is the supported form.
+    const ambiguous = ["```", "## 0.9.0 — 2026-09-01", "```", "", "Tail.", ""].join("\n");
+
+    expect(() => extractVersionNotes(ambiguous, "0.9.0", "CHANGELOG.md")).toThrowError(
+      /0\.9\.0 — 2026-09-01/,
+    );
+    expect(() => extractVersionNotes(ambiguous, "0.9.0", "CHANGELOG.md")).toThrowError(/fence/i);
   });
 
   it("is skipped inside a `~~~` fence too", () => {
@@ -165,6 +176,148 @@ describe("a `##` line inside a fenced code block", () => {
     );
     expect(() => extractVersionNotes(unclosed, "0.9.0", "CHANGELOG.md")).toThrowError(/fence/i);
   });
+
+  it("errors when a fence closes far enough down to have hidden a heading", () => {
+    // The fence is closed, so nothing is missing at EOF — but two whole
+    // sections are inside it, and 0.9.0 would publish the rest of the file.
+    const swallowing = [
+      "## 0.9.0 — 2026-09-01",
+      "",
+      "Newest.",
+      "",
+      "```sh",
+      "gdrive ls",
+      "",
+      "## 0.8.0 — 2026-08-03",
+      "",
+      "Middle.",
+      "",
+      "```",
+      "",
+      "Tail.",
+      "",
+    ].join("\n");
+
+    expect(() => extractVersionNotes(swallowing, "0.9.0", "CHANGELOG.md")).toThrowError(/fence/i);
+    expect(() => extractVersionNotes(swallowing, "0.9.0", "CHANGELOG.md")).toThrowError(/0\.8\.0/);
+  });
+
+  it("does not mistake a paragraph quoting fence syntax for a fence", () => {
+    // CommonMark: a backtick fence's info string may not contain a backtick, so
+    // this line opens nothing and the document is valid.
+    const quoted = ["## 0.8.0 — 2026-08-03", "", "```a`b", "", "Tail.", ""].join("\n");
+
+    expect(extractVersionNotes(quoted, "0.8.0")).toContain("Tail.");
+  });
+});
+
+describe("a `##` line inside an HTML comment", () => {
+  it("neither truncates the body nor leaves the comment open", () => {
+    const commented = [
+      "## 0.8.0 — 2026-08-03",
+      "",
+      "Mine.",
+      "",
+      "<!--",
+      "## a heading held back for later",
+      "-->",
+      "",
+      "Tail.",
+      "",
+    ].join("\n");
+
+    const notes = extractVersionNotes(commented, "0.8.0");
+    expect(notes).toContain("Tail.");
+    expect(notes).toContain("-->");
+  });
+
+  it("errors when the comment hides a real version heading", () => {
+    const unclosed = [
+      "## 0.8.0 — 2026-08-03",
+      "",
+      "<!-- someone forgot the close",
+      "",
+      "## 0.7.0 — 2026-07-27",
+      "",
+      "Oldest.",
+      "",
+    ].join("\n");
+
+    expect(() => extractVersionNotes(unclosed, "0.8.0", "CHANGELOG.md")).toThrowError(/comment/i);
+    expect(() => extractVersionNotes(unclosed, "0.8.0", "CHANGELOG.md")).toThrowError(/0\.7\.0/);
+  });
+
+  it("errors on an unclosed comment even when it hides no heading at all", () => {
+    const unclosed = ["## 0.8.0 — 2026-08-03", "", "Mine. <!-- trailing thought", ""].join("\n");
+
+    expect(() => extractVersionNotes(unclosed, "0.8.0", "CHANGELOG.md")).toThrowError(
+      /never closed/i,
+    );
+  });
+
+  it("leaves a comment that opens and closes on one line alone", () => {
+    const inline = ["## 0.8.0 — 2026-08-03", "", "Mine. <!-- a note -->", "", "Tail.", ""].join(
+      "\n",
+    );
+
+    expect(extractVersionNotes(inline, "0.8.0")).toContain("Tail.");
+  });
+});
+
+describe("a heading indented the way CommonMark allows", () => {
+  const INDENTED = [
+    "## 0.8.0 — 2026-08-03",
+    "",
+    "Mine.",
+    "",
+    "  ## 0.7.0 — 2026-07-27",
+    "",
+    "NOT MINE.",
+    "",
+  ].join("\n");
+
+  it("ends the section above it instead of merging the two", () => {
+    expect(extractVersionNotes(INDENTED, "0.8.0")).toBe("Mine.");
+  });
+
+  it("is a section of its own, extractable and listed", () => {
+    expect(listVersions(INDENTED)).toEqual(["0.8.0", "0.7.0"]);
+    expect(extractVersionNotes(INDENTED, "0.7.0")).toBe("NOT MINE.");
+  });
+
+  it("stops being a heading at four spaces, where it is an indented code block", () => {
+    const code = [
+      "## 0.8.0 — 2026-08-03",
+      "",
+      "Mine.",
+      "",
+      "    ## 0.7.0 — 2026-07-27",
+      "",
+      "Tail.",
+      "",
+    ].join("\n");
+
+    expect(extractVersionNotes(code, "0.8.0")).toContain("Tail.");
+    expect(listVersions(code)).toEqual(["0.8.0"]);
+  });
+});
+
+describe("a version declared twice", () => {
+  it("throws rather than silently publishing the first of the two", () => {
+    const twice = [
+      "## 0.8.0 — 2026-08-03",
+      "",
+      "First.",
+      "",
+      "## 0.8.0 — 2026-08-04",
+      "",
+      "Second.",
+      "",
+    ].join("\n");
+
+    expect(() => extractVersionNotes(twice, "0.8.0", "CHANGELOG.md")).toThrowError(/0\.8\.0/);
+    expect(() => extractVersionNotes(twice, "0.8.0", "CHANGELOG.md")).toThrowError(/twice/i);
+  });
 });
 
 describe("listVersions", () => {
@@ -172,8 +325,8 @@ describe("listVersions", () => {
     expect(listVersions(THREE_VERSIONS)).toEqual(["0.9.0", "0.8.0", "0.7.0"]);
   });
 
-  it("ignores a heading that only appears as a fenced example", () => {
-    expect(listVersions("```\n## 0.9.0 — 2026-09-01\n```\n")).toEqual([]);
+  it("ignores a heading that only appears as a fenced placeholder", () => {
+    expect(listVersions("```\n## <version> — <YYYY-MM-DD>\n```\n")).toEqual([]);
   });
 
   it("is what tells a failed release which sections do exist", () => {
@@ -188,19 +341,17 @@ describe("the real CHANGELOG.md", () => {
 
   // Not a docs fixture (decision 0035 §2): this file is an input the release
   // workflow parses, so what is asserted is that it parses — never that it
-  // says a particular thing.
-  it("extracts every section it declares, heading stripped and body intact", () => {
+  // says a particular thing. Whether the version *being released* has a section
+  // is checkable only when a tag exists, and `release.yml` is where that is
+  // checked; a version named here would outlive the release it guarded.
+  it("parses, and every section it declares has a body", () => {
     const versions = listVersions(changelog);
     expect(versions.length).toBeGreaterThan(0);
 
     for (const version of versions) {
-      const notes = extractVersionNotes(changelog, version, "CHANGELOG.md");
-      expect(notes).not.toContain(`## ${version}`);
-      expect(notes.split("\n").filter((line) => line.startsWith("## "))).toEqual([]);
+      expect(extractVersionNotes(changelog, version, "CHANGELOG.md")).not.toContain(
+        `## ${version}`,
+      );
     }
-  });
-
-  it("still has the section 0.8.0 will be released from", () => {
-    expect(listVersions(changelog)).toContain("0.8.0");
   });
 });
