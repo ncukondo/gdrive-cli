@@ -49,6 +49,10 @@ describe("option parsers", () => {
     expect(parseType(undefined)).toBeUndefined();
     expect(() => parseType("xml")).toThrow(/Invalid --type/);
   });
+  it("parseType accepts shortcut, and offers it when the value is unknown", () => {
+    expect(parseType("shortcut")).toBe("shortcut");
+    expect(() => parseType("xml")).toThrow(/shortcut/);
+  });
   it("parseOrder validates", () => {
     expect(parseOrder("modified")).toBe("modified");
     expect(() => parseOrder("size")).toThrow(/Invalid --order/);

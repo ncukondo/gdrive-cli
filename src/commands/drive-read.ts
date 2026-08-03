@@ -16,7 +16,7 @@ import {
   type DriveClient,
   type DriveScopeArgs,
 } from "../lib/api.ts";
-import { resolvePath } from "../lib/resolve-path.ts";
+import { resolvePath, resolveTarget, resolveTargetId } from "../lib/resolve-path.ts";
 import { resolveGlobalOptions, handleError, type GlobalOptions } from "../index.ts";
 import { createLsCommand, handleLs, parseLimit, parseOrder, parseType } from "./ls.ts";
 import { createSearchCommand, handleSearch } from "./search.ts";
@@ -42,6 +42,14 @@ function toBuffer(content: unknown): Buffer {
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
 
+/**
+ * Which resolver backs each argument is decision 0025 §1's role table, and this
+ * is where it is written down: `resolveTargetId` for a container ("look inside
+ * this") or content ("read what is in this") argument, `resolvePath` for an
+ * entry ("this file, as an entry in a folder"). Here: `ls` and `download`
+ * follow; `info` does not, because it is the command that answers *what is
+ * this id*.
+ */
 export function registerDriveRead(program: Command): void {
   const ls = createLsCommand();
   ls.action(async (folder: string | undefined) => {
@@ -56,7 +64,8 @@ export function registerDriveRead(program: Command): void {
       const drive = await buildDrive(opts);
       const scope = await resolveDriveScope(drive, o);
       const result = await handleLs({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        // container
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         listChildren: (id, options) => listChildren(drive, id, options),
         format: opts.format,
         quiet: opts.quiet,
@@ -127,6 +136,7 @@ export function registerDriveRead(program: Command): void {
     try {
       const drive = await buildDrive(opts);
       const result = await handleInfo({
+        // entry
         resolvePath: (arg) => resolvePath(drive, arg),
         getFile: (id) => getFile(drive, id),
         file,
@@ -149,7 +159,8 @@ export function registerDriveRead(program: Command): void {
       const drive = await buildDrive(opts);
       const exportAs = parseExportAs(o.exportAs);
       const result = await handleDownload({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        // content
+        resolveTarget: (arg) => resolveTarget(drive, arg),
         getFile: (id) => getFile(drive, id),
         downloadMedia: (id) => downloadMedia(drive, id),
         exportFile: (id, mime) => exportFile(drive, id, mime),

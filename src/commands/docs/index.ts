@@ -14,7 +14,7 @@ import {
   type DocsClient,
 } from "../../lib/docs-api.ts";
 import { readInput, readProcessStdin } from "../../lib/input.ts";
-import { resolvePath } from "../../lib/resolve-path.ts";
+import { resolveTargetId } from "../../lib/resolve-path.ts";
 import { resolveGlobalOptions, handleError, type GlobalOptions } from "../../index.ts";
 import { createDocsReadCommand, handleDocsRead } from "./read.ts";
 import { createDocsCreateCommand, handleDocsCreate } from "./create.ts";
@@ -38,6 +38,12 @@ const stdout = (msg: string) => process.stdout.write(msg + "\n");
 const stderr = (msg: string) => process.stderr.write(msg + "\n");
 const input = (arg: string) => readInput(arg, { fs: nodeFs, readStdin: readProcessStdin });
 
+/**
+ * Every `<file>` here is content — "read or edit what is in this" — and
+ * `create --parent` is a container, so all six follow a shortcut
+ * (decision 0025 §1). Sending a shortcut id to the Docs API answers 404 for a
+ * document that plainly exists, which is the bug this closes.
+ */
 export function registerDocs(program: Command): void {
   const docs = program.command("docs").description("Read and edit Google Docs");
 
@@ -48,7 +54,7 @@ export function registerDocs(program: Command): void {
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsRead({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
         file,
         format: opts.format,
@@ -70,7 +76,7 @@ export function registerDocs(program: Command): void {
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsCreate({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         createDocument: (t) => createDocument(docsClient, t),
         insertText: (id, index, text) => insertText(docsClient, id, index, text),
         insertMarkdown: (id, index, source) => insertMarkdown(docsClient, id, index, source),
@@ -99,7 +105,7 @@ export function registerDocs(program: Command): void {
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsAppend({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
         insertText: (id, index, t) => insertText(docsClient, id, index, t),
         insertMarkdown: (id, index, source, options) =>
@@ -127,7 +133,7 @@ export function registerDocs(program: Command): void {
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsReplace({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         replaceAllText: (id, find, to, matchCase) =>
           replaceAllText(docsClient, id, find, to, matchCase),
         replaceMarkdown: (id, find, to, matchCase) =>
@@ -164,7 +170,7 @@ export function registerDocs(program: Command): void {
     try {
       const { drive, docs: docsClient } = await buildClients(opts);
       const result = await handleDocsInsert({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
         insertText: (id, index, t) => insertText(docsClient, id, index, t),
         insertMarkdown: (id, index, source) => insertMarkdown(docsClient, id, index, source),

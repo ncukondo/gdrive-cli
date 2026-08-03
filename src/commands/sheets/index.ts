@@ -14,7 +14,7 @@ import {
   type SheetsClient,
 } from "../../lib/sheets-api.ts";
 import { readInput, readProcessStdin } from "../../lib/input.ts";
-import { resolvePath } from "../../lib/resolve-path.ts";
+import { resolveTargetId } from "../../lib/resolve-path.ts";
 import { resolveGlobalOptions, handleError, type GlobalOptions } from "../../index.ts";
 import { createSheetsTabsCommand, handleSheetsTabs } from "./tabs.ts";
 import { createSheetsReadCommand, handleSheetsRead } from "./read.ts";
@@ -37,6 +37,10 @@ async function buildClients(
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
 const input = (arg: string) => readInput(arg, { fs: nodeFs, readStdin: readProcessStdin });
 
+/**
+ * As in `docs`: every `<file>` is content and `create --parent` is a container,
+ * so each one follows a shortcut (decision 0025 §1).
+ */
 export function registerSheets(program: Command): void {
   const sheets = program.command("sheets").description("Read and edit Google Sheets");
 
@@ -46,7 +50,7 @@ export function registerSheets(program: Command): void {
     try {
       const { drive, sheets: sheetsClient } = await buildClients(opts);
       const result = await handleSheetsTabs({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         listTabs: (id) => listTabs(sheetsClient, id),
         file,
         format: opts.format,
@@ -67,7 +71,7 @@ export function registerSheets(program: Command): void {
     try {
       const { drive, sheets: sheetsClient } = await buildClients(opts);
       const result = await handleSheetsRead({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         listTabs: (id) => listTabs(sheetsClient, id),
         readValues: (id, a1) => readValues(sheetsClient, id, a1),
         file,
@@ -92,7 +96,7 @@ export function registerSheets(program: Command): void {
     try {
       const { drive, sheets: sheetsClient } = await buildClients(opts);
       const result = await handleSheetsWrite({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         listTabs: (id) => listTabs(sheetsClient, id),
         writeValues: (id, a1, values, mode) => writeValues(sheetsClient, id, a1, values, mode),
         readInput: input,
@@ -119,7 +123,7 @@ export function registerSheets(program: Command): void {
     try {
       const { drive, sheets: sheetsClient } = await buildClients(opts);
       const result = await handleSheetsAppend({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         listTabs: (id) => listTabs(sheetsClient, id),
         appendValues: (id, a1, values, mode) => appendValues(sheetsClient, id, a1, values, mode),
         readInput: input,
@@ -146,7 +150,7 @@ export function registerSheets(program: Command): void {
     try {
       const { drive, sheets: sheetsClient } = await buildClients(opts);
       const result = await handleSheetsClear({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         listTabs: (id) => listTabs(sheetsClient, id),
         clearValues: (id, a1) => clearValues(sheetsClient, id, a1),
         file,
@@ -170,7 +174,7 @@ export function registerSheets(program: Command): void {
     try {
       const { drive, sheets: sheetsClient } = await buildClients(opts);
       const result = await handleSheetsCreate({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         createSpreadsheet: (t) => createSpreadsheet(sheetsClient, t),
         moveFile: (id, parentId) => moveFile(drive, id, parentId),
         title,

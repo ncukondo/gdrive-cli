@@ -15,7 +15,7 @@ import {
   uploadMedia,
   type DriveClient,
 } from "../lib/api.ts";
-import { resolvePath } from "../lib/resolve-path.ts";
+import { resolvePath, resolveTargetId } from "../lib/resolve-path.ts";
 import { resolveGlobalOptions, handleError, type GlobalOptions } from "../index.ts";
 import { createUploadCommand, guessMimeType, handleUpload, type LocalFile } from "./upload.ts";
 import { createMkdirCommand, handleMkdir } from "./mkdir.ts";
@@ -43,6 +43,12 @@ function readLocalFile(path: string): LocalFile {
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
 
+/**
+ * Decision 0025 §1's role table, wired argument by argument: `--parent` is a
+ * container and follows a shortcut, and so is the destination of `mv` and `cp`,
+ * while what `mv`, `cp`, and `rm` act *on* is an entry and never does — `rm
+ * link` deletes the link, not the document behind it.
+ */
 export function registerDriveWrite(program: Command): void {
   const upload = createUploadCommand();
   upload.action(async (local: string) => {
@@ -51,7 +57,8 @@ export function registerDriveWrite(program: Command): void {
     try {
       const drive = await buildDrive(opts);
       const result = await handleUpload({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        // container (--parent)
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         readLocalFile,
         uploadMedia: (input) => uploadMedia(drive, input),
         local,
@@ -77,7 +84,8 @@ export function registerDriveWrite(program: Command): void {
     try {
       const drive = await buildDrive(opts);
       const result = await handleMkdir({
-        resolvePath: (arg) => resolvePath(drive, arg),
+        // container (--parent)
+        resolvePath: (arg) => resolveTargetId(drive, arg),
         createFolder: (n, parentId) => createFolder(drive, n, parentId),
         name,
         format: opts.format,
@@ -98,7 +106,10 @@ export function registerDriveWrite(program: Command): void {
     try {
       const drive = await buildDrive(opts);
       const result = await handleMv({
+        // entry
         resolvePath: (arg) => resolvePath(drive, arg),
+        // container
+        resolveFolder: (arg) => resolveTargetId(drive, arg),
         moveFile: (id, parentId) => moveFile(drive, id, parentId),
         file,
         dest: folder,
@@ -120,7 +131,10 @@ export function registerDriveWrite(program: Command): void {
     try {
       const drive = await buildDrive(opts);
       const result = await handleCp({
+        // entry
         resolvePath: (arg) => resolvePath(drive, arg),
+        // container
+        resolveFolder: (arg) => resolveTargetId(drive, arg),
         copyFile: (id, parentId, name) => copyFile(drive, id, parentId, name),
         file,
         dest: folder,
@@ -143,6 +157,7 @@ export function registerDriveWrite(program: Command): void {
     try {
       const drive = await buildDrive(opts);
       const result = await handleRm({
+        // entry
         resolvePath: (arg) => resolvePath(drive, arg),
         trashFile: (id) => trashFile(drive, id),
         deleteFile: (id) => deleteFile(drive, id),
