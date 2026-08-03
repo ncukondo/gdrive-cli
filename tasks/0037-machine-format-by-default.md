@@ -82,12 +82,15 @@ function in the codebase asks how wide a string draws.
      config. `--quiet` is unaffected in both.
    - **Green** — `src/lib/config.ts`.
 
-5. **Nothing measures a width**
-   - **Red** — a test over the source tree: no file under `src/` contains
-     `padEnd`, `padStart` or a display-width helper. This is
-     [`0036`](../decisions/0036-machine-format-by-default.md) §3 made mechanical,
-     and it is the only guard that survives the next person who wants a pretty
-     table. Exempt nothing; if a legitimate use appears later, that is a decision.
+5. **A row does not depend on the other rows**
+   - **Red** — for each renderer: render a list, then render the same list with
+     one name made longer, and assert every *other* row is byte-identical. This
+     is what [`0036`](../decisions/0036-machine-format-by-default.md) §2 buys,
+     stated as behaviour — an aligned renderer fails it because widening one
+     field repads every row, and it catches alignment however it is built
+     ([`0037`](../decisions/0037-tests-assert-behaviour.md) §2). Do not write a
+     test that scans `src/` for `padEnd`: that asserts spelling, not output, and
+     `0037` §1 rules it out.
 
 6. **Docs**
    - Every transcript in `docs/commands.md` re-rendered from the code, the
@@ -103,7 +106,7 @@ function in the codebase asks how wide a string draws.
       round-trip through `split("\t")`
 - [ ] A name containing a newline produces one row in text and its real name in JSON
 - [ ] `default_format = "text"` still works; `--quiet` is unchanged
-- [ ] No file under `src/` calls `padEnd` or `padStart`
+- [ ] Making one name longer changes that row and no other, for every renderer
 - [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
 - [ ] `docs/`, `README.md` and `CHANGELOG.md` updated in the same pull request
 
