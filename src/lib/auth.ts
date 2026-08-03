@@ -158,7 +158,7 @@ export async function promptForClientCredentials(
   write("");
   write("To set up Google API access:");
   write("  1. Go to https://console.cloud.google.com");
-  write("  2. Create a project and enable the Drive, Docs, and Sheets APIs");
+  write("  2. Create a project and enable the Drive, Docs, Sheets, and Forms APIs");
   write("  3. Create OAuth 2.0 credentials (Desktop app)");
   write("  4. Paste the Client ID and Client Secret below");
   write("");
