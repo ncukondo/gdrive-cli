@@ -202,6 +202,123 @@ describe("tabulateResponses", () => {
     expect(table.rows[0]).toMatchObject({ "Rate us": "4" });
   });
 
+  /**
+   * A grid is one item holding several questions, each with its own id. The
+   * document cannot model it, but the answers are keyed by those ids and are
+   * as real as any other — so the table reads them out of `raw`.
+   */
+  describe("a grid (question group)", () => {
+    const grid: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "i0",
+          title: "Name",
+          questionItem: { question: { questionId: "q0", textQuestion: {} } },
+        },
+        {
+          itemId: "i1",
+          title: "Rate each area",
+          questionGroupItem: {
+            grid: { columns: { type: "RADIO", options: [{ value: "1" }, { value: "2" }] } },
+            questions: [
+              { questionId: "g1", rowQuestion: { title: "Speed" } },
+              { questionId: "g2", rowQuestion: { title: "Support" } },
+            ],
+          },
+        },
+      ],
+    };
+    const answered: FormResponseRaw[] = [
+      {
+        responseId: "r1",
+        lastSubmittedTime: "2026-07-01T10:00:00Z",
+        answers: {
+          q0: { textAnswers: { answers: [{ value: "Ann" }] } },
+          g1: { textAnswers: { answers: [{ value: "2" }] } },
+          g2: { textAnswers: { answers: [{ value: "1" }] } },
+        },
+      },
+    ];
+
+    it("gives each row its own column, named by the item and the row", () => {
+      const table = tabulateResponses(toFormDocument(grid).document, answered);
+      expect(table.columns.map((c) => c.title)).toEqual([
+        "submitted",
+        "Name",
+        "Rate each area — Speed",
+        "Rate each area — Support",
+      ]);
+    });
+
+    it("does not lose the answers to those rows", () => {
+      const table = tabulateResponses(toFormDocument(grid).document, answered);
+      expect(table.rows[0]).toEqual({
+        submitted: "2026-07-01T10:00:00Z",
+        Name: "Ann",
+        "Rate each area — Speed": "2",
+        "Rate each area — Support": "1",
+      });
+    });
+
+    it("keeps a checkbox grid's answers as arrays", () => {
+      const checkboxGrid: FormRaw = {
+        info: { title: "Survey" },
+        items: [
+          {
+            itemId: "i1",
+            title: "Which apply?",
+            questionGroupItem: {
+              grid: { columns: { type: "CHECKBOX" } },
+              questions: [{ questionId: "g1", rowQuestion: { title: "Row" } }],
+            },
+          },
+        ],
+      };
+      const table = tabulateResponses(toFormDocument(checkboxGrid).document, [
+        { responseId: "r", answers: { g1: { textAnswers: { answers: [{ value: "a" }] } } } },
+      ]);
+      expect(table.rows[0]).toMatchObject({ "Which apply? — Row": ["a"] });
+    });
+
+    it("falls back to the row's question id when nothing is titled", () => {
+      const untitled: FormRaw = {
+        info: { title: "Survey" },
+        items: [{ itemId: "i1", questionGroupItem: { questions: [{ questionId: "g1" }] } }],
+      };
+      const table = tabulateResponses(toFormDocument(untitled).document, []);
+      expect(table.columns.map((c) => c.title)).toEqual(["submitted", "g1"]);
+    });
+  });
+
+  it("keeps every column title distinct, so no row value can overwrite another", () => {
+    // A question titled exactly like the disambiguation of another pair.
+    const adversarial: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "a",
+          title: "Name",
+          questionItem: { question: { questionId: "qa", textQuestion: {} } },
+        },
+        {
+          itemId: "b",
+          title: "Name",
+          questionItem: { question: { questionId: "qb", textQuestion: {} } },
+        },
+        {
+          itemId: "c",
+          title: "Name (qb)",
+          questionItem: { question: { questionId: "qc", textQuestion: {} } },
+        },
+      ],
+    };
+    const titles = tabulateResponses(toFormDocument(adversarial).document, []).columns.map(
+      (c) => c.title,
+    );
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+
   it("gives a page break or a text block no column", () => {
     const sections: FormRaw = {
       info: { title: "Survey" },
