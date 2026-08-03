@@ -51,6 +51,7 @@ All datetime fields are ISO 8601 with offset. Byte sizes are integers.
 | `PERMISSION_DENIED` | Signed in, but the account's role does not allow this | 1 |
 | `NOT_FOUND` | File / folder / doc / sheet / range not found | 1 |
 | `INVALID_ARGS` | Invalid command arguments | 3 |
+| `PRUNE_REQUIRED` | The write would delete something and `--prune` was not given ([0028](0028-forms-write.md) §3) | 3 |
 | `API_ERROR` | Google API returned an error | 1 |
 | `CONFIG_ERROR` | Configuration file error | 1 |
 | `IO_ERROR` | Local filesystem read/write error | 1 |

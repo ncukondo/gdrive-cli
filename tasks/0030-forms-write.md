@@ -8,19 +8,21 @@ Parallel: no — it extends the same two lib files 0029 creates.
 ## Goal
 
 An edited form document goes back into Drive: `forms write` applies it by item
-id, refusing to delete without `--prune`, and `forms create` makes a new form
-from one.
+id, reports what it did as a plan, refuses to delete without `--prune`, and
+`forms create` makes a new form from one.
 
 ## Context
 
 - Decisions: [`0028`](../decisions/0028-forms-write.md) is the specification;
   [`0027`](../decisions/0027-forms-document.md) defines the document it
   consumes. §1's match table and §3's `--prune` rule are the two things to get
-  exactly right.
+  exactly right, and §3's three guarantees — nothing applied, the message names
+  the flag, the code is `PRUNE_REQUIRED` — are what make a refusal usable by an
+  agent rather than merely safe.
 - Prior art in this repo: `commands/docs/create.ts` — create, then fill, then
   `moveFile` for `--parent`, with the API's inability to create in a folder
   noted in a comment. `forms create` is the same three steps
-  ([`0028`](../decisions/0028-forms-write.md) §6).
+  ([`0028`](../decisions/0028-forms-write.md) §7).
 - `lib/input.ts`'s `readInput` already handles a literal / `@file` / stdin
   argument; `--file` should not grow a fourth convention.
 - Also relevant: [`0015`](../decisions/0015-no-type-assertions.md) (params
@@ -33,6 +35,7 @@ from one.
 - `src/lib/forms-api.ts` — `batchUpdate`, `createForm`.
 - `src/commands/forms/{write,create}.ts` + tests — new.
 - `src/commands/forms/index.ts` — register both.
+- `src/types/index.ts` — `ERROR_CODES` gains `PRUNE_REQUIRED` (exit 3).
 
 ## Out of scope
 
@@ -53,7 +56,9 @@ from one.
    - **Red** — given a form's current items and a document:
      - matching `id` → `updateItem`; missing `id` → `createItem` at its index;
      - a form item absent from the document → `deleteItem` **only** when
-       pruning; without `--prune` the plan is an error naming those items;
+       pruning; without `--prune` planning fails with `PRUNE_REQUIRED`, naming
+       both the items and the flag, and returns no partial plan a caller could
+       apply (0028 §3);
      - reordering → `moveItem`;
      - an `id` in the document that the form does not have → error, not a
        create (0028 §1);
@@ -68,12 +73,19 @@ from one.
 3. **`forms write`**
    - **Red** — sends the planned batch with `writeControl.requiredRevisionId`
      when the document carries `revision_id`, and without it when it does not;
-     a stale revision surfaces the API's conflict as a clear error (0028 §4);
+     a stale revision surfaces the API's conflict as a clear error (0028 §5);
      read-only fields in the document (`question_id`, `responder_uri`,
-     `linked_sheet_id`, form `id`) are ignored rather than rejected (0028 §5);
+     `linked_sheet_id`, form `id`) are ignored rather than rejected (0028 §6);
      `--file`, `@file` and stdin all reach the same parser; malformed YAML and
      a schema violation both fail `INVALID_ARGS` naming the offending path;
      an empty plan makes no API write and says so.
+   - **Red (the plan, 0028 §4)** — every `write` reports its plan: `data.plan`
+     in JSON lists each create / update / move / delete with the item it names,
+     and text mode summarizes it. `--dry-run` produces the same plan and issues
+     no `batchUpdate` — assert the call count. A `PRUNE_REQUIRED` failure and a
+     `--prune` success over the same document report the *same* deletions, one
+     as refused and one as applied, so a caller can tell the three cases apart
+     (applied / refused / never requested) without reading the exit code.
    - **Green** — implement.
 
 4. **`forms create`**
@@ -85,7 +97,8 @@ from one.
 5. **Docs**
    - `docs/commands.md`: `write` and `create` in the `forms` section, with
      `--prune` documented as what it is — the only way to delete a question, and
-     the reason deletion is not implicit.
+     the reason deletion is not implicit — plus `--dry-run`, the plan's shape,
+     and `PRUNE_REQUIRED` in the error-code reference.
    - `README.md` highlights: Forms goes from read to read/write.
 
 ## Acceptance criteria
@@ -96,7 +109,12 @@ from one.
       question's `question_id` is unchanged afterwards (verifiable with a
       second `forms read`)
 - [ ] Adding an item without an `id` creates it at that position
-- [ ] Removing an item fails without `--prune`, naming it; `--prune` deletes it
+- [ ] Removing an item fails with `PRUNE_REQUIRED` (exit 3) without `--prune`,
+      naming both the item and the flag, and the form is unchanged afterwards;
+      `--prune` deletes it
+- [ ] `--dry-run` on the same document reports the same plan and changes nothing
+- [ ] Every `write` reports `data.plan` in JSON, so a caller can tell an applied
+      deletion from a refused one without reading the exit code
 - [ ] A form edited in the browser between `read` and `write` makes the write
       fail rather than overwrite
 - [ ] `gdrive forms create "New survey" --file f.yaml --parent Surveys` creates

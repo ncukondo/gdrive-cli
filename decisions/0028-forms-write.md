@@ -65,11 +65,10 @@ They still hold their position, so a `moveItem` may name one. That is the point
 — an unmodelled video item stays where it was in a form whose questions changed
 around it.
 
-### 3. Deleting requires `--prune`
+### 3. Deleting requires `--prune`, and refusing costs nothing
 
 An item present in the form but absent from the document is **not** deleted by
-default. `write` fails, naming the items it would have removed, and `--prune`
-performs the deletion.
+default. `--prune` performs the deletion; without it, `write` refuses.
 
 This breaks declarative purity on purpose. The usual argument for implicit
 deletion — the document is the desired state, so absence means absence — assumes
@@ -82,7 +81,45 @@ programmatically and drops an item it did not understand.
 `--prune` is the same shape of decision as `rm --permanent`: the destructive
 reading of an ordinary command is available, spelled out, and never the default.
 
-### 4. `revision_id` makes a concurrent edit fail instead of clobber
+Refusing is only safe if the caller cannot mistake it for anything else, so
+three things are part of the decision, not of the implementation:
+
+**Nothing is applied.** The refusal happens while planning, before the first
+`batchUpdate`. A `write` that applied the creates and updates and then reported
+a failure would leave the form in a state no document describes, and would teach
+a caller that a failed `write` still changed something. The plan is built whole
+or not at all.
+
+**The message names `--prune`.** Listing the items that would be removed says
+what is wrong; it does not say what to do. An agent that has never seen the flag
+has to be told it exists, in the message that stops it.
+
+**The code is `PRUNE_REQUIRED`, not `INVALID_ARGS`.** The two demand different
+next actions — fix the document versus confirm the intent and re-run with a flag
+— and a caller should not have to parse prose to tell them apart. It joins
+[0007](0007-output-and-errors.md)'s table at exit code 3, the argument bucket,
+which is where a missing flag belongs. Adding a code is a contract change
+[0014](0014-pre-1.0-compatibility.md) permits in a minor release.
+
+### 4. `write` always reports its plan
+
+Every `write` reports what it did, or would do, as a structured plan: the
+creates, updates, moves and deletes, each naming the item. `--dry-run` produces
+the plan and issues no `batchUpdate`.
+
+This is what makes §3's guarantee checkable rather than merely promised. The
+question a caller actually has after a `write` is *did the change I expressed in
+the document reach the form* — and for a deletion the honest answer has three
+possible shapes: applied (with `--prune`), refused (without it), or not
+requested at all (the item was already gone). A plan answers all three in one
+place, in `data.plan` for JSON callers, without inferring anything from an exit
+code.
+
+It also makes the destructive path inspectable in advance. `--dry-run` before
+`--prune` is the sequence an agent should run when it is not certain, and it
+costs one `forms.get`.
+
+### 5. `revision_id` makes a concurrent edit fail instead of clobber
 
 When the document carries the `revision_id` that `read` emitted, `write` sends
 it as `writeControl.requiredRevisionId`. A form edited in the browser between
@@ -93,7 +130,7 @@ Omitting the field writes unconditionally, which is what a hand-authored
 document does. So the safe behavior is what the round trip gives for free, and
 the unsafe one takes deleting a line.
 
-### 5. Read-only fields are ignored, not rejected
+### 6. Read-only fields are ignored, not rejected
 
 `question_id`, `responder_uri`, `linked_sheet_id` and the form's own `id` are
 output-only. `write` ignores them.
@@ -103,7 +140,7 @@ round trip 0027 §1 promises is not a round trip. Rejecting the fields that
 `read` itself emitted would make the two commands disagree about their own
 document.
 
-### 6. `forms create` creates, then fills, then moves
+### 7. `forms create` creates, then fills, then moves
 
 `forms.create` accepts a title and nothing else — no description, no items, no
 parent folder. So `create` is three calls: `forms.create`, then a
@@ -131,15 +168,18 @@ Without `--file`, `create` makes an empty form with that title, which is the
 ## Consequences
 
 - `write` costs one `forms.get` before its `batchUpdate`: it cannot classify an
-  item without knowing which ids the form currently has, and §3's error message
-  has to name what would be deleted.
+  item without knowing which ids the form currently has, and §3's refusal has to
+  name what would be deleted. `--dry-run` is that call and nothing else.
 - A user who edits a form in the browser between `read` and `write` gets a
-  failure, not a merge. §4 makes that a clear error; there is no three-way
+  failure, not a merge. §5 makes that a clear error; there is no three-way
   merge and this record does not plan one.
-- An agent can now damage a form in one command. `--prune` and `revision_id`
-  are the two guards, and both are stated in terms of what they cost when
-  absent, so a later change that weakens either has to argue against this
-  paragraph.
+- An agent can now damage a form in one command. `--prune`, the plan, and
+  `revision_id` are the three guards, and each is stated in terms of what it
+  costs when absent, so a later change that weakens any of them has to argue
+  against this paragraph.
+- `ERROR_CODES` gains `PRUNE_REQUIRED`, so far the only code raised by one
+  command. That is a reason to check whether a second use appears before 1.0
+  freezes the table, not a reason to have overloaded `INVALID_ARGS`.
 - `forms create --parent` is two round trips more than it looks. That is the
   API's constraint, recorded here so it is not mistaken for an implementation
   slip.
