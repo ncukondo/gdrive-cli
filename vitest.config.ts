@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     globals: true,
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    // `scripts/` holds tooling rather than the CLI, but a script the release
+    // depends on is tested like anything else, beside itself.
+    include: ["src/**/*.test.ts", "tests/**/*.test.ts", "scripts/**/*.test.ts"],
   },
 });
