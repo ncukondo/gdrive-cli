@@ -32,6 +32,15 @@ jobs:
             exit 1
           fi
 
+      # Before the build, the binaries and npm: decision 0014 makes the release
+      # notes the compatibility record for 0.x, so a tag whose version has no
+      # CHANGELOG.md section has to fail the job rather than publish a body
+      # nobody can read.
+      - name: Extract this version's release notes
+        run: |
+          bun scripts/changelog.ts "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md"
+
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run lint:casts
@@ -67,8 +76,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The two flags coexist, and the order is not ours to choose: without
+          # --notes-start-tag, gh sends the --notes-file content as `body` plus
+          # `generate_release_notes: true`, and the REST API "pre-pends" the
+          # body to the notes it generates. So the changelog section leads and
+          # the commit list follows. --title keeps our own title, which
+          # --generate-notes would otherwise replace.
           gh release create "$GITHUB_REF_NAME" out/* install.sh install.ps1 \
             --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
             --generate-notes
 
       - name: Publish to npm (trusted publishing)
