@@ -57,7 +57,10 @@ const form: FormRaw = {
           choiceQuestion: {
             type: "CHECKBOX",
             shuffle: true,
-            options: [{ value: "Docs" }, { value: "Sheets", goToAction: "NEXT_SECTION" }],
+            options: [
+              { value: "Docs" },
+              { value: "Sheets", goToAction: "GO_TO_ACTION_UNSPECIFIED", goToSectionId: "i-page" },
+            ],
           },
         },
       },
@@ -184,7 +187,14 @@ describe("toFormDocument", () => {
       title: "Which tools do you use?",
       required: false,
       shuffle: true,
-      options: ["Docs", { value: "Sheets", go_to_action: "NEXT_SECTION" }],
+      options: [
+        "Docs",
+        {
+          value: "Sheets",
+          go_to_action: "GO_TO_ACTION_UNSPECIFIED",
+          go_to_section_id: "i-page",
+        },
+      ],
     });
   });
 
@@ -427,6 +437,62 @@ describe("toFormDocument with a field it cannot model inside a question", () => 
   });
 });
 
+/**
+ * The key order is a contract, not an accident: 0027 §2 writes a document in
+ * this order and the document is meant to be read and diffed. Both halves of
+ * this file owe it — what `read` emits, and what `parseFormDocument` hands the
+ * write side back.
+ */
+describe("the order of an item's keys", () => {
+  it("names the item before it describes it, as 0027 §2 writes it", () => {
+    const { document } = toFormDocument(form);
+    expect(Object.keys(document.items[0] ?? {})).toEqual([
+      "id",
+      "question_id",
+      "type",
+      "choice_type",
+      "title",
+      "description",
+      "required",
+      "options",
+    ]);
+    expect(Object.keys(document.items[3] ?? {})).toEqual([
+      "id",
+      "question_id",
+      "type",
+      "title",
+      "required",
+      "low",
+      "high",
+      "low_label",
+      "high_label",
+    ]);
+    expect(Object.keys(document.items[8] ?? {})).toEqual(["id", "type", "title", "description"]);
+  });
+
+  it("gives the form's own keys the same treatment", () => {
+    const { document } = toFormDocument(form);
+    expect(Object.keys(document)).toEqual([
+      "id",
+      "title",
+      "description",
+      "revision_id",
+      "responder_uri",
+      "linked_sheet_id",
+      "items",
+    ]);
+  });
+
+  it("hands the same order back out of parseFormDocument", () => {
+    const { document } = toFormDocument(form);
+    const parsed = parseFormDocument(formDocumentToYaml(document));
+    expect(Object.keys(parsed)).toEqual(Object.keys(document));
+    for (const [index, item] of parsed.items.entries()) {
+      expect(Object.keys(item)).toEqual(Object.keys(document.items[index] ?? {}));
+    }
+  });
+});
+
 describe("formDocumentToYaml", () => {
   it("round-trips through a YAML parser unchanged", () => {
     const { document } = toFormDocument(form);
@@ -436,6 +502,33 @@ describe("formDocumentToYaml", () => {
   it("writes multi-line prose as a block scalar rather than escapes", () => {
     const { document } = toFormDocument(form);
     expect(formDocumentToYaml(document)).toContain("description: |-\n  Takes about five minutes.");
+  });
+
+  it("never folds a long line, however long the question", () => {
+    const long = `Which of the following best describes ${"the way your team works together"} on a day-to-day basis, in an average week?`;
+    const { document } = toFormDocument({
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "i1",
+          title: long,
+          questionItem: { question: { questionId: "q1", textQuestion: {} } },
+        },
+      ],
+    });
+    expect(formDocumentToYaml(document)).toBe(
+      [
+        "title: Survey",
+        "items:",
+        "  - id: i1",
+        "    question_id: q1",
+        "    type: text",
+        `    title: ${long}`,
+        "    required: false",
+        "    paragraph: false",
+        "",
+      ].join("\n"),
+    );
   });
 });
 

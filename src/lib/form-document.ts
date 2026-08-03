@@ -122,67 +122,80 @@ const ChoiceOptionSchema = z.union([
   }),
 ]);
 
-/** Ids are output-only: `read` always emits them, a new item simply has none. */
-const itemBase = {
-  id: z.string().optional(),
+/**
+ * The schema is declared in the order the projection emits — identity, `type`
+ * and its discriminator, prose, then payload — because zod hands the parsed
+ * object's keys back in *declaration* order. Written any other way, a document
+ * that went through `parseFormDocument` and back out through
+ * `formDocumentToYaml` would come out reordered, and the two halves of this
+ * file would disagree about the shape of the thing they both own.
+ *
+ * Ids are output-only: `read` always emits them, a new item simply has none.
+ */
+const itemIdentityShape = { id: z.string().optional() };
+const questionIdentityShape = { ...itemIdentityShape, question_id: z.string().optional() };
+
+const itemProseShape = {
   title: z.string().optional(),
   description: z.string().optional(),
 };
 
-const questionBase = {
-  ...itemBase,
-  question_id: z.string().optional(),
-  required: z.boolean().optional(),
-};
+const questionProseShape = { ...itemProseShape, required: z.boolean().optional() };
 
 export const CHOICE_TYPES = ["radio", "checkbox", "dropdown"] as const;
 
 const FormItemSchema = z.discriminatedUnion("type", [
   z.object({
-    ...questionBase,
+    ...questionIdentityShape,
     type: z.literal("choice"),
     choice_type: z.enum(CHOICE_TYPES),
-    options: z.array(ChoiceOptionSchema),
+    ...questionProseShape,
     shuffle: z.boolean().optional(),
+    options: z.array(ChoiceOptionSchema),
   }),
   z.object({
-    ...questionBase,
+    ...questionIdentityShape,
     type: z.literal("scale"),
+    ...questionProseShape,
     low: z.number(),
     high: z.number(),
     low_label: z.string().optional(),
     high_label: z.string().optional(),
   }),
   z.object({
-    ...questionBase,
+    ...questionIdentityShape,
     type: z.literal("text"),
+    ...questionProseShape,
     paragraph: z.boolean().optional(),
   }),
   z.object({
-    ...questionBase,
+    ...questionIdentityShape,
     type: z.literal("date"),
+    ...questionProseShape,
     include_time: z.boolean().optional(),
     include_year: z.boolean().optional(),
   }),
   z.object({
-    ...questionBase,
+    ...questionIdentityShape,
     type: z.literal("time"),
+    ...questionProseShape,
     duration: z.boolean().optional(),
   }),
   z.object({
-    ...questionBase,
+    ...questionIdentityShape,
     type: z.literal("file_upload"),
+    ...questionProseShape,
     folder_id: z.string().optional(),
     max_files: z.number().optional(),
     max_file_size: z.string().optional(),
     types: z.array(z.string()).optional(),
   }),
-  z.object({ ...itemBase, type: z.literal("page_break") }),
-  z.object({ ...itemBase, type: z.literal("text_item") }),
+  z.object({ ...itemIdentityShape, type: z.literal("page_break"), ...itemProseShape }),
+  z.object({ ...itemIdentityShape, type: z.literal("text_item"), ...itemProseShape }),
   z.object({
-    ...itemBase,
-    question_id: z.string().optional(),
+    ...questionIdentityShape,
     type: z.literal("unsupported"),
+    ...itemProseShape,
     raw: z.unknown(),
   }),
 ]);
