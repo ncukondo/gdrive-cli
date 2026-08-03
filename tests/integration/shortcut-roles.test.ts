@@ -10,9 +10,11 @@ import { registerDriveWrite } from "../../src/commands/drive-write.ts";
 import { registerDocs } from "../../src/commands/docs/index.ts";
 import { registerSheets } from "../../src/commands/sheets/index.ts";
 import { registerShare } from "../../src/commands/share/index.ts";
+import { registerForms } from "../../src/commands/forms/index.ts";
 import type { DriveClient, DriveFileRaw } from "../../src/lib/api.ts";
 import type { DocsClient } from "../../src/lib/docs-api.ts";
 import type { SheetsClient } from "../../src/lib/sheets-api.ts";
+import type { FormsClient } from "../../src/lib/forms-api.ts";
 import { createTreeDrive, type DriveNode } from "../helpers/fake-drive.ts";
 import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
 
@@ -24,7 +26,12 @@ import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
  */
 
 const clients = vi.hoisted(() => {
-  const state: { drive?: DriveClient; docs?: DocsClient; sheets?: SheetsClient } = {};
+  const state: {
+    drive?: DriveClient;
+    docs?: DocsClient;
+    sheets?: SheetsClient;
+    forms?: FormsClient;
+  } = {};
   return state;
 });
 
@@ -32,6 +39,7 @@ vi.mock("../../src/lib/google-clients.ts", () => ({
   buildDriveClient: () => clients.drive,
   buildDocsClient: () => clients.docs,
   buildSheetsClient: () => clients.sheets,
+  buildFormsClient: () => clients.forms,
 }));
 
 vi.mock("../../src/lib/account.ts", () => ({
@@ -41,15 +49,18 @@ vi.mock("../../src/lib/account.ts", () => ({
 const FOLDER = "application/vnd.google-apps.folder";
 const DOC = "application/vnd.google-apps.document";
 const SHEET = "application/vnd.google-apps.spreadsheet";
+const FORM = "application/vnd.google-apps.form";
 
 // root/
 //   Reports/                (rep1)
 //     2026/                 (y2026)
 //     Notes        (doc1)   a Doc
 //     Budget       (sh1)    a Sheet
+//     Survey       (frm1)   a Form
 //     link-to-2026   -> 2026    (lnkFolder)
 //     link-to-doc    -> Notes   (lnkDoc)
 //     link-to-sheet  -> Budget  (lnkSheet)
+//     link-to-form   -> Survey  (lnkForm)
 //   Other/                  (other)
 //   plain.txt               (plain)
 const tree: DriveNode[] = [
@@ -57,9 +68,11 @@ const tree: DriveNode[] = [
   { id: "y2026", name: "2026", mimeType: FOLDER, parents: ["rep1"] },
   { id: "doc1", name: "Notes", mimeType: DOC, parents: ["rep1"] },
   { id: "sh1", name: "Budget", mimeType: SHEET, parents: ["rep1"] },
+  { id: "frm1", name: "Survey", mimeType: FORM, parents: ["rep1"] },
   { id: "lnkFolder", name: "link-to-2026", parents: ["rep1"], target: "y2026" },
   { id: "lnkDoc", name: "link-to-doc", parents: ["rep1"], target: "doc1" },
   { id: "lnkSheet", name: "link-to-sheet", parents: ["rep1"], target: "sh1" },
+  { id: "lnkForm", name: "link-to-form", parents: ["rep1"], target: "frm1" },
   // Points at an id the tree does not hold: `files.get` answers 404, which is
   // what a trashed, deleted or unreadable target looks like.
   { id: "lnkGone", name: "link-to-gone", parents: ["rep1"], target: "1GoneDoc" },
@@ -209,6 +222,20 @@ function createSheetsSpies(): SheetsSpies {
   };
 }
 
+interface FormsSpies {
+  client: FormsClient;
+  get: ReturnType<typeof vi.fn>;
+  list: ReturnType<typeof vi.fn>;
+}
+
+function createFormsSpies(): FormsSpies {
+  const get = vi.fn(async ({ formId }: { formId: string }) => ({
+    data: { formId, info: { title: "Survey" }, items: [] },
+  }));
+  const list = vi.fn(async () => ({ data: { responses: [] } }));
+  return { client: { forms: { get, responses: { list } } }, get, list };
+}
+
 const workDir = mkdtempSync(join(tmpdir(), "gdrive-shortcut-"));
 const localFile = join(workDir, "note.txt");
 writeFileSync(localFile, "hello");
@@ -223,6 +250,7 @@ afterAll(() => {
 let drive: DriveSpies;
 let docs: DocsSpies;
 let sheets: SheetsSpies;
+let forms: FormsSpies;
 let stdout: string[];
 let stderr: string[];
 
@@ -230,9 +258,11 @@ beforeEach(() => {
   drive = createDriveSpies();
   docs = createDocsSpies();
   sheets = createSheetsSpies();
+  forms = createFormsSpies();
   clients.drive = drive.client;
   clients.docs = docs.client;
   clients.sheets = sheets.client;
+  clients.forms = forms.client;
   stdout = [];
   stderr = [];
   mockProcessExit();
@@ -257,6 +287,7 @@ function build(): Command {
   registerDocs(program);
   registerSheets(program);
   registerShare(program);
+  registerForms(program);
   return program;
 }
 
@@ -399,6 +430,17 @@ describe("content arguments follow a shortcut (decision 0025 §1)", () => {
   it("`sheets clear <link>` clears in the target spreadsheet", async () => {
     await run(["sheets", "clear", "Reports/link-to-sheet", "A1"]);
     expect(firstArg(sheets.values.clear)).toMatchObject({ spreadsheetId: "sh1" });
+  });
+
+  it("`forms read <link>` reads the target form", async () => {
+    await run(["forms", "read", "Reports/link-to-form"]);
+    expect(firstArg(forms.get)).toMatchObject({ formId: "frm1" });
+  });
+
+  it("`forms responses <link>` tabulates the target form's responses", async () => {
+    await run(["forms", "responses", "Reports/link-to-form"]);
+    expect(firstArg(forms.get)).toMatchObject({ formId: "frm1" });
+    expect(firstArg(forms.list)).toMatchObject({ formId: "frm1" });
   });
 });
 
