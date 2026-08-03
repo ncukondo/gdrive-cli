@@ -48,7 +48,7 @@ account email and stores the token under that email. The first account
 authenticated becomes the default account.
 
 ```console
-$ gdrive auth
+$ gdrive auth -f text
 Authenticated as me@gmail.com (set as default account)
 ```
 
@@ -90,7 +90,7 @@ you only log in once per account.
 ## `gdrive auth status`
 
 ```console
-$ gdrive auth status
+$ gdrive auth status -f text
 Account: me@gmail.com [default]
 Token expires: 2026-07-24 07:16:56
 Scopes: documents, userinfo.email, openid, drive, spreadsheets
@@ -115,7 +115,7 @@ Revokes the token with Google and deletes the local token file. Without an
 argument it logs out the resolved account.
 
 ```console
-$ gdrive auth logout work
+$ gdrive auth logout -f text work
 Logged out work@example.com
 ```
 

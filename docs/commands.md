@@ -13,23 +13,28 @@ have their own pages:
 | Option | Description |
 |--------|-------------|
 | `-a, --account <email\|alias>` | Account to use (overrides the default) |
-| `-f, --format <text\|json>` | Output format (default `text`) |
+| `-f, --format <text\|json>` | Output format (default `json`) |
 | `-q, --quiet` | Minimal output for piping |
 | `--config <path>` | Config file path |
 | `-h, --help`, `-V, --version` | Help / version |
 
 Account resolution: `-a` > `$GDRIVE_CLI_ACCOUNT` > `default_account` in config >
 the sole authenticated account. Format resolution: `-f` > `$GDRIVE_CLI_FORMAT` >
-`default_format` in config > `text`.
+`default_format` in config > `json`.
 
 ## Output modes
 
 Three modes, chosen with `-f` and `-q`:
 
-- **text** (default) — human-readable tables and sentences.
+- **json** (default) — a stable envelope. `--quiet` is ignored in JSON mode.
+- **`-f text`** — the convenience layer: one record per line, fields separated
+  by a single tab. Nothing is padded and no column is measured, so a field's
+  boundary is always recoverable — and when you want columns on screen, pipe it
+  through something that aligns: `gdrive ls -f text | column -t -s $'\t'`.
 - **`-q` quiet** — one value per line, made for pipes: usually IDs. Some
-  commands (`rm`, `share remove`, `sheets clear`) print nothing at all.
-- **`-f json`** — a stable envelope. `--quiet` is ignored in JSON mode.
+  commands (`rm`, `share remove`, `sheets clear`) print nothing at all. It is
+  a variant of text mode, so `-q` on its own emits the envelope: pair it with
+  `-f text` when you want the bare values.
 
 ```json
 { "success": true, "data": { } }
@@ -37,6 +42,16 @@ Three modes, chosen with `-f` and `-q`:
 ```
 
 The `data` shapes below are what goes in that envelope.
+
+**Every `console` transcript on this page passes `-f text`**, because a
+transcript is only worth showing when it shows the text. Without it — or without
+`default_format = "text"` in your config — each of those commands prints the
+envelope instead. See
+[`../decisions/0036`](../decisions/0036-machine-format-by-default.md).
+
+Text is lossy on purpose. A tab or a newline in a file name — Drive accepts
+both — becomes a space, so one record can never render as two rows; `-f json`
+carries the real name.
 
 ## Addressing files
 
@@ -94,7 +109,7 @@ When a plain path fails on its first segment and a shared drive has that name,
 the error says so:
 
 ```console
-$ gdrive ls "Finance/2026"
+$ gdrive ls -f text "Finance/2026"
 Error: No such file or folder: Finance. A shared drive has that name — did you
 mean "drive:Finance/2026"?
 ```
@@ -137,18 +152,18 @@ moves *into* whatever it points at.
 `rm` is the case worth spelling out. Deleting a link deletes the link:
 
 ```console
-$ gdrive info "Reports/link-to-doc"
-Name:      link-to-doc
-Type:      shortcut
-ID:        1LnkAbC...
-MIME:      application/vnd.google-apps.shortcut
-Size:      -
-Modified:  2026-08-01T09:12:44.000Z
-Created:   2026-07-30T14:02:10.000Z
-Target:    1DocXyZ... (doc)
-Owners:    me@gmail.com
-Trashed:   false
-Link:      https://drive.google.com/file/d/1LnkAbC.../view?usp=drivesdk
+$ gdrive info -f text "Reports/link-to-doc"
+Name:	link-to-doc
+Type:	shortcut
+ID:	1LnkAbC...
+MIME:	application/vnd.google-apps.shortcut
+Size:	-
+Modified:	2026-08-01T09:12:44.000Z
+Created:	2026-07-30T14:02:10.000Z
+Target:	1DocXyZ... (doc)
+Owners:	me@gmail.com
+Trashed:	false
+Link:	https://drive.google.com/file/d/1LnkAbC.../view?usp=drivesdk
 
 $ gdrive rm "Reports/link-to-doc"     # trashes 1LnkAbC..., not 1DocXyZ...
 $ gdrive info 1DocXyZ...              # the document is untouched
@@ -175,7 +190,7 @@ Two failures name the shortcut rather than leaving you with a mysterious
 `NOT_FOUND` on an ID you can see in `ls`:
 
 ```console
-$ gdrive docs read "Reports/link-to-gone"
+$ gdrive docs read -f text "Reports/link-to-gone"
 Error: Shortcut "Reports/link-to-gone" points at a file that is gone or not
 accessible (target 1DocXyZ...).
 ```
@@ -261,10 +276,10 @@ Lists a folder's direct children; My Drive root when the argument is omitted.
 | `--drive <name>` | List the root of this shared drive (not with `<folder>`) |
 
 ```console
-$ gdrive ls "Reports/2026" --type sheet -n 2 --order modified
-Type      Modified          Name                       ID
-sheet     2026-07-24 06:17  Budget                     1S6cRd...
-sheet     2026-06-02 11:40  Headcount                  1QwErT...
+$ gdrive ls -f text "Reports/2026" --type sheet -n 2 --order modified
+Type	Modified	Name	ID
+sheet	2026-07-24 06:17	Budget	1S6cRd...
+sheet	2026-06-02 11:40	Headcount	1QwErT...
 ```
 
 ```json
@@ -308,9 +323,9 @@ Searches file names and full text across My Drive.
 | `--drive <name>` | Search only the shared drive with this name |
 
 ```console
-$ gdrive search budget --type sheet
-Type      Modified          Name                       ID
-sheet     2026-07-24 06:17  Budget                     1S6cRd...
+$ gdrive search -f text budget --type sheet
+Type	Modified	Name	ID
+sheet	2026-07-24 06:17	Budget	1S6cRd...
 
 $ gdrive search budget --drive "Finance"   # one shared drive
 $ gdrive search budget --all-drives        # My Drive + every shared drive
@@ -332,10 +347,10 @@ Lists the shared drives this account can see. Takes no arguments and no
 options.
 
 ```console
-$ gdrive drives
-Name                            ID
-Team Drive                      0ABcDeFgHiJkLmNoPqR
-Finance                         0AZyXwVuTsRqPoNmLkJ
+$ gdrive drives -f text
+Name	ID
+Team Drive	0ABcDeFgHiJkLmNoPqR
+Finance	0AZyXwVuTsRqPoNmLkJ
 ```
 
 ```json
@@ -344,8 +359,8 @@ Finance                         0AZyXwVuTsRqPoNmLkJ
 
 Quiet: one drive ID per line.
 
-The ID column answers two things: it is a folder ID like any other, so it goes
-straight into `ls`, `--parent`, `mv`, and `cp`, and the name column is what
+The ID field answers two things: it is a folder ID like any other, so it goes
+straight into `ls`, `--parent`, `mv`, and `cp`, and the name field is what
 `--drive` matches against.
 
 ```sh
@@ -358,17 +373,17 @@ Text output is `No shared drives.` when the account has none; JSON is an empty
 ### `gdrive info <file>`
 
 ```console
-$ gdrive info "Reports/2026/Budget"
-Name:      Budget
-Type:      sheet
-ID:        1S6cRd...
-MIME:      application/vnd.google-apps.spreadsheet
-Size:      -
-Modified:  2026-07-24T06:17:02.000Z
-Created:   2026-07-24T06:17:00.000Z
-Owners:    me@gmail.com
-Trashed:   false
-Link:      https://docs.google.com/spreadsheets/d/1S6cRd.../edit
+$ gdrive info -f text "Reports/2026/Budget"
+Name:	Budget
+Type:	sheet
+ID:	1S6cRd...
+MIME:	application/vnd.google-apps.spreadsheet
+Size:	-
+Modified:	2026-07-24T06:17:02.000Z
+Created:	2026-07-24T06:17:00.000Z
+Owners:	me@gmail.com
+Trashed:	false
+Link:	https://docs.google.com/spreadsheets/d/1S6cRd.../edit
 ```
 
 ```json
@@ -396,7 +411,7 @@ A Doc or Sheet with no `--export-as` defaults to `pdf` / `csv`. Binary files are
 downloaded as-is; passing `--export-as` for one is `INVALID_ARGS`.
 
 ```console
-$ gdrive download "Reports/2026/Notes" --export-as md -o notes.md
+$ gdrive download -f text "Reports/2026/Notes" --export-as md -o notes.md
 Downloaded Notes to notes.md
 
 $ gdrive download 1AbC... > photo.png
@@ -417,7 +432,7 @@ Quiet: the output path (nothing when writing to stdout).
 | `--as-doc` / `--as-sheet` | Convert to a Google Doc / Sheet on upload |
 
 ```console
-$ gdrive upload ./data.csv --parent Reports --name Budget --as-sheet
+$ gdrive upload -f text ./data.csv --parent Reports --name Budget --as-sheet
 Uploaded Budget (1S6cRd...)
 ```
 
@@ -430,7 +445,7 @@ Quiet: the new file ID.
 ### `gdrive mkdir <name>`
 
 ```console
-$ gdrive mkdir 2027 --parent Reports
+$ gdrive mkdir -f text 2027 --parent Reports
 Created folder 2027 (1FoLdEr...)
 ```
 
@@ -446,10 +461,10 @@ Quiet: the new folder ID.
 `--name` for the copy.
 
 ```console
-$ gdrive mv "Inbox/Budget" "Reports/2026"
+$ gdrive mv -f text "Inbox/Budget" "Reports/2026"
 Moved Budget to 1FoLdEr...
 
-$ gdrive cp "Reports/2026/Budget" Archive --name "Budget (2026)"
+$ gdrive cp -f text "Reports/2026/Budget" Archive --name "Budget (2026)"
 Copied to Budget (2026) (1CoPy...)
 ```
 
@@ -465,7 +480,7 @@ Moves the file to the trash. `--permanent` deletes it outright — that cannot b
 undone.
 
 ```console
-$ gdrive rm "Reports/2026/Draft"
+$ gdrive rm -f text "Reports/2026/Draft"
 Trashed Draft (1DrAfT...)
 ```
 
@@ -496,10 +511,10 @@ The permission object:
 ### `gdrive share list <file>`
 
 ```console
-$ gdrive share list "Reports/2026/Budget"
-Role       Type    Grantee                 Permission ID
-owner      user    me@gmail.com            15586974644968362332
-writer     anyone  (anyone with link)      anyoneWithLink
+$ gdrive share list -f text "Reports/2026/Budget"
+Role	Type	Grantee	Permission ID
+owner	user	me@gmail.com	15586974644968362332
+writer	anyone	(anyone with link)	anyoneWithLink
 ```
 
 ```json
@@ -523,7 +538,7 @@ Exactly one grantee option is required.
 | `--allow-discovery` | Make the file discoverable in search |
 
 ```console
-$ gdrive share add "Reports/2026/Budget" --to alice@example.com --role writer
+$ gdrive share add -f text "Reports/2026/Budget" --to alice@example.com --role writer
 Granted writer to alice@example.com (perm-abc)
 ```
 
@@ -538,7 +553,7 @@ API spells them so `share list` output can be fed straight back. Pass a drive's
 root ID (from `gdrive drives`) as `<file>` to add a member to the drive itself:
 
 ```console
-$ gdrive share add 0ANPgzMZtaAa6Uk9PVA --to alice@example.com --role organizer
+$ gdrive share add -f text 0ANPgzMZtaAa6Uk9PVA --to alice@example.com --role organizer
 Granted organizer to alice@example.com (perm-abc)
 ```
 
@@ -555,7 +570,7 @@ Requires `--to <email>` (resolved to its permission ID) or an explicit
 `--permission-id <id>`. An email with no permission on the file is `NOT_FOUND`.
 
 ```console
-$ gdrive share remove "Reports/2026/Budget" --to alice@example.com
+$ gdrive share remove -f text "Reports/2026/Budget" --to alice@example.com
 Removed permission perm-abc from 1S6cRd...
 ```
 
@@ -573,7 +588,7 @@ existing one is reused, and upgraded when `--role` differs. `--role` takes
 not link roles.
 
 ```console
-$ gdrive share link "Reports/2026/Budget" --role writer
+$ gdrive share link -f text "Reports/2026/Budget" --role writer
 Anyone with the link (writer)
 https://docs.google.com/spreadsheets/d/1S6cRd.../edit
 ```
@@ -599,7 +614,7 @@ real table. Every one of them takes `--as <markdown|text>`, defaulting to
 `markdown`, which makes the obvious pipe do the obvious thing:
 
 ```console
-$ gdrive docs read A | gdrive docs append B -    # structure survives
+$ gdrive docs read -f text A | gdrive docs append B -    # structure survives
 ```
 
 Use `--as text` for content that was never meant as Markdown — logs, code,
@@ -618,7 +633,7 @@ have no Docs equivalent, so they stay literal and are reported — one line on
 stderr in text mode, an `unsupported` array in JSON:
 
 ```console
-$ gdrive docs append "Notes/Meeting" @draft.md
+$ gdrive docs append -f text "Notes/Meeting" @draft.md
 Kept as plain text: image (line 12)
 Appended to Meeting notes (1BzqpK...)
 ```
@@ -667,7 +682,8 @@ $ printf '1\\. not a list item\n' | gdrive docs append "Notes/Ops" -
 
 `--as markdown` (default) maps headings, bold/italic, links, bulleted and
 numbered lists, and — best effort — tables. `--as text` emits plain paragraph
-text. Both print the body to stdout, in quiet mode too.
+text. Both print the body to stdout under `-f text`, in quiet mode too; `-f
+json`, which is what you get unasked, carries the same body in `data.content`.
 
 A numbered item prints its real ordinal — its position in its list, from
 wherever that list starts — so a list that continues across intervening
@@ -678,7 +694,7 @@ and documents converted from HTML report no glyph information, so their numbered
 lists come back as `-`.
 
 ```console
-$ gdrive docs read "Notes/Meeting"
+$ gdrive docs read -f text "Notes/Meeting"
 # Meeting notes
 Discussed the **budget** and [the plan](https://example.com).
 - ship on Friday
@@ -701,7 +717,7 @@ The Docs API always creates in My Drive, so `--parent` is applied as a move
 right after creation.
 
 ```console
-$ gdrive docs create "Meeting notes" --content @agenda.md --parent Notes
+$ gdrive docs create -f text "Meeting notes" --content @agenda.md --parent Notes
 Created Meeting notes (1BzqpK...)
 ```
 
@@ -717,7 +733,7 @@ Appends the content as new paragraphs at the end of the body. `--as text`
 appends it verbatim instead.
 
 ```console
-$ echo "decided: ship on Friday" | gdrive docs append "Notes/Meeting" -
+$ echo "decided: ship on Friday" | gdrive docs append -f text "Notes/Meeting" -
 Appended to Meeting notes (1BzqpK...)
 ```
 
@@ -741,7 +757,7 @@ a table and Docs cannot nest one. `--as text` is the plain substitution, in one
 API call.
 
 ```console
-$ gdrive docs replace "Notes/Meeting" --find "<!-- schedule -->" --replace @table.md
+$ gdrive docs replace -f text "Notes/Meeting" --find "<!-- schedule -->" --replace @table.md
 Replaced 1 occurrence
 ```
 
@@ -749,7 +765,7 @@ To keep the marker for next time, insert next to it instead of replacing it —
 see [`insert --before`](#gdrive-docs-insert-file-textfile-).
 
 ```console
-$ gdrive docs replace "Notes/Meeting" --find Q3 --replace Q4 --match-case
+$ gdrive docs replace -f text "Notes/Meeting" --find Q3 --replace Q4 --match-case
 Replaced 3 occurrences
 ```
 
@@ -773,10 +789,10 @@ Exactly one position is required:
 The content is Markdown unless `--as text` says otherwise.
 
 ```console
-$ gdrive docs insert "Notes/Meeting" "DRAFT — " --at start
+$ gdrive docs insert -f text "Notes/Meeting" "DRAFT — " --at start
 Inserted into Meeting notes (1BzqpK...)
 
-$ gdrive docs insert "Notes/Meeting" @table.md --before "<!-- schedule -->"
+$ gdrive docs insert -f text "Notes/Meeting" @table.md --before "<!-- schedule -->"
 Inserted into Meeting notes (1BzqpK...)
 ```
 
@@ -810,10 +826,10 @@ the first *visible* tab is used. Omitting the range targets the whole tab.
 ### `gdrive sheets tabs <file>`
 
 ```console
-$ gdrive sheets tabs "Reports/2026/Budget"
-Index  Rows  Cols  Title
-0      1000  26    Sheet1
-1      50    10    Summary
+$ gdrive sheets tabs -f text "Reports/2026/Budget"
+Index	Rows	Cols	Title
+0	1000	26	Sheet1
+1	50	10	Summary
 ```
 
 ```json
@@ -826,13 +842,13 @@ Quiet: one tab title per line.
 
 ### `gdrive sheets read <file> [<range>]`
 
-`--as` is `table` (default), `csv`, or `json`.
+`--as` is `table` (default), `csv`, or `json`; `table` is tab-separated.
 
 ```console
-$ gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:B3"
-name   score
-alice  90
-bob    80
+$ gdrive sheets read -f text "Reports/2026/Budget" "Sheet1!A1:B3"
+name	score
+alice	90
+bob	80
 ```
 
 ```json
@@ -849,7 +865,7 @@ Quiet: CSV to stdout.
 lets Sheets parse formulas and dates.
 
 ```console
-$ gdrive sheets write "Reports/2026/Budget" A1:B2 --values 'name,score
+$ gdrive sheets write -f text "Reports/2026/Budget" A1:B2 --values 'name,score
 alice,90'
 Updated 4 cells in Sheet1!A1:B2
 ```
@@ -868,7 +884,7 @@ Appends rows after the existing table. Same options as `write`; the range is
 where to look for that table (the whole tab if omitted).
 
 ```console
-$ gdrive sheets append "Reports/2026/Budget" --values '[["carol","70"]]'
+$ gdrive sheets append -f text "Reports/2026/Budget" --values '[["carol","70"]]'
 Appended 1 rows to Sheet1!A4:B4
 ```
 
@@ -885,7 +901,7 @@ Quiet: the updated cell count.
 Clears values, leaving formatting alone.
 
 ```console
-$ gdrive sheets clear "Reports/2026/Budget" A4:B4
+$ gdrive sheets clear -f text "Reports/2026/Budget" A4:B4
 Cleared Sheet1!A4:B4
 ```
 
@@ -902,7 +918,7 @@ Quiet: prints nothing.
 first, then moved).
 
 ```console
-$ gdrive sheets create Budget --parent "Reports/2026"
+$ gdrive sheets create -f text Budget --parent "Reports/2026"
 Created Budget (1S6cRd...)
 ```
 
@@ -934,10 +950,10 @@ A form reports [`type: form`](#the-file-object), so `--type form` lists the
 files these two commands can take:
 
 ```console
-$ gdrive ls Surveys --type form
-Type      Modified          Name                       ID
-form      2026-08-03 04:51  2026 Engagement survey     1FoRm...
-form      2026-07-11 16:20  Untitled form              1OtHeR...
+$ gdrive ls -f text Surveys --type form
+Type	Modified	Name	ID
+form	2026-08-03 04:51	2026 Engagement survey	1FoRm...
+form	2026-07-11 16:20	Untitled form	1OtHeR...
 ```
 
 A form has **two names**, and they often differ: the Drive name that `ls`,
@@ -949,9 +965,9 @@ read` prints. Titling a form in the Forms UI leaves its Drive name at
 full-text index, and that index covers the title inside the form:
 
 ```console
-$ gdrive search "Onboarding feedback"      # the title inside 1OtHeR...
-Type      Modified          Name                       ID
-form      2026-07-11 16:20  Untitled form              1OtHeR...
+$ gdrive search -f text "Onboarding feedback"   # the title inside 1OtHeR...
+Type	Modified	Name	ID
+form	2026-07-11 16:20	Untitled form	1OtHeR...
 ```
 
 A **path** does not: every command taking a `<form>` resolves it by Drive name,
@@ -1025,7 +1041,7 @@ trip cannot destroy it, and **both** commands say so: one line on stderr in text
 mode, an `unsupported` array in JSON.
 
 ```console
-$ gdrive forms read "Surveys/2026" > form.yaml
+$ gdrive forms read -f text "Surveys/2026" > form.yaml
 Kept as raw: videoItem (item 3c4d5e6f)
 ```
 
@@ -1066,12 +1082,13 @@ quiz's document, keep in mind that these settings live outside it.
 
 ### `gdrive forms read <form>`
 
-Text output **is** the document, ready to redirect to a file. `-f json` carries
-the same structure — not a YAML string — in `data.form`, so a JSON caller never
-needs a YAML parser to read a form.
+Text output **is** the document, ready to redirect to a file — which now takes
+`-f text`, since JSON is what a command emits when it is not told otherwise.
+`-f json` carries the same structure — not a YAML string — in `data.form`, so a
+JSON caller never needs a YAML parser to read a form.
 
 ```console
-$ gdrive forms read "Surveys/2026 Engagement" > form.yaml
+$ gdrive forms read -f text "Surveys/2026 Engagement" > form.yaml
 ```
 
 ```json
@@ -1090,13 +1107,13 @@ what was asked. A `<form>` given as a bare ID costs one Drive lookup on top, to
 find out whether the ID is a [shortcut](#shortcuts); a path pays only when its
 last segment really is one, to check the target is still there.
 
-`--as` is `table` (default), `csv`, or `json`.
+`--as` is `table` (default), `csv`, or `json`; `table` is tab-separated.
 
 ```console
-$ gdrive forms responses "Surveys/2026 Engagement"
-submitted             Which team are you on?  How satisfied are you?
-2026-07-01T10:22:00Z  Sales                   4
-2026-07-01T11:05:00Z  Engineering             5
+$ gdrive forms responses -f text "Surveys/2026 Engagement"
+submitted	Which team are you on?	How satisfied are you?
+2026-07-01T10:22:00Z	Sales	4
+2026-07-01T11:05:00Z	Engineering	5
 ```
 
 - A checkbox or file-upload answer is several values: `table` and `csv` join
@@ -1159,7 +1176,7 @@ mismatch aborts without touching the binary. Running under Node or Bun (npm,
 npx, bunx), it prints the package-manager command instead.
 
 ```console
-$ gdrive upgrade --dry-run
+$ gdrive upgrade -f text --dry-run
 Would upgrade v0.1.0 -> v0.2.0 using gdrive-linux-x64.
 ```
 

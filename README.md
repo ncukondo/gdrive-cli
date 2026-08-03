@@ -30,8 +30,10 @@ AI-agent use.
   column headers (table/CSV/JSON), with or without a linked spreadsheet. A form
   reports `type: form`, so `ls --type form` finds one.
 - **Sharing** — `share list / add / remove / link` to manage permissions.
-- **Agent-first** — the primary consumer is an AI agent: `-f json` is a stable,
-  first-class interface, with `-q` quiet piping and stable exit codes.
+- **Agent-first** — the primary consumer is an AI agent, so **JSON is what a
+  command emits when it is not told otherwise**. `-f text` asks for the
+  human-facing layer: one record per line, tab-separated, padded nowhere. `-q`
+  is quiet piping on top of text, and exit codes are stable.
 
 ## Install
 
@@ -83,11 +85,11 @@ gdrive ls "drive:Finance/2026"       # …or by name and path
 gdrive ls "Reports/link-to-2026"     # a folder shortcut: lists the target
 gdrive rm "Reports/link-to-2026"     # …but this trashes the shortcut
 
-gdrive docs read "Notes/Meeting"     # Markdown to stdout
+gdrive docs read -f text "Notes/Meeting"   # Markdown to stdout
 gdrive docs append "Notes/Meeting" @draft.md   # …and Markdown back in
 gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:C10" --as csv
 gdrive ls Surveys --type form        # the files `forms read` can take
-gdrive forms read "Surveys/2026" > form.yaml          # the whole form as YAML
+gdrive forms read -f text "Surveys/2026" > form.yaml   # the whole form as YAML
 gdrive forms responses "Surveys/2026" --as csv        # answers, by question title
 gdrive share link "Reports/2026/Budget"
 ```
@@ -104,9 +106,10 @@ gdrive ls -a personal                # one-off on another account
 For scripts and agents:
 
 ```sh
-gdrive ls -f json | jq '.data.files[].name'
-FOLDER=$(gdrive mkdir 2027 --parent Reports -q)   # quiet mode prints the ID
-gdrive sheets read 1GhI... -q > out.csv           # quiet read prints CSV
+gdrive ls | jq '.data.files[].name'               # JSON needs no flag
+FOLDER=$(gdrive mkdir 2027 --parent Reports -q -f text)   # quiet prints the ID
+gdrive sheets read 1GhI... -q -f text > out.csv           # quiet read prints CSV
+gdrive ls -f text | column -t -s $'\t'            # a table, for a person
 ```
 
 ## Documentation
