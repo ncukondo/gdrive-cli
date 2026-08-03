@@ -43,6 +43,7 @@ instead of restating them.
 | [0028](0028-forms-write.md) | `forms write` applies a form document by item id (extends 0027) |
 | [0029](0029-slides-document.md) | A deck is one YAML document of placeholders; `slides read` |
 | [0030](0030-slides-write.md) | `slides write` applies a deck document by object id (extends 0029) |
+| [0031](0031-recursive-copy.md) | `cp -r` copies a folder tree; the error envelope gains `data` (extends 0008, revises 0007) |
 
 ## Related projects (reference implementations)
 
