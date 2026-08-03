@@ -973,19 +973,33 @@ navigation `go_to_action` / `go_to_section_id`.
 
 ### What is not modelled
 
-An item whose kind the schema does not cover — a video, an image, a grid
-(question group) — reads as `type: unsupported` with the API resource verbatim
-under `raw`. It is never dropped or approximated, so a round trip cannot
-destroy it, and `read` says so: one line on stderr in text mode, an
-`unsupported` array in JSON.
+An item the schema cannot hold reads as `type: unsupported`, with the API
+resource verbatim under `raw`. It is never dropped or approximated, so a round
+trip cannot destroy it, and **both** commands say so: one line on stderr in text
+mode, an `unsupported` array in JSON.
 
 ```console
 $ gdrive forms read "Surveys/2026" > form.yaml
 Kept as raw: videoItem (item 3c4d5e6f)
 ```
 
-Within a question, quiz grading, per-question images, and the individual
-questions of a grid are not projected; a quiz reads as its questions.
+That covers whole kinds — a video, an image, a grid (question group), a rating
+question — and also a *field* inside an otherwise ordinary question that the
+document has no way to express:
+
+| `kind` in the report | Why |
+|---|---|
+| `videoItem`, `imageItem`, `questionGroupItem`, `ratingQuestion`, … | The item's kind is not modelled |
+| `questionItem.image`, `option.image` | An image cannot round-trip: the API returns a `contentUri` that is read-only and expires, while creating one needs a `sourceUri` it never returns. Projecting it would invite a write that deleted the image |
+| `choiceQuestion.type` | A choice kind newer than this CLI |
+| `scaleQuestion` | A scale the API returned without both of its bounds |
+
+An unmodelled item still carries its `id`, and an unmodelled *question* still
+carries its `question_id`, so `forms responses` can still head a column with it
+and its answers are not lost with it.
+
+Quiz grading (`grading`, and a response's scores) is not projected; a quiz reads
+as its questions.
 
 ### `gdrive forms read <form>`
 
@@ -1027,8 +1041,14 @@ submitted             Which team are you on?  How satisfied are you?
   untitled question is headed by its question ID.
 - A question with no answer in a response is an empty cell (`[]` in `json` for
   a multi-valued column).
+- A **grid** (question group) is one item holding one question per row, so it
+  becomes one column per row, headed `<item title> — <row title>`. The item is
+  still reported as unmodelled — its structure is not something `forms write`
+  will be able to edit — but its answers are all here.
 - A form with no responses prints the header row alone.
 - A form need not have a linked spreadsheet; this works either way.
+- Column titles are always distinct, so no answer can overwrite another in
+  `json`'s title-keyed rows.
 
 ```json
 { "id": "1FoRm...",
@@ -1038,10 +1058,13 @@ submitted             Which team are you on?  How satisfied are you?
   "count": 2 }
 ```
 
+`unsupported` joins the envelope here too, on the same terms as `read`.
+
 Quiet: CSV to stdout.
 
-Response filtering, fetching one response by ID, and quiz grades are not
-implemented; neither is writing a form (`forms write` / `forms create`).
+The respondent's email address and the response ID are not columns; response
+filtering, fetching one response by ID, and quiz grades are not implemented,
+and neither is writing a form (`forms write` / `forms create`).
 
 ---
 
