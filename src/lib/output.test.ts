@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatJsonSuccess, formatJsonError, renderSuccess, renderError } from "./output.ts";
+import {
+  formatJsonSuccess,
+  formatJsonError,
+  formatRow,
+  formatTable,
+  renderSuccess,
+  renderError,
+} from "./output.ts";
 import type { ErrorCode } from "../types/index.ts";
 import { errorToExit, ExitCode } from "../types/index.ts";
 
@@ -14,6 +21,44 @@ describe("formatJsonError", () => {
   it("wraps code and message in an error envelope", () => {
     const parsed = JSON.parse(formatJsonError("NOT_FOUND", "missing"));
     expect(parsed).toEqual({ success: false, error: { code: "NOT_FOUND", message: "missing" } });
+  });
+});
+
+/**
+ * Drive accepts a name containing a newline — one was created to confirm it —
+ * and a line-oriented format cannot carry one. Text mode is lossy on purpose
+ * (decision 0036 §2); what it may not do is let a value invent a field or a row
+ * that no record ever had.
+ */
+describe("a value cannot forge a field or a row", () => {
+  it.each([
+    ["a tab", "one\ttwo"],
+    ["a newline", "one\ntwo"],
+    ["a carriage return", "one\rtwo"],
+    ["a line separator", "one\u2028two"],
+    ["a paragraph separator", "one\u2029two"],
+    ["a NUL", "one\u0000two"],
+  ])("replaces %s in a field with a space", (_label, value) => {
+    const row = formatRow(["a", value, "b"]);
+    expect(row.split("\n")).toHaveLength(1);
+    expect(row.split("\t")).toEqual(["a", "one two", "b"]);
+  });
+
+  it("keeps a table's row count equal to its record count", () => {
+    const table = formatTable(
+      ["Name", "ID"],
+      [
+        ["one\ntwo", "id1"],
+        ["three", "id2"],
+      ],
+    );
+    expect(table.split("\n")).toHaveLength(3);
+  });
+
+  it("leaves everything else exactly as it was given", () => {
+    expect(formatRow(["研修医へのフィードバックシート", "❤️ 👍🏽", "  spaced  "])).toBe(
+      "研修医へのフィードバックシート\t❤️ 👍🏽\t  spaced  ",
+    );
   });
 });
 
