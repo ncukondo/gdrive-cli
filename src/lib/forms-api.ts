@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { MAX_PAGES, mapDriveError as mapApiError } from "./api.ts";
 import type { FormDocument, FormRaw } from "./form-document.ts";
 
@@ -117,6 +118,57 @@ export interface ResponseTable {
 }
 
 /**
+ * The part of a question group (a grid) the response table needs.
+ *
+ * The document models a grid as `type: unsupported` — it is one item holding
+ * several questions, and 0027's flat projection has no shape for that. But a
+ * response carries an answer for every *row*, keyed by the row's own question
+ * id, so a table that ignored `raw` would drop a whole block of real answers
+ * while reporting success. Reading is safe where writing is not: nothing here
+ * sends the parsed shape back.
+ */
+const GridRawSchema = z.object({
+  title: z.string().nullish(),
+  questionGroupItem: z.object({
+    grid: z.object({ columns: z.object({ type: z.string().nullish() }).nullish() }).nullish(),
+    questions: z
+      .array(
+        z.object({
+          questionId: z.string().nullish(),
+          rowQuestion: z.object({ title: z.string().nullish() }).nullish(),
+        }),
+      )
+      .nullish(),
+  }),
+});
+
+/** `CHECKBOX` is the JSON enum; the API's own prose spells it `CHECK_BOX`. */
+const MULTI_CHOICE_TYPES = new Set(["CHECKBOX", "CHECK_BOX"]);
+
+function gridColumns(raw: unknown): ResponseColumn[] {
+  const parsed = GridRawSchema.safeParse(raw);
+  if (!parsed.success) return [];
+  const { title, questionGroupItem } = parsed.data;
+  const multi = MULTI_CHOICE_TYPES.has(questionGroupItem.grid?.columns?.type ?? "");
+
+  const columns: ResponseColumn[] = [];
+  for (const question of questionGroupItem.questions ?? []) {
+    const questionId = question.questionId;
+    if (!questionId) continue;
+    const rowTitle = question.rowQuestion?.title;
+    const parts = [title, rowTitle].filter(
+      (part) => part !== null && part !== undefined && part !== "",
+    );
+    columns.push({
+      title: parts.length === 0 ? questionId : parts.join(" — "),
+      question_id: questionId,
+      multi,
+    });
+  }
+  return columns;
+}
+
+/**
  * The question columns, in form order. An item the schema could not model
  * still gets one when it carries a `question_id`: its answers are as real as
  * any other, and dropping the column would silently lose them.
@@ -124,6 +176,14 @@ export interface ResponseTable {
 function questionColumns(document: FormDocument): ResponseColumn[] {
   const columns: ResponseColumn[] = [];
   for (const item of document.items) {
+    if (item.type === "unsupported") {
+      // A grid holds its question ids one level down, inside `raw`.
+      const grid = gridColumns(item.raw);
+      if (grid.length > 0) {
+        columns.push(...grid);
+        continue;
+      }
+    }
     if (!("question_id" in item)) continue;
     const questionId = item.question_id;
     if (questionId === undefined) continue;
@@ -138,20 +198,37 @@ function questionColumns(document: FormDocument): ResponseColumn[] {
   return columns;
 }
 
+/** How many times each title appears, with `submitted` already taken. */
+function titleCounts(columns: ResponseColumn[]): Map<string, number> {
+  const counts = new Map<string, number>([[SUBMITTED_COLUMN, 1]]);
+  for (const column of columns) counts.set(column.title, (counts.get(column.title) ?? 0) + 1);
+  return counts;
+}
+
 /**
  * Appends ` (<question_id>)` to every column whose title is not its own —
  * two questions worded the same way, or one worded like the `submitted`
  * column. Disambiguating both of a pair keeps the header symmetric, so a
  * caller cannot mistake one of them for the original.
+ *
+ * Repeated until the titles are distinct, because a row is a map keyed by
+ * title: a question deliberately titled `Name (qb)` beside the `Name` pair
+ * that disambiguates *to* `Name (qb)` would otherwise have one answer
+ * overwrite the other. Question ids are unique, so a second pass always
+ * separates what the first collided; the bound is a guard, not an expectation.
  */
 function disambiguate(columns: ResponseColumn[]): ResponseColumn[] {
-  const seen = new Map<string, number>([[SUBMITTED_COLUMN, 1]]);
-  for (const column of columns) seen.set(column.title, (seen.get(column.title) ?? 0) + 1);
-  return columns.map((column) =>
-    (seen.get(column.title) ?? 0) > 1
-      ? { ...column, title: `${column.title} (${column.question_id ?? ""})` }
-      : column,
-  );
+  let current = columns;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const counts = titleCounts(current);
+    if (current.every((column) => (counts.get(column.title) ?? 0) <= 1)) break;
+    current = current.map((column) =>
+      (counts.get(column.title) ?? 0) > 1
+        ? { ...column, title: `${column.title} (${column.question_id ?? ""})` }
+        : column,
+    );
+  }
+  return current;
 }
 
 function answerValues(answer: AnswerRaw | undefined): string[] {
