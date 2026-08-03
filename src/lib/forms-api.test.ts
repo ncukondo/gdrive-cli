@@ -366,6 +366,36 @@ describe("tabulateResponses", () => {
     expect(new Set(titles).size).toBe(titles.length);
   });
 
+  /**
+   * The suffix rule separates two columns by their question ids, so it cannot
+   * separate two that share one. A grid listing the same `questionId` twice is
+   * malformed, but it is what a table keyed by title needs a final guarantee
+   * against: without one, the second row's answer overwrites the first's.
+   */
+  it("keeps titles distinct even when two columns share a question id", () => {
+    const repeated: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "i1",
+          title: "Rate",
+          questionGroupItem: {
+            questions: [
+              { questionId: "g1", rowQuestion: { title: "Row" } },
+              { questionId: "g1", rowQuestion: { title: "Row" } },
+            ],
+          },
+        },
+      ],
+    };
+    const table = tabulateResponses(toFormDocument(repeated).document, [
+      { responseId: "r", answers: { g1: { textAnswers: { answers: [{ value: "3" }] } } } },
+    ]);
+    const titles = table.columns.map((c) => c.title);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(Object.keys(table.rows[0] ?? {})).toHaveLength(titles.length);
+  });
+
   it("gives a page break or a text block no column", () => {
     const sections: FormRaw = {
       info: { title: "Survey" },

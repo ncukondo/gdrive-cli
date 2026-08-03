@@ -211,11 +211,9 @@ function titleCounts(columns: ResponseColumn[]): Map<string, number> {
  * column. Disambiguating both of a pair keeps the header symmetric, so a
  * caller cannot mistake one of them for the original.
  *
- * Repeated until the titles are distinct, because a row is a map keyed by
- * title: a question deliberately titled `Name (qb)` beside the `Name` pair
- * that disambiguates *to* `Name (qb)` would otherwise have one answer
- * overwrite the other. Question ids are unique, so a second pass always
- * separates what the first collided; the bound is a guard, not an expectation.
+ * Repeated, because a question deliberately titled `Name (qb)` beside the
+ * `Name` pair that disambiguates *to* `Name (qb)` collides only after the
+ * first pass.
  */
 function disambiguate(columns: ResponseColumn[]): ResponseColumn[] {
   let current = columns;
@@ -229,6 +227,29 @@ function disambiguate(columns: ResponseColumn[]): ResponseColumn[] {
     );
   }
   return current;
+}
+
+/**
+ * Makes the header distinct, whatever the loop above left. A row is a map
+ * keyed by title, so two columns sharing one silently overwrite each other's
+ * answer — and the id suffix cannot separate columns that share an id, which a
+ * grid listing the same `questionId` twice does. This is the step that lets
+ * `docs/commands.md` promise distinct titles without an argument about how
+ * many passes are enough.
+ */
+function makeDistinct(columns: ResponseColumn[]): ResponseColumn[] {
+  const taken = new Set<string>();
+  return columns.map((column) => {
+    if (!taken.has(column.title)) {
+      taken.add(column.title);
+      return column;
+    }
+    let suffix = 2;
+    while (taken.has(`${column.title} #${suffix}`)) suffix += 1;
+    const title = `${column.title} #${suffix}`;
+    taken.add(title);
+    return { ...column, title };
+  });
 }
 
 function answerValues(answer: AnswerRaw | undefined): string[] {
@@ -250,7 +271,7 @@ export function tabulateResponses(
 ): ResponseTable {
   const columns: ResponseColumn[] = [
     { title: SUBMITTED_COLUMN, question_id: null, multi: false },
-    ...disambiguate(questionColumns(document)),
+    ...makeDistinct(disambiguate(questionColumns(document))),
   ];
 
   const rows = responses.map((response) => {
