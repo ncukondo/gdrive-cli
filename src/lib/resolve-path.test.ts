@@ -242,12 +242,14 @@ function spyOnGet(drive: DriveClient) {
 }
 
 describe("resolveTarget (decision 0025 §3)", () => {
-  it("follows a path that names a shortcut, and pays nothing for the walk", async () => {
+  it("follows a path that names a shortcut, for one files.get on the target", async () => {
     const { client, get } = spyOnGet(createTreeDrive(shortcutTree));
     const { id } = await resolveTarget(client, "Reports/link-to-notes");
     expect(id).toBe("doc1");
-    // One `files.get`: the target, which is also what checks it still exists.
+    // The walk itself adds nothing; the one fetch is the target, which is also
+    // what checks it still exists (decision 0025 §6).
     expect(get).toHaveBeenCalledTimes(1);
+    expect(callArgs(get)[0]).toMatchObject({ fileId: "doc1" });
   });
 
   it("returns an ordinary file's own id, unfollowed and unfetched", async () => {
