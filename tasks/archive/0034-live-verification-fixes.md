@@ -1,6 +1,7 @@
 # Task 0034: What the live verification found
 
-Status: todo (move to `tasks/archive/` when done)
+Status: done — PR [#12](https://github.com/ncukondo/gdrive-cli/pull/12), merged
+2026-08-03. Manual verification **was** run this time; see Verification.
 Depends on: 0027, 0029 — both merged; this fixes what running them against a
 real account showed.
 Parallel: no — it touches `lib/api.ts`, `types/index.ts` and
@@ -85,20 +86,60 @@ this a minor bump with a release note), [`0025`](../decisions/0025-shortcuts.md)
 
 ## Acceptance criteria
 
-- [ ] `gdrive ls --type shortcut` prints a table whose columns line up
-- [ ] `gdrive info <form>` reports `Type: form`, and a shortcut to one reports
+- [x] `gdrive ls --type shortcut` prints a table whose columns line up
+- [x] `gdrive info <form>` reports `Type: form`, and a shortcut to one reports
       `Target: <id> (form)`
-- [ ] `gdrive ls --type form` lists the forms in a folder
-- [ ] An unknown `--type` names `form` among the valid choices
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
-- [ ] `docs/commands.md` and `README.md` updated, in the same pull request as the
+- [x] `gdrive ls --type form` lists the forms in a folder
+- [x] An unknown `--type` names `form` among the valid choices
+- [x] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
+- [x] `docs/commands.md` and `README.md` updated, in the same pull request as the
       code ([`0033`](../decisions/0033-implementation-lands-through-review.md) §1)
+
+## Outcome notes
+
+- **The three defects were fixed, and a fourth was found while fixing them.**
+  The docs gained a sentence saying `search` sees only the Drive name. Review
+  called it out from the code's shape — `searchFiles` sends
+  `name contains … or fullText contains …` — and a live run settled it: a form
+  whose Forms title is `Zqxwvutsrq Distinctive Formtitle` and whose Drive name is
+  `Untitled form` *is* returned by `gdrive search "Zqxwvutsrq"`. Drive's full-text
+  index covers a form's internal title. A task about documented claims a live run
+  contradicts had written one of its own.
+- **The vocabulary now derives from one array.** `FileType` became a union over a
+  `FILE_TYPES` const, which the column width is computed from, and
+  `typeFilterClause` a `Record<Exclude<FileType, "file">, string>`. An eighth
+  member is now a `tsc` error rather than a silent fall-through to the `file`
+  residue — which is this task's own defect shape, caught structurally.
+- **The docs blocks gained a guard, and the expensive one was right.** A
+  `TYPE_W === 10` canary would fire on a width change and name nothing, and would
+  have missed the missing `Link:` line entirely, because that changes no width.
+  `tests/integration/docs-transcripts.test.ts` instead re-renders all six
+  formatter-produced transcripts and requires each verbatim in the block that
+  runs its command. Measured: a `COL_GAP` 2→3 change passed 711 tests silently
+  before and fails four named tests now; deleting the `Link:` line fails exactly
+  one.
+- **The guard enumerates, and nothing checks the enumeration is complete.**
+  Review demonstrated both holes by mutation: a newly pasted `console` block with
+  a hand-typed table leaves the suite green, and `toContain` admits a wrong row
+  appended after a covered block. Bounded and known, not fixed here.
+- **Left deliberately, each argued rather than overlooked**: `download` on a form
+  advises `--export-as`, which cannot work, because fixing it needs the
+  `.type === "form"` branch [`0034`](../../decisions/0034-form-is-a-file-type.md)
+  §2 puts out of scope; `typeFilterClause` returns `mimeType = 'undefined'` for an
+  input `parseType` makes unreachable, because a `file` fallback would restore the
+  silent-wrong behavior the lookup exists to close.
 
 ## Verification
 
 - `bun run test src/commands/file-format.test.ts` — the column, over every type
 - `bun run test src/lib/api.test.ts` — the map, the filter clause, the target label
-- Manual, against a real account: this task exists because the last two skipped
-  it. Create a form and a shortcut to it, then run `ls --type form`,
-  `ls --type shortcut`, `info` on both, and compare `info`'s output against the
-  transcript in `docs/commands.md` line for line.
+- `test:unit` 674 and `test:integration` 43 pass; 717 in `test:all`.
+- **Manual, against a real account — DONE, before the merge.** A form, a Doc and
+  shortcuts to both were created, every acceptance criterion run against them,
+  and the tree trashed. The column lines up with `shortcut` and `form` present;
+  `info` on a form reports `Type: form`; a shortcut to one reports
+  `Target: <id> (form)`; the `Link:` line renders as the transcript says;
+  `ls --type form` and `search --type form` work; an unknown `--type` prints
+  `folder, doc, sheet, slides, form, shortcut, file`. Running it also reproduced
+  the trap the docs now record: `info "<the Forms title>"` returns nothing,
+  because a path resolves by Drive name.
