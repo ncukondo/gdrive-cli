@@ -227,28 +227,34 @@ const ITEM_META = new Set(["itemId", "title", "description"]);
 const QUESTION_META = new Set(["questionId", "required", "grading"]);
 
 /**
- * The keys every item carries. An absent or empty field is left out entirely
- * rather than written as `""` — the document is meant to be read and edited.
+ * The keys are emitted in the order 0027 §2 shows them — what the item *is*
+ * (`id`, `question_id`, `type`) before what it says — because the document is
+ * meant to be read and diffed. Hence the split: {@link identity} opens an item
+ * and {@link prose} follows its `type`. An absent or empty field is left out
+ * entirely rather than written as `""`.
  */
-function base(item: ItemRaw): { id?: string; title?: string; description?: string } {
-  const { itemId, title, description } = item;
+function identity(item: ItemRaw, question?: QuestionRaw): { id?: string; question_id?: string } {
+  const { itemId } = item;
+  const questionId = question?.questionId;
   return {
     ...(itemId ? { id: itemId } : {}),
+    ...(questionId ? { question_id: questionId } : {}),
+  };
+}
+
+function prose(item: ItemRaw): { title?: string; description?: string } {
+  const { title, description } = item;
+  return {
     ...(title ? { title } : {}),
     ...(description ? { description } : {}),
   };
 }
 
-function questionFields(
+function questionProse(
   item: ItemRaw,
   question: QuestionRaw,
-): { id?: string; title?: string; description?: string; question_id?: string; required: boolean } {
-  const { questionId } = question;
-  return {
-    ...base(item),
-    ...(questionId ? { question_id: questionId } : {}),
-    required: question.required === true,
-  };
+): { title?: string; description?: string; required: boolean } {
+  return { ...prose(item), required: question.required === true };
 }
 
 function toOption(option: OptionRaw): z.infer<typeof ChoiceOptionSchema> {
@@ -268,19 +274,20 @@ function kindKey(resource: object, meta: Set<string>): string | undefined {
 }
 
 function unsupportedItem(item: ItemRaw, question?: QuestionRaw): FormItem {
-  const questionId = question?.questionId;
   return {
-    ...base(item),
-    // Kept even here, so `forms responses` can still name the column (0027 §3).
-    ...(questionId ? { question_id: questionId } : {}),
+    // `question_id` is kept even here, so `forms responses` can still name the
+    // column and the answers are not lost with the question (0027 §3).
+    ...identity(item, question),
     type: "unsupported",
+    ...prose(item),
     // Verbatim, so an edit that did not touch this item cannot destroy it (0027 §4).
     raw: item,
   };
 }
 
 function toQuestionItem(item: ItemRaw, question: QuestionRaw): FormItem {
-  const common = questionFields(item, question);
+  const head = identity(item, question);
+  const tail = questionProse(item, question);
 
   const choice = question.choiceQuestion;
   if (choice !== undefined) {
@@ -288,9 +295,10 @@ function toQuestionItem(item: ItemRaw, question: QuestionRaw): FormItem {
     // A choice kind this CLI has no name for is not approximated as another.
     if (choiceType === undefined) return unsupportedItem(item, question);
     return {
-      ...common,
+      ...head,
       type: "choice",
       choice_type: choiceType,
+      ...tail,
       ...(choice.shuffle === true ? { shuffle: true } : {}),
       options: (choice.options ?? []).map(toOption),
     };
@@ -300,8 +308,9 @@ function toQuestionItem(item: ItemRaw, question: QuestionRaw): FormItem {
   if (scale !== undefined) {
     const { lowLabel, highLabel } = scale;
     return {
-      ...common,
+      ...head,
       type: "scale",
+      ...tail,
       low: scale.low ?? 0,
       high: scale.high ?? 0,
       ...(lowLabel ? { low_label: lowLabel } : {}),
@@ -311,14 +320,15 @@ function toQuestionItem(item: ItemRaw, question: QuestionRaw): FormItem {
 
   const text = question.textQuestion;
   if (text !== undefined) {
-    return { ...common, type: "text", paragraph: text.paragraph === true };
+    return { ...head, type: "text", ...tail, paragraph: text.paragraph === true };
   }
 
   const date = question.dateQuestion;
   if (date !== undefined) {
     return {
-      ...common,
+      ...head,
       type: "date",
+      ...tail,
       include_time: date.includeTime === true,
       include_year: date.includeYear === true,
     };
@@ -326,15 +336,16 @@ function toQuestionItem(item: ItemRaw, question: QuestionRaw): FormItem {
 
   const time = question.timeQuestion;
   if (time !== undefined) {
-    return { ...common, type: "time", duration: time.duration === true };
+    return { ...head, type: "time", ...tail, duration: time.duration === true };
   }
 
   const file = question.fileUploadQuestion;
   if (file !== undefined) {
     const { folderId, maxFiles, maxFileSize, types } = file;
     return {
-      ...common,
+      ...head,
       type: "file_upload",
+      ...tail,
       ...(folderId ? { folder_id: folderId } : {}),
       ...(typeof maxFiles === "number" ? { max_files: maxFiles } : {}),
       ...(maxFileSize ? { max_file_size: maxFileSize } : {}),
@@ -348,8 +359,10 @@ function toQuestionItem(item: ItemRaw, question: QuestionRaw): FormItem {
 function toItem(item: ItemRaw): FormItem {
   const question = item.questionItem?.question;
   if (question !== undefined) return toQuestionItem(item, question);
-  if (item.pageBreakItem !== undefined) return { ...base(item), type: "page_break" };
-  if (item.textItem !== undefined) return { ...base(item), type: "text_item" };
+  if (item.pageBreakItem !== undefined) {
+    return { ...identity(item), type: "page_break", ...prose(item) };
+  }
+  if (item.textItem !== undefined) return { ...identity(item), type: "text_item", ...prose(item) };
   return unsupportedItem(item);
 }
 
