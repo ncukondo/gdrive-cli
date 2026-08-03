@@ -40,7 +40,7 @@ describe("handleInit", () => {
     const config = parseConfig(written);
     expect(config.accounts).toEqual([{ email: "work@example.com" }, { email: "me@gmail.com" }]);
     expect(config.default_account).toBe("work@example.com");
-    expect(config.default_format).toBe("text");
+    expect(config.default_format).toBe("json");
     expect(out.output).toContain(`Created ${CONFIG_PATH}`);
     expect(out.output).toContain("work@example.com");
   });

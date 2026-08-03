@@ -50,7 +50,10 @@ export async function handleInit(deps: InitDeps): Promise<CommandResult> {
 
   const accounts = deps.listAccounts();
   const config: Config = {
-    default_format: "text",
+    // The same default the CLI applies without a config, written down rather
+    // than inverted: a generated file must not quietly restore the old one
+    // (decision 0036 §1).
+    default_format: "json",
     accounts: accounts.map((email) => ({ email })),
   };
   const defaultAccount = accounts[0];

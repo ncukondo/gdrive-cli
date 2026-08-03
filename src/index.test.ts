@@ -27,29 +27,55 @@ describe("--version", () => {
 });
 
 describe("global options", () => {
-  it("--format defaults to text", () => {
-    expect(parseArgs([]).format).toBe("text");
+  /**
+   * Decision 0036 §1: a command that is not told otherwise emits its machine
+   * representation. This is 0007's own first paragraph — "the primary consumer
+   * is an AI agent" — applied to the flag it never reached.
+   *
+   * `HOME` is stubbed at an empty directory because "no config" has to mean the
+   * test machine's config too: whoever runs this may well have one, and it is
+   * `default_format` that would answer instead.
+   */
+  function withNoConfig<T>(body: () => T): T {
+    const dir = mkdtempSync(join(tmpdir(), "gdrive-home-"));
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "");
+    vi.stubEnv("HOME", dir);
+    try {
+      return body();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      vi.unstubAllEnvs();
+    }
+  }
+
+  it("--format defaults to json", () => {
+    withNoConfig(() => {
+      expect(parseArgs([]).format).toBe("json");
+    });
   });
 
-  it("accepts -f json", () => {
-    expect(parseArgs(["-f", "json"]).format).toBe("json");
+  it("accepts -f text", () => {
+    expect(parseArgs(["-f", "text"]).format).toBe("text");
   });
 
   it("falls back to $GDRIVE_CLI_FORMAT when -f is absent", () => {
-    vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
-    expect(parseArgs([]).format).toBe("json");
-    expect(parseArgs(["-f", "text"]).format).toBe("text");
+    vi.stubEnv("GDRIVE_CLI_FORMAT", "text");
+    expect(parseArgs([]).format).toBe("text");
+    expect(parseArgs(["-f", "json"]).format).toBe("json");
     vi.unstubAllEnvs();
   });
 
-  it("falls back to default_format in the config", () => {
+  it("falls back to default_format in the config, and -f still wins", () => {
     vi.stubEnv("GDRIVE_CLI_FORMAT", "");
     const dir = mkdtempSync(join(tmpdir(), "gdrive-cfg-"));
     const path = join(dir, "gdrive-cli.toml");
-    writeFileSync(path, 'default_format = "json"\n');
+    writeFileSync(path, 'default_format = "text"\n');
+    const jsonPath = join(dir, "json.toml");
+    writeFileSync(jsonPath, 'default_format = "json"\n');
     try {
-      expect(parseArgs(["--config", path]).format).toBe("json");
-      expect(parseArgs(["--config", path, "-f", "text"]).format).toBe("text");
+      expect(parseArgs(["--config", path]).format).toBe("text");
+      expect(parseArgs(["--config", path, "-f", "json"]).format).toBe("json");
+      expect(parseArgs(["--config", jsonPath, "-f", "text"]).format).toBe("text");
     } finally {
       rmSync(dir, { recursive: true, force: true });
       vi.unstubAllEnvs();
@@ -58,13 +84,17 @@ describe("global options", () => {
 
   it("ignores an unreadable config when defaulting the format", () => {
     vi.stubEnv("GDRIVE_CLI_FORMAT", "");
-    expect(parseArgs(["--config", "/nonexistent/gdrive-cli.toml"]).format).toBe("text");
+    expect(parseArgs(["--config", "/nonexistent/gdrive-cli.toml"]).format).toBe("json");
     vi.unstubAllEnvs();
   });
 
-  it("--quiet defaults to false and sets true with -q", () => {
+  it("--quiet defaults to false and sets true with -q, whatever the format is", () => {
     expect(parseArgs([]).quiet).toBe(false);
     expect(parseArgs(["-q"]).quiet).toBe(true);
+    expect(parseArgs(["-q", "-f", "text"]).quiet).toBe(true);
+    withNoConfig(() => {
+      expect(parseArgs(["-q"]).format).toBe("json");
+    });
   });
 
   it("--account defaults to undefined and reads -a", () => {
