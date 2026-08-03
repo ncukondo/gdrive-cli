@@ -67,6 +67,28 @@ describe("handleSheetsTabs", () => {
     expect(out.output).toBe("Sheet1\nSummary");
   });
 
+  /**
+   * `-q` is the flag decision 0038 §1 defines as the one you pipe, so its line
+   * count has to equal its value count. A title carrying a newline would
+   * otherwise report three tabs where the spreadsheet has two.
+   */
+  it("prints exactly one line per tab, whatever a title holds", async () => {
+    const out = collect();
+    await handleSheetsTabs({
+      resolvePath: async () => "S1",
+      listTabs: async () => [
+        { index: 0, title: "Sheet1\nSummary", sheet_id: 0, rows: 1, cols: 1, hidden: false },
+        { index: 1, title: "Summary", sheet_id: 7, rows: 1, cols: 1, hidden: false },
+      ],
+      file: "S1",
+      format: "text",
+      quiet: true,
+      write: out.write,
+    });
+    expect(out.output.split("\n")).toHaveLength(2);
+    expect(out.output).toBe("Sheet1 Summary\nSummary");
+  });
+
   it("emits the tabs array in JSON and handles an empty spreadsheet", async () => {
     const out = collect();
     await handleSheetsTabs({

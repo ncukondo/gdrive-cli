@@ -4,6 +4,7 @@ import {
   formatJsonError,
   formatRow,
   formatTable,
+  formatValues,
   line,
   renderSuccess,
   renderError,
@@ -65,6 +66,18 @@ describe("a value cannot forge a field or a row", () => {
     const message = line`Created folder ${"Q1\nreport"} (${"F1"})`;
     expect(message).toBe("Created folder Q1 report (F1)");
     expect(message.split("\n")).toHaveLength(1);
+  });
+
+  /**
+   * The other field of `Renderable`. `--quiet` is one value per line, so its
+   * line count has to equal its value count — otherwise a caller piping it into
+   * `wc -l` or a `for` loop reads more records than exist.
+   */
+  it("keeps a quiet list's line count equal to its value count", () => {
+    expect(formatValues(["a", "b\nc", "d"]).split("\n")).toHaveLength(3);
+    expect(formatValues(["a", "b\nc", "d"])).toBe("a\nb c\nd");
+    expect(formatValues([])).toBe("");
+    expect(formatValues(["only"])).toBe("only");
   });
 
   /** `share link` prints two lines on purpose; only the values are sanitised. */

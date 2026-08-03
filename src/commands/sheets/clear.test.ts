@@ -55,4 +55,27 @@ describe("handleSheetsClear", () => {
       data: { id: "S1", cleared_range: "Sheet1!A1:B2", message: "Cleared Sheet1!A1:B2" },
     });
   });
+
+  /**
+   * The A1 range the Sheets API hands back embeds the tab title, so this
+   * confirmation carries a value the CLI did not choose. Text mode keeps it to
+   * one line; `data.message` keeps it exact, which is the split the release
+   * note promises everywhere else.
+   */
+  it("keeps the range on one line in text, and exact in JSON", async () => {
+    const awkward = { ...baseDeps(), clearValues: async () => "Q1\nSheet!A1:B2" };
+
+    const out = collect();
+    await handleSheetsClear({ ...awkward, write: out.write });
+    expect(out.output.split("\n")).toHaveLength(1);
+    expect(out.output).toBe("Cleared Q1 Sheet!A1:B2");
+
+    const j = collect();
+    await handleSheetsClear({ ...awkward, format: "json", write: j.write });
+    expect(JSON.parse(j.output).data).toEqual({
+      id: "S1",
+      cleared_range: "Q1\nSheet!A1:B2",
+      message: "Cleared Q1\nSheet!A1:B2",
+    });
+  });
 });

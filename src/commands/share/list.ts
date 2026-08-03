@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, DrivePermission, OutputFormat } from "../../types/index.ts";
-import { formatTable, renderSuccess } from "../../lib/output.ts";
+import { formatTable, formatValues, renderSuccess } from "../../lib/output.ts";
 
 /** Human label for a permission's grantee (decision 0011). */
 export function granteeLabel(permission: DrivePermission): string {
@@ -37,7 +37,7 @@ export async function handleShareList(deps: ShareListDeps): Promise<CommandResul
       {
         data: { id: fileId, permissions },
         text: formatPermissionTable(permissions),
-        quiet: permissions.map((p) => p.id).join("\n"),
+        quiet: formatValues(permissions.map((p) => p.id)),
       },
       deps.format,
       deps.quiet,

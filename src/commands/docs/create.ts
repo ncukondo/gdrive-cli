@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
-import { line, renderSuccess } from "../../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../../lib/output.ts";
 import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
 import { parseDocsFormat, reportUnsupported } from "./format.ts";
 
@@ -51,7 +51,7 @@ export async function handleDocsCreate(deps: DocsCreateDeps): Promise<CommandRes
           ...reportUnsupported(notes, deps.format, deps.warn),
         },
         text: line`Created ${created.title} (${created.id})`,
-        quiet: created.id,
+        quiet: formatValues([created.id]),
       },
       deps.format,
       deps.quiet,

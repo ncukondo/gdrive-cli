@@ -47,6 +47,15 @@ export function formatTable(header: string[], rows: string[][]): string {
 }
 
 /**
+ * One value per line: what `--quiet` prints. Each value is sanitised, so the
+ * line count always equals the value count — a caller piping this into `wc -l`
+ * or a `for` loop must not read more records than exist (decision 0036 §2).
+ */
+export function formatValues(values: string[]): string {
+  return values.map(textField).join("\n");
+}
+
+/**
  * A text message with values interpolated into it — `Created folder ${name}
  * (${id})` and its kin. Every interpolated value is sanitised while the literal
  * parts are left alone, so a message that wants a newline keeps it and a name

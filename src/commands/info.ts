@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { formatValues, renderSuccess } from "../lib/output.ts";
 import { formatFileDetail } from "./file-format.ts";
 
 export interface InfoDeps {
@@ -18,7 +18,7 @@ export async function handleInfo(deps: InfoDeps): Promise<CommandResult> {
 
   deps.write(
     renderSuccess(
-      { data: { file }, text: formatFileDetail(file), quiet: file.id },
+      { data: { file }, text: formatFileDetail(file), quiet: formatValues([file.id]) },
       deps.format,
       deps.quiet,
     ),

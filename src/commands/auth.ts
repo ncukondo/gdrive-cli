@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../types/index.ts";
-import { line, renderSuccess } from "../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../lib/output.ts";
 import { nodeFs, type FsAdapter } from "../lib/fs.ts";
 import {
   aliasForEmail,
@@ -80,7 +80,7 @@ export async function handleAuthStatus(deps: AuthStatusDeps): Promise<CommandRes
           scopes,
         },
         text: textLines.join("\n"),
-        quiet: email,
+        quiet: formatValues([email]),
       },
       deps.format,
       deps.quiet,
@@ -117,7 +117,11 @@ export async function handleAuthLogout(deps: AuthLogoutDeps): Promise<CommandRes
 
   deps.write(
     renderSuccess(
-      { data: { email, logged_out: true }, text: line`Logged out ${email}`, quiet: email },
+      {
+        data: { email, logged_out: true },
+        text: line`Logged out ${email}`,
+        quiet: formatValues([email]),
+      },
       deps.format,
       deps.quiet,
     ),
@@ -166,7 +170,7 @@ export async function handleAuthLogin(deps: AuthLoginDeps): Promise<CommandResul
       {
         data: { authenticated: true, email: tokens.email, default: isFirstAccount },
         text: line`Authenticated as ${tokens.email}${isFirstAccount ? " (set as default account)" : ""}`,
-        quiet: tokens.email,
+        quiet: formatValues([tokens.email]),
       },
       deps.format,
       deps.quiet,

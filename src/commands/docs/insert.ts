@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
-import { line, renderSuccess } from "../../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../../lib/output.ts";
 import { endOfBody, findMarkerRanges, type DocumentRaw } from "../../lib/docs-api.ts";
 import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
 import { parseDocsFormat, reportUnsupported } from "./format.ts";
@@ -141,7 +141,7 @@ export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandRes
           ...reportUnsupported(notes, deps.format, deps.warn),
         },
         text: line`Inserted into ${title} (${documentId})`,
-        quiet: documentId,
+        quiet: formatValues([documentId]),
       },
       deps.format,
       deps.quiet,

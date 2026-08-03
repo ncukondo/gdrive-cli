@@ -1,7 +1,7 @@
 import { chmod, rename, rm, writeFile } from "node:fs/promises";
 import type { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../lib/output.ts";
 import { runUpgrade, type UpgradeEnv, type UpgradeOutcome } from "../upgrade.ts";
 import { resolveGlobalOptions, handleError } from "../index.ts";
 import pkg from "../../package.json" with { type: "json" };
@@ -12,13 +12,13 @@ export function formatUpgradeText(outcome: UpgradeOutcome): string {
     case "not-binary":
       return [
         "This install runs via a JS runtime, so upgrade it with your package manager:",
-        `  npm install -g ${outcome.package}@latest`,
-        `  bun add -g ${outcome.package}@latest`,
+        line`  npm install -g ${outcome.package}@latest`,
+        line`  bun add -g ${outcome.package}@latest`,
       ].join("\n");
     case "up-to-date":
       return `Already up to date (v${outcome.version}).`;
     case "dry-run":
-      return `Would upgrade v${outcome.current} -> v${outcome.latest} using ${outcome.asset}.`;
+      return line`Would upgrade v${outcome.current} -> v${outcome.latest} using ${outcome.asset}.`;
     case "upgraded":
       return `Upgraded to v${outcome.to}.`;
   }
@@ -76,7 +76,7 @@ export async function handleUpgrade(deps: UpgradeDeps): Promise<CommandResult> {
     {
       data: upgradeData(outcome),
       text: formatUpgradeText(outcome),
-      quiet: outcomeVersion(outcome),
+      quiet: formatValues([outcomeVersion(outcome)]),
     },
     deps.format,
     deps.quiet,

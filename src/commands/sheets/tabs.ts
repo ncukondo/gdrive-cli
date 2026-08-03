@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
-import { formatTable, renderSuccess } from "../../lib/output.ts";
+import { formatTable, formatValues, renderSuccess } from "../../lib/output.ts";
 import type { SheetTab } from "../../lib/sheets-api.ts";
 
 /** Renders tabs as tab-separated rows (decisions 0010, 0036 §2). */
@@ -30,7 +30,7 @@ export async function handleSheetsTabs(deps: SheetsTabsDeps): Promise<CommandRes
       {
         data: { id: spreadsheetId, tabs },
         text: formatTabTable(tabs),
-        quiet: tabs.map((t) => t.title).join("\n"),
+        quiet: formatValues(tabs.map((t) => t.title)),
       },
       deps.format,
       deps.quiet,

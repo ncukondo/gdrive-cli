@@ -6,7 +6,7 @@ import {
   type FileType,
   type OutputFormat,
 } from "../types/index.ts";
-import { line, renderSuccess } from "../lib/output.ts";
+import { formatValues, line, renderSuccess } from "../lib/output.ts";
 import { parseChoice } from "../lib/args.ts";
 import type { ResolvedTarget } from "../lib/resolve-path.ts";
 
@@ -102,7 +102,7 @@ export async function handleDownload(deps: DownloadDeps): Promise<CommandResult>
       {
         data: { file: meta.name, id: meta.id, path: deps.output, bytes: byteLengthOf(content) },
         text: line`Downloaded ${meta.name} to ${deps.output}`,
-        quiet: deps.output,
+        quiet: formatValues([deps.output]),
       },
       deps.format,
       deps.quiet,

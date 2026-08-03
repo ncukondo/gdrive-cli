@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, DriveFile, FileType, OutputFormat } from "../types/index.ts";
-import { renderSuccess } from "../lib/output.ts";
+import { line, renderSuccess } from "../lib/output.ts";
 import type { DriveScope, ListOptions, OrderKey } from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
 import { TYPE_OPTION_DESCRIPTION } from "./ls.ts";
@@ -28,7 +28,7 @@ export async function handleSearch(deps: SearchDeps): Promise<CommandResult> {
   const files = await deps.searchFiles(deps.query, options);
 
   const text =
-    files.length === 0 ? `No files found matching "${deps.query}".` : formatFileTable(files);
+    files.length === 0 ? line`No files found matching "${deps.query}".` : formatFileTable(files);
 
   deps.write(
     renderSuccess(

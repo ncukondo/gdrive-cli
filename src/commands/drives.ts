@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat, SharedDrive } from "../types/index.ts";
-import { formatTable, renderSuccess } from "../lib/output.ts";
+import { formatTable, formatValues, renderSuccess } from "../lib/output.ts";
 
 /**
  * Renders shared drives as tab-separated rows (decisions 0016, 0036 §2). The ID
@@ -29,7 +29,7 @@ export async function handleDrives(deps: DrivesDeps): Promise<CommandResult> {
       {
         data: { drives },
         text: formatDriveTable(drives),
-        quiet: drives.map((d) => d.id).join("\n"),
+        quiet: formatValues(drives.map((d) => d.id)),
       },
       deps.format,
       deps.quiet,

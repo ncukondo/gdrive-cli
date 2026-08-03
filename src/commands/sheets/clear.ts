@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { line, renderSuccess } from "../../lib/output.ts";
 import { resolveRangeWith, type SheetTab } from "../../lib/sheets-api.ts";
 
 export interface SheetsClearDeps {
@@ -29,7 +29,7 @@ export async function handleSheetsClear(deps: SheetsClearDeps): Promise<CommandR
   const rendered = renderSuccess(
     {
       data: { id: spreadsheetId, cleared_range: clearedRange, message },
-      text: message,
+      text: line`Cleared ${clearedRange}`,
       quiet: "",
     },
     deps.format,
