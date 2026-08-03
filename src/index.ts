@@ -39,6 +39,17 @@ export function documentFormat(opts: GlobalOptions): OutputFormat {
   return opts.formatNamed ? opts.format : "text";
 }
 
+/**
+ * Whether a command may stop and ask the user something. Decision 0005 keeps
+ * `gdrive auth` from prompting in JSON mode, so a script gets `AUTH_REQUIRED`
+ * rather than a process waiting on a stdin nobody is typing into — a rule
+ * written when JSON could only mean the caller asked for it. A JSON default
+ * nobody named must not reach it, or a fresh install cannot authenticate.
+ */
+export function canPrompt(opts: GlobalOptions): boolean {
+  return !(opts.formatNamed && opts.format === "json");
+}
+
 export function createProgram(): Command {
   const program = new Command();
 
