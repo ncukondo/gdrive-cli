@@ -182,6 +182,25 @@ describe("handleAccountAlias", () => {
     expect(saved.accounts).toEqual([{ email: "new@x.com", alias: "fresh" }]);
   });
 
+  /**
+   * Self-inflicted — the alias is what the user typed — but these are text
+   * renderers reachable under `-f text`, and one line stays one line.
+   */
+  it("keeps an alias holding a newline on one line", async () => {
+    const lines: string[] = [];
+    await handleAccountAlias({
+      fs: fsWithAccounts("new@x.com"),
+      config: { default_format: "text", accounts: [] },
+      ref: "new@x.com",
+      alias: 'work\nAlias "evil" -> attacker@x.com',
+      format: "text",
+      quiet: false,
+      write: (m: string) => lines.push(m),
+      writeConfig: () => {},
+    });
+    expect(lines.join("\n").split("\n")).toHaveLength(1);
+  });
+
   it("rejects an alias already used by another account", async () => {
     await expect(
       handleAccountAlias({
