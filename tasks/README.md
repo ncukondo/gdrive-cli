@@ -57,6 +57,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0030 `forms write` / `forms create`](0030-forms-write.md) | 0029 | D | todo |
 | [0031 `slides read`](0031-slides-read.md) | 0029 | E | todo |
 | [0032 `slides write` / `slides create`](0032-slides-write.md) | 0031, 0030 | E | todo |
+| [0033 `cp -r` copies a folder tree](0033-recursive-copy.md) | 0027 | — | todo |
 
 ## Parallelism notes
 
@@ -166,6 +167,19 @@ no-op, which is 0028 §3's lesson arriving through a different door.
 
 Every Workspace type the CLI names now has a planned read and write path. What
 is uneven is fidelity, not coverage.
+
+0033 comes from the same survey but is not about a file type. `files.copy` does
+not copy folders and Drive has no server-side recursive copy, so today an agent
+that wants a folder copied runs the walk itself — roughly `2F + N` process
+launches, with no record of progress when it dies half-way. Decision 0031 moves
+the walk into the CLI and spends most of its length on what happens when it
+stops: the run halts at the first non-transient failure, and 0007's error
+envelope gains an optional `data` so `success: false` no longer implies nothing
+happened. That envelope change is general, not a `cp -r` accommodation, and it
+is the third time in this stretch the same principle has decided a design — a
+caller must be able to tell what actually happened, not infer it from an exit
+code. 0033 depends on 0027 because the walk copies a shortcut without following
+it, which needs `shortcut` to be a type first.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
