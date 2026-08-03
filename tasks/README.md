@@ -51,6 +51,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0024 `insert --before` / `--after <marker>`](archive/0024-insert-at-marker.md) | 0023 | — | done |
 | [0025 List numbering & links](archive/0025-list-numbering-and-links.md) | 0023 | — | done |
 | [0026 Soft line breaks](archive/0026-soft-line-breaks.md) | 0025 | — | done |
+| [0027 Shortcuts resolve by argument role](0027-shortcuts.md) | — | — | todo |
+| [0028 `gdrive ln` creates a shortcut](0028-ln.md) | 0027 | — | todo |
 
 ## Parallelism notes
 
@@ -101,8 +103,24 @@ same parser and the same round-trip test. Both are **done**, and both found the
 same shape of thing in implementation: a rule the decision stated correctly but
 did not follow through to its arithmetic or its guards. Those corrections are in
 each task's outcome notes and, where they change what the record claims, back in
-the decision. Issues #8 and #9 are closed by them; there is no open task right
-now.
+the decision. Issues #8 and #9 are closed by them.
+
+0027 opens a new line of work, from a survey of what the CLI does not handle
+rather than from an issue. Drive shortcuts were never modelled at all, so a path
+through a folder shortcut is `NOT_FOUND` today and `docs read` on a shortcut
+404s. Decision 0025 settles the part that is not mechanical — *which* arguments
+follow a shortcut — with a three-role table (container / content / entry) that
+keeps `rm` and `share` pointed at the shortcut itself. The task touches
+`lib/api.ts`, `lib/resolve-path.ts` and all five command registries at once, so
+it does not parallelize with anything else that takes a file argument.
+
+0028 adds `gdrive ln` (decision 0026), which 0025 held back until reading was
+settled. It runs after 0027 rather than beside it because it is the first
+consumer of `resolveTarget` and of the `shortcut` file type, and because writing
+it against a half-built resolver would bake in whichever shape 0027 happened to
+land first. Between them the two tasks close the shortcut gap; Google Forms and
+Slides content are the other two holes the same survey found, and neither has a
+record yet.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
