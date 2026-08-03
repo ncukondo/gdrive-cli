@@ -273,107 +273,151 @@ function kindKey(resource: object, meta: Set<string>): string | undefined {
   return Object.keys(resource).find((key) => !meta.has(key));
 }
 
-function unsupportedItem(item: ItemRaw, question?: QuestionRaw): FormItem {
+/** An item and, when the schema could not hold it, why (decision 0021 §3). */
+interface Projected {
+  item: FormItem;
+  note?: UnsupportedItemNote;
+}
+
+/**
+ * Emits the item through 0027 §4's channel: the API resource verbatim under
+ * `raw`, and a note naming the field that could not be held. `kind` is passed
+ * in rather than re-derived, so the reason travels with the decision that a
+ * projection was impossible instead of being guessed afterwards.
+ */
+function unsupported(item: ItemRaw, kind: string, question?: QuestionRaw): Projected {
   return {
-    // `question_id` is kept even here, so `forms responses` can still name the
-    // column and the answers are not lost with the question (0027 §3).
-    ...identity(item, question),
-    type: "unsupported",
-    ...prose(item),
-    // Verbatim, so an edit that did not touch this item cannot destroy it (0027 §4).
-    raw: item,
+    item: {
+      // `question_id` is kept even here, so `forms responses` can still name
+      // the column and the answers are not lost with the question (0027 §3).
+      ...identity(item, question),
+      type: "unsupported",
+      ...prose(item),
+      // Verbatim, so an edit that did not touch this item cannot destroy it.
+      raw: item,
+    },
+    note: { id: item.itemId ?? "", kind },
   };
 }
 
-function toQuestionItem(item: ItemRaw, question: QuestionRaw): FormItem {
+/**
+ * An image on a question or on one of its options.
+ *
+ * The document cannot express one: the API returns `contentUri`, which is
+ * output-only and expires, while creating an image needs `sourceUri`, which is
+ * input-only. Projecting it would be a field a write could not send back, and
+ * dropping it would let `updateItem` delete the image on the first round trip
+ * — the loss 0027 §4 exists to prevent. So the whole question goes through §4's
+ * channel, where 0028 §2 guarantees no request is emitted for it and the image
+ * survives untouched.
+ *
+ * The cost is that an image-bearing question loses its readable form; 0027's
+ * consequences call that "the signal to extend the schema", which is a decision
+ * for a record, not for this function.
+ */
+function imageField(item: ItemRaw, question: QuestionRaw): string | undefined {
+  if (item.questionItem?.image !== undefined) return "questionItem.image";
+  const options = question.choiceQuestion?.options ?? [];
+  return options.some((option) => option.image !== undefined) ? "option.image" : undefined;
+}
+
+function toQuestionItem(item: ItemRaw, question: QuestionRaw): Projected {
   const head = identity(item, question);
   const tail = questionProse(item, question);
+
+  const image = imageField(item, question);
+  if (image !== undefined) return unsupported(item, image, question);
 
   const choice = question.choiceQuestion;
   if (choice !== undefined) {
     const choiceType = CHOICE_TYPE_BY_API[choice.type ?? ""];
     // A choice kind this CLI has no name for is not approximated as another.
-    if (choiceType === undefined) return unsupportedItem(item, question);
+    if (choiceType === undefined) return unsupported(item, "choiceQuestion.type", question);
     return {
-      ...head,
-      type: "choice",
-      choice_type: choiceType,
-      ...tail,
-      ...(choice.shuffle === true ? { shuffle: true } : {}),
-      options: (choice.options ?? []).map(toOption),
+      item: {
+        ...head,
+        type: "choice",
+        choice_type: choiceType,
+        ...tail,
+        ...(choice.shuffle === true ? { shuffle: true } : {}),
+        options: (choice.options ?? []).map(toOption),
+      },
     };
   }
 
   const scale = question.scaleQuestion;
   if (scale !== undefined) {
-    const { lowLabel, highLabel } = scale;
+    const { low, high, lowLabel, highLabel } = scale;
+    // Both bounds are required by the API. A scale without them is not a scale
+    // this CLI can describe, and 1..0 would be a plausible-looking lie.
+    if (typeof low !== "number" || typeof high !== "number") {
+      return unsupported(item, "scaleQuestion", question);
+    }
     return {
-      ...head,
-      type: "scale",
-      ...tail,
-      low: scale.low ?? 0,
-      high: scale.high ?? 0,
-      ...(lowLabel ? { low_label: lowLabel } : {}),
-      ...(highLabel ? { high_label: highLabel } : {}),
+      item: {
+        ...head,
+        type: "scale",
+        ...tail,
+        low,
+        high,
+        ...(lowLabel ? { low_label: lowLabel } : {}),
+        ...(highLabel ? { high_label: highLabel } : {}),
+      },
     };
   }
 
   const text = question.textQuestion;
   if (text !== undefined) {
-    return { ...head, type: "text", ...tail, paragraph: text.paragraph === true };
+    return { item: { ...head, type: "text", ...tail, paragraph: text.paragraph === true } };
   }
 
   const date = question.dateQuestion;
   if (date !== undefined) {
     return {
-      ...head,
-      type: "date",
-      ...tail,
-      include_time: date.includeTime === true,
-      include_year: date.includeYear === true,
+      item: {
+        ...head,
+        type: "date",
+        ...tail,
+        include_time: date.includeTime === true,
+        include_year: date.includeYear === true,
+      },
     };
   }
 
   const time = question.timeQuestion;
   if (time !== undefined) {
-    return { ...head, type: "time", ...tail, duration: time.duration === true };
+    return { item: { ...head, type: "time", ...tail, duration: time.duration === true } };
   }
 
   const file = question.fileUploadQuestion;
   if (file !== undefined) {
     const { folderId, maxFiles, maxFileSize, types } = file;
     return {
-      ...head,
-      type: "file_upload",
-      ...tail,
-      ...(folderId ? { folder_id: folderId } : {}),
-      ...(typeof maxFiles === "number" ? { max_files: maxFiles } : {}),
-      ...(maxFileSize ? { max_file_size: maxFileSize } : {}),
-      ...(types ? { types } : {}),
+      item: {
+        ...head,
+        type: "file_upload",
+        ...tail,
+        ...(folderId ? { folder_id: folderId } : {}),
+        ...(typeof maxFiles === "number" ? { max_files: maxFiles } : {}),
+        ...(maxFileSize ? { max_file_size: maxFileSize } : {}),
+        ...(types ? { types } : {}),
+      },
     };
   }
 
-  return unsupportedItem(item, question);
+  return unsupported(item, kindKey(question, QUESTION_META) ?? "questionItem", question);
 }
 
-function toItem(item: ItemRaw): FormItem {
+function toItem(item: ItemRaw): Projected {
   const question = item.questionItem?.question;
   if (question !== undefined) return toQuestionItem(item, question);
   if (item.pageBreakItem !== undefined) {
-    return { ...identity(item), type: "page_break", ...prose(item) };
+    return { item: { ...identity(item), type: "page_break", ...prose(item) } };
   }
-  if (item.textItem !== undefined) return { ...identity(item), type: "text_item", ...prose(item) };
-  return unsupportedItem(item);
-}
-
-/** Names the API kind an unsupported item came from, for the 0021 §3 report. */
-function noteFor(item: ItemRaw): UnsupportedItemNote {
-  const question = item.questionItem?.question;
-  const kind =
-    question === undefined
-      ? kindKey(item, ITEM_META)
-      : (kindKey(question, QUESTION_META) ?? "questionItem");
-  return { id: item.itemId ?? "", kind: kind ?? "unknown" };
+  if (item.textItem !== undefined) {
+    return { item: { ...identity(item), type: "text_item", ...prose(item) } };
+  }
+  return unsupported(item, kindKey(item, ITEM_META) ?? "unknown");
 }
 
 /**
@@ -381,10 +425,10 @@ function noteFor(item: ItemRaw): UnsupportedItemNote {
  * whose kind the schema does not model (0027 §4).
  */
 export function toFormDocument(form: FormRaw): FormProjection {
-  const unsupported: UnsupportedItemNote[] = [];
+  const notes: UnsupportedItemNote[] = [];
   const items = (form.items ?? []).map((raw) => {
-    const item = toItem(raw);
-    if (item.type === "unsupported") unsupported.push(noteFor(raw));
+    const { item, note } = toItem(raw);
+    if (note !== undefined) notes.push(note);
     return item;
   });
 
@@ -400,7 +444,7 @@ export function toFormDocument(form: FormRaw): FormProjection {
       ...(linkedSheetId ? { linked_sheet_id: linkedSheetId } : {}),
       items,
     },
-    unsupported,
+    unsupported: notes,
   };
 }
 
