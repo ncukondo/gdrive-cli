@@ -323,6 +323,11 @@ function unsupported(item: ItemRaw, kind: string, question?: QuestionRaw): Proje
       // the column and the answers are not lost with the question (0027 §3).
       ...identity(item, question),
       type: "unsupported",
+      // The title and description are duplicated inside `raw` on purpose: they
+      // are what tells one opaque node from another in a diff, and what heads
+      // the response column. They are an echo, not an edit point — 0028 §2
+      // emits no request at all for an `unsupported` item, so `raw` is the
+      // only copy that is ever the form. `docs/commands.md` says so.
       ...prose(item),
       // Verbatim, so an edit that did not touch this item cannot destroy it.
       raw: item,
