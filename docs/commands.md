@@ -143,7 +143,10 @@ Type:      shortcut
 ID:        1LnkAbC...
 MIME:      application/vnd.google-apps.shortcut
 Size:      -
+Modified:  2026-08-01T09:12:44.000Z
+Created:   2026-07-30T14:02:10.000Z
 Target:    1DocXyZ... (doc)
+Owners:    me@gmail.com
 Trashed:   false
 
 $ gdrive rm "Reports/link-to-doc"     # trashes 1LnkAbC..., not 1DocXyZ...
