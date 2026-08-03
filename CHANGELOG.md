@@ -44,9 +44,10 @@ log for 0.x.
    `Uploaded Budget (1S6cRd...)` — all of which now arrive as the envelope.
    **Errors move with them**: a failure that wrote `Error: <message>` to stderr
    now writes `{"success":false,"error":{"code":…}}` there instead, so anything
-   matching stderr by prefix needs `-f text` too. The exception is `docs read`
-   and `forms read`: their stderr is unchanged, because a command keeps one
-   format on both streams and theirs is still the document's.
+   matching stderr by prefix needs `-f text` too. `docs read` is the exception:
+   a command keeps one format on both streams, and its is still Markdown's, so
+   its stderr still reads `Error: …`. `forms read` behaves the same way, but it
+   is new here and so changes nothing.
 
    **Three things are deliberately exempt**, because in each a JSON default
    would have broken something that was already right:
@@ -80,10 +81,12 @@ log for 0.x.
    | with `default_format = "json"` | 0.7.0 | 0.8.0 |
    |---|---|---|
    | `gdrive docs read X` | envelope | **Markdown** |
-   | `gdrive forms read X` | envelope | **YAML** |
    | `gdrive ls -q` | envelope | **bare ids** |
    | `gdrive sheets read S --as csv` | envelope | **CSV** |
    | `gdrive auth` with no terminal | `AUTH_REQUIRED`, exit 2 | `AUTH_REQUIRED`, exit 2 |
+
+   `gdrive forms read` is new in 0.8.0, so it has no 0.7.0 behaviour to change;
+   it prints YAML unless you name `-f json`, like `docs read`.
 
    Add `-f json` to those invocations to keep the envelope. Everything else your
    config already covered is unaffected.
@@ -119,14 +122,20 @@ log for 0.x.
    `--as csv -f json` is the envelope. `-q` prints CSV either way, for both
    `sheets read` and `forms responses`.
 
-   Text is lossy on purpose now: a tab, a newline, or any other control
-   character is replaced with a space in **every value text mode prints** — a
-   file name (Drive accepts all three, and a newline there used to split a row
-   in half), a spreadsheet cell in `sheets read`, an answer in
-   `forms responses`, and the name inside a one-line confirmation like
-   `Created folder <name> (<id>)`. So one record can never render as two rows or
-   two lines. `-f json` carries the real value, and `--as csv` / `-q`'s CSV are
-   unaffected because CSV quotes properly.
+   Text is lossy on purpose now. Every value the CLI *interpolates* into text
+   has its tabs, newlines and other control characters replaced with a space:
+   a table field, a `--quiet` value, and a one-line confirmation like
+   `Created folder <name> (<id>)` or `Cleared <range>`. So a table has exactly
+   as many rows as it has records, `-q` exactly as many lines as it has values,
+   and a confirmation exactly one. Drive accepts a newline in a file name — a
+   sheet title and an A1 range reach the same messages — and one there used to
+   split a row in half.
+
+   Three kinds of output are deliberately left as they are, because in each the
+   content *is* the point: a document (`docs read`'s Markdown, `forms read`'s
+   YAML), an encoding that quotes for itself (`--as csv`, `--as json`, and
+   `-q`'s CSV), and the `Error: …` diagnostic on stderr. `-f json` carries the
+   real value everywhere, sanitised nowhere.
 
 3. **`type` gains two members, `shortcut` and `form`.** A Drive shortcut used to
    report `type: file` and now reports `type: shortcut`; a Google Form used to
