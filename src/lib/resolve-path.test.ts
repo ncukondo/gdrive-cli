@@ -166,6 +166,65 @@ describe("resolvePath with a drive: prefix (decision 0019)", () => {
   });
 });
 
+// root/
+//   Reports/                  (rep1)
+//     2026/                   (y2026)  -> summary (sum1), link-to-archive (lnk3)
+//     archive/                (arch1)  -> old (old1)
+//     link-to-2026  ->  2026            (lnk1)
+//     Notes                   (doc1, a Doc)
+//     link-to-notes ->  Notes           (lnk2)
+const DOC = "application/vnd.google-apps.document";
+const shortcutTree: DriveNode[] = [
+  { id: "rep1", name: "Reports", mimeType: FOLDER, parents: [ROOT_ID] },
+  { id: "y2026", name: "2026", mimeType: FOLDER, parents: ["rep1"] },
+  { id: "sum1", name: "summary", parents: ["y2026"] },
+  { id: "arch1", name: "archive", mimeType: FOLDER, parents: ["rep1"] },
+  { id: "old1", name: "old", parents: ["arch1"] },
+  { id: "lnk1", name: "link-to-2026", parents: ["rep1"], target: "y2026" },
+  { id: "lnk3", name: "link-to-archive", parents: ["y2026"], target: "arch1" },
+  { id: "doc1", name: "Notes", mimeType: DOC, parents: ["rep1"] },
+  { id: "lnk2", name: "link-to-notes", parents: ["rep1"], target: "doc1" },
+];
+
+describe("resolvePath through a shortcut (decision 0025 §1)", () => {
+  it("walks into the target of an intermediate folder shortcut", async () => {
+    const drive = createTreeDrive(shortcutTree);
+    expect(await resolvePath(drive, "Reports/link-to-2026/summary")).toBe("sum1");
+  });
+
+  it("follows one on a drive: path too", async () => {
+    const onShared: DriveNode[] = [
+      { id: "y2026", name: "2026", mimeType: FOLDER, parents: ["FIN"] },
+      { id: "bud1", name: "Budget", parents: ["y2026"] },
+      { id: "lnk1", name: "link-to-2026", parents: ["FIN"], target: "y2026" },
+    ];
+    expect(
+      await resolvePath(createTreeDrive(onShared, drives), "drive:Finance/link-to-2026/Budget"),
+    ).toBe("bud1");
+  });
+
+  it("follows two shortcuts that are separate segments", async () => {
+    const drive = createTreeDrive(shortcutTree);
+    expect(await resolvePath(drive, "Reports/link-to-2026/link-to-archive/old")).toBe("old1");
+  });
+
+  it("leaves a terminal shortcut unfollowed — that is `resolveTarget`'s job", async () => {
+    const drive = createTreeDrive(shortcutTree);
+    expect(await resolvePath(drive, "Reports/link-to-2026")).toBe("lnk1");
+    expect(await resolvePath(drive, "Reports/link-to-notes")).toBe("lnk2");
+  });
+
+  it("still reports NOT_FOUND past a shortcut to a Doc, naming that segment", async () => {
+    // Decision 0025 §6: no new branch — the next `'<id>' in parents` is empty.
+    await expect(
+      resolvePath(createTreeDrive(shortcutTree), "Reports/link-to-notes/page"),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: "No such file or folder: Reports/link-to-notes/page",
+    });
+  });
+});
+
 describe("resolvePath's shared-drive hint", () => {
   it("points at the drive: form when the first segment names a shared drive", async () => {
     // No My Drive folder called Finance here — just the shared drive.

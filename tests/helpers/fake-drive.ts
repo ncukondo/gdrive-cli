@@ -1,4 +1,9 @@
-import type { DriveClient, DriveFileRaw, ListParams } from "../../src/lib/api.ts";
+import {
+  SHORTCUT_MIME,
+  type DriveClient,
+  type DriveFileRaw,
+  type ListParams,
+} from "../../src/lib/api.ts";
 
 /** A node in the virtual Drive tree used by fakes. */
 export interface DriveNode {
@@ -6,6 +11,15 @@ export interface DriveNode {
   name: string;
   mimeType?: string;
   parents?: string[];
+  /**
+   * Makes this node a shortcut to the node with this id (decision 0025): the
+   * MIME becomes the shortcut MIME and `targetMimeType` is read off the target,
+   * so a test names the target and the fake stays consistent with the tree.
+   * A node given the shortcut MIME *without* a target is the malformed response
+   * 0025 §6 answers with `API_ERROR`.
+   */
+  target?: string;
+  trashed?: boolean;
 }
 
 function unescape(value: string): string {
@@ -22,11 +36,27 @@ function extractParent(q: string): string | undefined {
   return parent === undefined ? undefined : unescape(parent);
 }
 
+/** The shape `mapDriveError` reads: an Error carrying a numeric `code`. */
+class FakeApiError extends Error {
+  readonly code: number;
+
+  constructor(code: number, message: string) {
+    super(message);
+    this.name = "FakeApiError";
+    this.code = code;
+  }
+}
+
+function notFound(fileId: string): FakeApiError {
+  return new FakeApiError(404, `File not found: ${fileId}.`);
+}
+
 /**
  * Builds a {@link DriveClient} backed by an in-memory node tree. `files.list`
  * honors the `name = '…'` and `'…' in parents` clauses used by path resolution
- * and child listing. Other methods throw unless overridden — resolve-path and
- * listing tests only exercise `files.list`.
+ * and child listing, and `files.get` answers by id — 404 for an id the tree does
+ * not hold, which is how a dangling shortcut is written. The remaining methods
+ * throw unless overridden.
  *
  * `drives` supplies `drives.list`; omitting it leaves that method throwing,
  * which is itself a case worth testing (a `drive:` lookup the account cannot
@@ -36,12 +66,26 @@ export function createTreeDrive(
   nodes: DriveNode[],
   drives?: { id: string; name: string }[],
 ): DriveClient {
-  const toRaw = (n: DriveNode): DriveFileRaw => ({
-    id: n.id,
-    name: n.name,
-    mimeType: n.mimeType ?? "application/octet-stream",
-    parents: n.parents ?? [],
-  });
+  const mimeOf = (n: DriveNode): string =>
+    n.mimeType ?? (n.target === undefined ? "application/octet-stream" : SHORTCUT_MIME);
+
+  const toRaw = (n: DriveNode): DriveFileRaw => {
+    const raw: DriveFileRaw = {
+      id: n.id,
+      name: n.name,
+      mimeType: mimeOf(n),
+      parents: n.parents ?? [],
+      trashed: n.trashed ?? false,
+    };
+    if (n.target !== undefined) {
+      const target = nodes.find((candidate) => candidate.id === n.target);
+      raw.shortcutDetails = {
+        targetId: n.target,
+        targetMimeType: target === undefined ? "application/octet-stream" : mimeOf(target),
+      };
+    }
+    return raw;
+  };
 
   return {
     files: {
@@ -56,8 +100,10 @@ export function createTreeDrive(
         });
         return { data: { files: matches.map(toRaw) } };
       },
-      get: async () => {
-        throw new Error("not implemented in tree fake");
+      get: async ({ fileId }: { fileId: string }) => {
+        const node = nodes.find((n) => n.id === fileId);
+        if (node === undefined) throw notFound(fileId);
+        return { data: toRaw(node) };
       },
       create: async () => {
         throw new Error("not implemented in tree fake");
