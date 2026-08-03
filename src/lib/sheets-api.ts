@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { mapDriveError as mapApiError } from "./api.ts";
+import { formatRow } from "./output.ts";
 import { AppError } from "../types/index.ts";
 
 // --- Raw Sheets v4 shapes (only the fields we read) -------------------------
@@ -164,23 +165,9 @@ function cellToString(cell: unknown): string {
   return cell === null || cell === undefined ? "" : String(cell);
 }
 
-/** Renders a grid as aligned columns for human reading. */
+/** Renders a grid as tab-separated rows (decision 0036 §2). */
 export function formatValuesTable(values: string[][]): string {
-  if (values.length === 0) return "";
-  const widths: number[] = [];
-  for (const row of values) {
-    row.forEach((cell, i) => {
-      widths[i] = Math.max(widths[i] ?? 0, cell.length);
-    });
-  }
-  return values
-    .map((row) =>
-      row
-        .map((cell, i) => (i === row.length - 1 ? cell : cell.padEnd(widths[i] ?? 0)))
-        .join("  ")
-        .trimEnd(),
-    )
-    .join("\n");
+  return values.map(formatRow).join("\n");
 }
 
 // --- Range resolution -------------------------------------------------------

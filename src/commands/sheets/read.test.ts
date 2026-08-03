@@ -61,10 +61,10 @@ describe("handleSheetsRead", () => {
     expect(d.readValues).toHaveBeenCalledWith("S1", "Summary!A1:B2");
   });
 
-  it("renders an aligned table by default", async () => {
+  it("renders a tab-separated table by default", async () => {
     const out = collect();
     await handleSheetsRead({ ...baseDeps(), write: out.write });
-    expect(out.output).toBe("name   score\nalice  90");
+    expect(out.output).toBe("name\tscore\nalice\t90");
   });
 
   it("renders CSV and JSON with --as", async () => {

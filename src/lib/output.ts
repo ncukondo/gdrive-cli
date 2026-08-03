@@ -11,6 +11,25 @@ export function formatJsonError(code: ErrorCode, message: string): string {
 }
 
 /**
+ * One row of text output: a single tab between fields, and nothing else
+ * (decision 0036 §2). Nothing is padded, so no display width is computed and no
+ * display width can be wrong — the whole class of defect the aligned tables had
+ * is unreachable rather than fixed. What `split("\t")` gives a reader back is
+ * exactly what the renderer put in.
+ */
+export function formatRow(fields: string[]): string {
+  return fields.join("\t");
+}
+
+/**
+ * A header row followed by one row per record. Every text table in the CLI is
+ * this shape, so a column that grows in one row leaves every other row alone.
+ */
+export function formatTable(header: string[], rows: string[][]): string {
+  return [formatRow(header), ...rows.map(formatRow)].join("\n");
+}
+
+/**
  * A command result ready for rendering in any output mode. Command-specific
  * text lives with each command; this only routes between modes.
  */

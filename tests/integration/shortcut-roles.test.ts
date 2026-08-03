@@ -501,7 +501,7 @@ describe("entry arguments never follow a shortcut (decision 0025 §1)", () => {
   it("`info <link>` names the target in text output too", async () => {
     await run(["info", "Reports/link-to-doc"]);
     const text = stdout.join("");
-    expect(text).toContain("Type:      shortcut");
+    expect(text.split("\n")).toContain("Type:\tshortcut");
     expect(text).toContain("doc1");
   });
 });

@@ -1,5 +1,5 @@
-import { FILE_TYPES } from "../types/index.ts";
 import type { DriveFile } from "../types/index.ts";
+import { formatRow, formatTable } from "../lib/output.ts";
 
 /** ISO timestamp → `YYYY-MM-DD HH:mm` (UTC) for compact table display. */
 export function formatModified(iso: string | null): string {
@@ -7,31 +7,13 @@ export function formatModified(iso: string | null): string {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 }
 
-/** Space between one column's widest value and the next column's first character. */
-const COL_GAP = 2;
-
-/**
- * Derived from the vocabulary rather than written down: a hard-coded 8 was
- * exactly the width of `shortcut`, so `padEnd` added nothing and a real listing
- * printed `shortcut2026-08-03 04:51`. Reading the widest label keeps the column
- * correct for whatever member is added next.
- */
-const TYPE_W = Math.max("Type".length, ...FILE_TYPES.map((t) => t.length)) + COL_GAP;
-const MOD_W = "YYYY-MM-DD HH:mm".length + COL_GAP;
-const NAME_W = 27;
-
-/** Renders a file list as an aligned text table (decision 0008). Empty → "". */
+/** Renders a file list as tab-separated rows (decisions 0008, 0036 §2). Empty → "". */
 export function formatFileTable(files: DriveFile[]): string {
   if (files.length === 0) return "";
-  const header = "Type".padEnd(TYPE_W) + "Modified".padEnd(MOD_W) + "Name".padEnd(NAME_W) + "ID";
-  const rows = files.map(
-    (f) =>
-      f.type.padEnd(TYPE_W) +
-      formatModified(f.modified).padEnd(MOD_W) +
-      f.name.padEnd(NAME_W) +
-      f.id,
+  return formatTable(
+    ["Type", "Modified", "Name", "ID"],
+    files.map((f) => [f.type, formatModified(f.modified), f.name, f.id]),
   );
-  return [header, ...rows].join("\n");
 }
 
 /** One file ID per line (quiet mode). */
@@ -39,10 +21,8 @@ export function formatFilesQuiet(files: DriveFile[]): string {
   return files.map((f) => f.id).join("\n");
 }
 
-const LABEL_W = 11;
-
 function detailLine(label: string, value: string): string {
-  return `${label}:`.padEnd(LABEL_W) + value;
+  return formatRow([`${label}:`, value]);
 }
 
 /** Renders a single file's metadata as text (decision 0008 `info`). */

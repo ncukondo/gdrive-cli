@@ -1,24 +1,15 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
-import { renderSuccess } from "../../lib/output.ts";
+import { formatTable, renderSuccess } from "../../lib/output.ts";
 import type { SheetTab } from "../../lib/sheets-api.ts";
 
-const INDEX_W = 7;
-const ROWS_W = 6;
-const COLS_W = 6;
-
-/** Renders tabs as an aligned text table (decision 0010). */
+/** Renders tabs as tab-separated rows (decisions 0010, 0036 §2). */
 export function formatTabTable(tabs: SheetTab[]): string {
   if (tabs.length === 0) return "No tabs.";
-  const header = "Index".padEnd(INDEX_W) + "Rows".padEnd(ROWS_W) + "Cols".padEnd(COLS_W) + "Title";
-  const rows = tabs.map(
-    (t) =>
-      String(t.index).padEnd(INDEX_W) +
-      String(t.rows).padEnd(ROWS_W) +
-      String(t.cols).padEnd(COLS_W) +
-      t.title,
+  return formatTable(
+    ["Index", "Rows", "Cols", "Title"],
+    tabs.map((t) => [String(t.index), String(t.rows), String(t.cols), t.title]),
   );
-  return [header, ...rows].join("\n");
 }
 
 export interface SheetsTabsDeps {

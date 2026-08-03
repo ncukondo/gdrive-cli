@@ -46,10 +46,14 @@ describe("handleShareList", () => {
     });
     expect(resolvePath).toHaveBeenCalledWith("Reports/plan");
     const lines = out.output.split("\n");
-    expect(lines[0]).toMatch(/^Role\s+Type\s+Grantee\s+Permission ID$/);
-    expect(lines[1]).toContain("me@gmail.com");
-    expect(lines[3]).toContain("(anyone with link)");
-    expect(lines[3]).toContain("perm-anyone");
+    expect(lines[0]?.split("\t")).toEqual(["Role", "Type", "Grantee", "Permission ID"]);
+    expect(lines[1]?.split("\t")).toEqual(["owner", "user", "me@gmail.com", "perm-owner"]);
+    expect(lines[3]?.split("\t")).toEqual([
+      "reader",
+      "anyone",
+      "(anyone with link)",
+      "perm-anyone",
+    ]);
   });
 
   it("shows the domain as the grantee for domain grants", async () => {
@@ -100,22 +104,29 @@ describe("handleShareList", () => {
     expect(parsed.data.permissions[1]).toEqual(perm());
   });
 
-  it("keeps columns apart when a value is wider than the column", () => {
-    // fileOrganizer (13) overflows the role column sized for commenter (9),
-    // and a long address overflows the grantee column. Seen on a real drive.
-    const table = formatPermissionTable([
-      perm({ id: "p1", role: "fileOrganizer", email: "takeshi.kondo.gp@example.com" }),
-      perm({ id: "p2", role: "reader", email: "a@b.com" }),
+  // `fileOrganizer` (13) overran the role column sized for `commenter` (9), and
+  // a long address overran the grantee column. Both were seen on a real drive,
+  // and neither can recur once nothing is sized (decision 0036 §2).
+  const wide = [
+    perm({ id: "p1", role: "fileOrganizer", email: "takeshi.kondo.gp@example.com" }),
+    perm({ id: "p2", role: "reader", email: "a@b.com" }),
+  ];
+
+  it("round-trips every field of every row, however wide a value is", () => {
+    const rows = formatPermissionTable(wide).split("\n").slice(1);
+    expect(rows.map((row) => row.split("\t"))).toEqual([
+      ["fileOrganizer", "user", "takeshi.kondo.gp@example.com", "p1"],
+      ["reader", "user", "a@b.com", "p2"],
     ]);
-    const [header, first, second] = table.split("\n");
-    expect(first).toContain(" user");
-    expect(first).toContain(" p1");
-    // Every column still starts at the same offset on every row.
-    for (const label of ["Type", "Grantee", "Permission ID"]) {
-      const at = (header ?? "").indexOf(label);
-      expect(first?.slice(at - 1, at)).toBe(" ");
-      expect(second?.slice(at - 1, at)).toBe(" ");
-    }
+  });
+
+  it("leaves every other row byte-identical when one grantee grows", () => {
+    const before = formatPermissionTable(wide).split("\n");
+    const after = formatPermissionTable([
+      { ...perm({ id: "p1", role: "fileOrganizer" }), email: "a-very-much-longer@example.com" },
+      ...wide.slice(1),
+    ]).split("\n");
+    expect(after.filter((_, i) => i !== 1)).toEqual(before.filter((_, i) => i !== 1));
   });
 
   it("reports an empty file as having no permissions", async () => {
