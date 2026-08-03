@@ -32,11 +32,13 @@ export GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 export GOOGLE_CLIENT_SECRET="..."
 ```
 
-The prompt is suppressed only when you *name* JSON: `gdrive -f json auth` with a
-missing client returns `AUTH_REQUIRED` instead of prompting, so scripted runs
-never block. JSON being the *default* does not suppress it, or a fresh install
-could never get past this step
-([`../decisions/0038`](../decisions/0038-quiet-asks-for-a-value.md)).
+**The prompt needs a terminal.** With no tty on stdin — a CI job, a cron entry,
+anything piped — a missing client is `AUTH_REQUIRED` and exit 2 rather than a
+process waiting on input nobody will type
+([`../decisions/0005`](../decisions/0005-auth-and-scopes.md) states the purpose
+as preserving automation). `gdrive -f json auth` refuses the same way even at a
+terminal, because that caller asked for a machine answer. A fresh install at a
+terminal, having named no format, is prompted.
 
 ## 3. Log in
 

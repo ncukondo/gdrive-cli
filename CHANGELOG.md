@@ -44,7 +44,9 @@ log for 0.x.
    `Uploaded Budget (1S6cRd...)` — all of which now arrive as the envelope.
    **Errors move with them**: a failure that wrote `Error: <message>` to stderr
    now writes `{"success":false,"error":{"code":…}}` there instead, so anything
-   matching stderr by prefix needs `-f text` too.
+   matching stderr by prefix needs `-f text` too. The exception is `docs read`
+   and `forms read`: their stderr is unchanged, because a command keeps one
+   format on both streams and theirs is still the document's.
 
    **Three things are deliberately exempt**, because in each a JSON default
    would have broken something that was already right:
@@ -53,18 +55,38 @@ log for 0.x.
      prints YAML**, with no flag. Those outputs already *are* the machine
      representation ([decision 0036](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0036-machine-format-by-default.md) §1),
      so `gdrive forms read X > form.yaml` keeps writing YAML. `-f json` wraps
-     one in the envelope, in `data.content` / `data.form`, exactly as before.
+     one in the envelope, in `data.content` / `data.form`.
    - **`-q` still prints the bare value**, whatever the default is
      ([decision 0038](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0038-quiet-asks-for-a-value.md) §1), so
      `FOLDER=$(gdrive mkdir 2027 -q)` needs no `-f`. A format you *name* still
      outranks it: `gdrive ls -f json -q` is JSON, which is
      [0007](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0007-output-and-errors.md)'s rule and unchanged (§2).
    - **`gdrive auth` still prompts** for OAuth client credentials on a fresh
-     install. [Decision 0005](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0005-auth-and-scopes.md)
-     suppresses that prompt in JSON mode so a script gets `AUTH_REQUIRED`
-     rather than a hang, and only a named `-f json` counts: `gdrive -f json auth`
-     returns `AUTH_REQUIRED`, bare `gdrive auth` asks for the Client ID as it
-     always has.
+     install at a terminal. [Decision 0005](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0005-auth-and-scopes.md)
+     suppresses that prompt "to preserve automation", and the format was only
+     ever a proxy for the question it is asking, so the CLI now asks it
+     directly: **with no tty on stdin, a missing client is `AUTH_REQUIRED` and
+     exit 2 under every format**, and `gdrive -f json auth` refuses even at a
+     terminal. What changes for you: `gdrive auth` piped or in CI used to depend
+     on the format resolving to json, and now does not depend on the format at
+     all; interactively it prompts where an unasked-for json default would have
+     refused.
+
+   **If your config already said `default_format = "json"`**, or you export
+   `GDRIVE_CLI_FORMAT=json`, the exemptions above are *changes* for you rather
+   than reassurances — what grants them is whether a format was named on the
+   command line, and a config key is not that:
+
+   | with `default_format = "json"` | 0.7.0 | 0.8.0 |
+   |---|---|---|
+   | `gdrive docs read X` | envelope | **Markdown** |
+   | `gdrive forms read X` | envelope | **YAML** |
+   | `gdrive ls -q` | envelope | **bare ids** |
+   | `gdrive sheets read S --as csv` | envelope | **CSV** |
+   | `gdrive auth` with no terminal | `AUTH_REQUIRED`, exit 2 | `AUTH_REQUIRED`, exit 2 |
+
+   Add `-f json` to those invocations to keep the envelope. Everything else your
+   config already covered is unaffected.
 
    What to do: add `-f text` where you were reading or redirecting a table or a
    confirmation line, or set `default_format = "text"` once and change nothing
@@ -90,11 +112,12 @@ log for 0.x.
    columns on screen, pipe it through something that has a terminal and a font
    in front of it — `gdrive ls -f text | column -t -s $'\t'`.
 
-   **`--as csv` and `--as json` encode text, so they now need `-f text` to be
-   reachable at all.** The encodings themselves are unchanged, but
-   `gdrive sheets read S --as csv > out.csv` — the reason `--as csv` exists —
-   writes the envelope until you add `-f text`. `-q` also still prints CSV, for
-   both `sheets read` and `forms responses`.
+   **`--as csv` and `--as json` are unchanged, and reach you without a flag.**
+   Naming an encoding is a preference, so it selects text on its own:
+   `gdrive sheets read S --as csv > out.csv` writes CSV as it always did, and
+   `--as json` still gives the bare 2-D array. A named `-f` outranks it, so
+   `--as csv -f json` is the envelope. `-q` prints CSV either way, for both
+   `sheets read` and `forms responses`.
 
    Text is lossy on purpose now: a tab, a newline, or any other control
    character is replaced with a space in **every value text mode prints** — a
@@ -130,7 +153,7 @@ log for 0.x.
 
 5. **A shortcut is followed, or not, according to what the argument is for.**
    Previously nothing was followed, and the commands that should have followed
-   simply failed. Now `ls <folder>`, `download`, `docs read/append/insert/replace`,
+   failed or did nothing. Now `ls <folder>`, `download`, `docs read/append/insert/replace`,
    `sheets tabs/read/write/append/clear`, `forms read/responses`, every
    `--parent`, and the *destination* of `mv` and `cp` resolve through a shortcut
    to its target, while `rm`, `info`, `share list/add/remove/link` and the
@@ -160,7 +183,8 @@ log for 0.x.
 
 - **`gdrive forms read` and `gdrive forms responses`.** A form reads as a single
   YAML document — ids, questions, options and all — and its responses read as a
-  table whose columns are the question titles, with `--as csv` and `--as json`
+  table headed by a `submitted` column and then the question titles, with
+  `--as csv` and `--as json`
   alongside the default table. A grid question contributes one column per row,
   headed `<item title> — <row title>`. What the document cannot model is kept
   verbatim under `raw` and reported on stderr (or in an `unsupported` field in
@@ -181,8 +205,10 @@ added nothing and the ID abutted the name — `…xxxxxxx1AbCdEf`, with no way t
 tell where one ended. A full-width character costs one UTF-16 unit and two
 display columns, so `研修医へのフィードバックシート` pushed every column right of
 it out by 15, and rows in one table disagreed about where the ID began. A
-newline in a name — Drive accepts one — split a row in half. All three are gone
-with the padding rather than repaired; the second breaking change above is why.
+newline in a name — Drive accepts one — split a row in half. The first two are
+gone with the padding rather than repaired; the newline went to the sanitizer
+described in the second breaking change above, which also covers spreadsheet
+cells, form answers and one-line confirmations such as `Trashed <name> (<id>)`.
 
 The rest was broken because the CLI had no idea shortcuts existed
 ([decision 0025](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0025-shortcuts.md)
@@ -210,7 +236,9 @@ calls them bugs rather than missing features):
   index covers the internal title, path resolution does not. Take the ID from
   `search`, or the name in its `Name` column.
 - **`gdrive download <form>` gives advice that cannot work.** It fails with
-  "specify `--export-as`", and `--export-as` on a form fails too: the Forms API
-  has no export. Use `gdrive forms read`.
+  "specify `--export-as`", and passing `--export-as` does not help: nothing in
+  the CLI rejects it for a form, so the request reaches Drive's `files.export`,
+  which answers 400 — `API_ERROR`, "Request failed with status code 400",
+  measured against a real form. Use `gdrive forms read`.
 - **Creating a shortcut is not supported** (`gdrive ln`), and neither is writing
   a form. Both are planned.
