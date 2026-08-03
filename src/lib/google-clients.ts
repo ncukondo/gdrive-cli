@@ -1,7 +1,8 @@
 import { google } from "googleapis";
-import type { docs_v1, drive_v3, sheets_v4 } from "googleapis";
+import type { docs_v1, drive_v3, forms_v1, sheets_v4 } from "googleapis";
 import type { DriveClient } from "./api.ts";
 import type { DocsClient, DocsRequest } from "./docs-api.ts";
+import type { FormsClient } from "./forms-api.ts";
 import type { SheetsClient } from "./sheets-api.ts";
 
 type OAuth2Client = InstanceType<(typeof google.auth)["OAuth2"]>;
@@ -26,6 +27,11 @@ export function buildDocsClient(auth: OAuth2Client): DocsClient {
 
 export function buildSheetsClient(auth: OAuth2Client): SheetsClient {
   return google.sheets({ version: "v4", auth });
+}
+
+/** Forms needs no new scope: `drive` covers it (decision 0027). */
+export function buildFormsClient(auth: OAuth2Client): FormsClient {
+  return google.forms({ version: "v1", auth });
 }
 
 // --- Request-parameter guard ------------------------------------------------
@@ -88,6 +94,15 @@ export type GeneratedParamChecks = [
     UnknownParams<
       DocsClient["documents"]["batchUpdate"],
       docs_v1.Params$Resource$Documents$Batchupdate
+    >
+  >,
+  AssertNoUnknownParams<
+    UnknownParams<FormsClient["forms"]["get"], forms_v1.Params$Resource$Forms$Get>
+  >,
+  AssertNoUnknownParams<
+    UnknownParams<
+      FormsClient["forms"]["responses"]["list"],
+      forms_v1.Params$Resource$Forms$Responses$List
     >
   >,
   AssertNoUnknownParams<
