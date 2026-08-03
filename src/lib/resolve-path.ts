@@ -35,6 +35,10 @@ export function looksLikeId(arg: string): boolean {
 interface Candidate {
   id: string;
   name: string;
+  /** True when this entry is a pointer rather than a file (decision 0025). */
+  isShortcut: boolean;
+  /** `shortcutDetails.targetId`, or null on anything that is not a shortcut. */
+  targetId: string | null;
 }
 
 async function childrenNamed(
@@ -51,7 +55,9 @@ async function childrenNamed(
     const res = await client.files.list({
       q,
       pageSize: 100,
-      fields: "files(id,name,mimeType)",
+      // The target rides along with every segment, so following one costs no
+      // second lookup (decision 0025 §4).
+      fields: "files(id,name,mimeType,shortcutDetails(targetId,targetMimeType))",
       supportsAllDrives: true,
       // The query already pins one parent, so this cannot widen the result
       // set — only stop it being empty inside a shared drive (0016 §2, 0019 §4).
@@ -59,7 +65,12 @@ async function childrenNamed(
     });
     return (res.data.files ?? []).map((raw) => {
       const f = normalizeFile(raw);
-      return { id: f.id, name: f.name };
+      return {
+        id: f.id,
+        name: f.name,
+        isShortcut: f.type === "shortcut",
+        targetId: f.target_id,
+      };
     });
   } catch (error) {
     mapDriveError(error);
@@ -109,23 +120,31 @@ async function sharedDriveHint(client: DriveClient, name: string, path: string):
   }
 }
 
+/** What a walk learned about the file an argument names. */
+interface Walked {
+  /** The file the argument names — a terminal shortcut is *not* followed here. */
+  id: string;
+  /**
+   * The listing entry for the last segment, or null when the id came from the
+   * argument itself (an ID passthrough or a root), where nothing was looked up.
+   */
+  candidate: Candidate | null;
+}
+
 /**
- * Resolves a `<file>` argument to a Drive file ID (decision 0008):
- * - empty / `/` / `root` → the My Drive root
- * - an ID-looking argument → returned as-is (ID passthrough)
- * - `drive:<name>[/…]` → a shared drive's root, then the walk (decision 0019)
- * - otherwise a `/`-separated path, walked from the My Drive root by name.
- *
- * A segment with multiple matches → `INVALID_ARGS` (listing candidate IDs);
- * a segment with no match → `NOT_FOUND`.
+ * The shared walk behind {@link resolvePath} and {@link resolveTarget}
+ * (decision 0025 §3). Intermediate segments always follow a shortcut — they
+ * play the container role, "look inside this" — while the last one is returned
+ * as it stands, leaving the two entry points to differ only in what they do
+ * with it.
  */
-export async function resolvePath(client: DriveClient, arg: string): Promise<string> {
+async function walk(client: DriveClient, arg: string): Promise<Walked> {
   const trimmed = arg.trim();
   if (trimmed === "" || trimmed === "/" || trimmed === ROOT_ID) {
-    return ROOT_ID;
+    return { id: ROOT_ID, candidate: null };
   }
   if (looksLikeId(trimmed)) {
-    return trimmed;
+    return { id: trimmed, candidate: null };
   }
 
   const start: Start = trimmed.startsWith(DRIVE_PREFIX)
@@ -138,6 +157,7 @@ export async function resolvePath(client: DriveClient, arg: string): Promise<str
       };
 
   let { parentId } = start;
+  let last: Candidate | null = null;
   const walked: string[] = [];
 
   for (const segment of start.segments) {
@@ -165,9 +185,33 @@ export async function resolvePath(client: DriveClient, arg: string): Promise<str
     if (match === undefined) {
       throw new AppError("NOT_FOUND", `No such file or folder: ${soFar}`);
     }
-    parentId = match.id;
+    last = match;
+    // Look *inside* whatever the segment named: a folder shortcut has no
+    // children of its own, so the next segment is searched under its target
+    // (decision 0025 §1). A shortcut to a non-folder needs no special case —
+    // its target has no children either, and the next segment is NOT_FOUND.
+    parentId = match.targetId ?? match.id;
     walked.push(segment);
   }
 
-  return parentId;
+  return { id: last?.id ?? parentId, candidate: last };
+}
+
+/**
+ * Resolves a `<file>` argument to a Drive file ID (decision 0008):
+ * - empty / `/` / `root` → the My Drive root
+ * - an ID-looking argument → returned as-is (ID passthrough)
+ * - `drive:<name>[/…]` → a shared drive's root, then the walk (decision 0019)
+ * - otherwise a `/`-separated path, walked from the My Drive root by name.
+ *
+ * A segment with multiple matches → `INVALID_ARGS` (listing candidate IDs);
+ * a segment with no match → `NOT_FOUND`.
+ *
+ * A shortcut named by the *last* segment is returned as itself: this is what
+ * the container and entry roles of decision 0025 §1 both call, and `rm link`
+ * must not reach the target.
+ */
+export async function resolvePath(client: DriveClient, arg: string): Promise<string> {
+  const { id } = await walk(client, arg);
+  return id;
 }
