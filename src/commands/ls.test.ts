@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLsCommand, handleLs, parseLimit, parseOrder, parseType } from "./ls.ts";
+import { FILE_TYPES } from "../types/index.ts";
 import type { DriveFile } from "../types/index.ts";
 import type { ListOptions } from "../lib/api.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
@@ -52,6 +53,13 @@ describe("option parsers", () => {
   it("parseType accepts shortcut, and offers it when the value is unknown", () => {
     expect(parseType("shortcut")).toBe("shortcut");
     expect(() => parseType("xml")).toThrow(/shortcut/);
+  });
+  it("parseType accepts form, and offers it when the value is unknown (decision 0034)", () => {
+    expect(parseType("form")).toBe("form");
+    expect(() => parseType("xml")).toThrow(/form/);
+  });
+  it.each([...FILE_TYPES])("parseType accepts every member of the vocabulary: %s", (type) => {
+    expect(parseType(type)).toBe(type);
   });
   it("parseOrder validates", () => {
     expect(parseOrder("modified")).toBe("modified");
@@ -229,6 +237,12 @@ describe("handleLs", () => {
 });
 
 describe("createLsCommand", () => {
+  it("offers every type in --help, so the help text cannot drift from the vocabulary", () => {
+    const description =
+      createLsCommand().options.find((o) => o.long === "--type")?.description ?? "";
+    for (const type of FILE_TYPES) expect(description).toContain(type);
+  });
+
   it("offers --drive but not --all-drives", () => {
     // `ls` always filters by a single parent, so there is no corpus for
     // --all-drives to widen — it was a documented no-op (decision 0016 §2).

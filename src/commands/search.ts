@@ -3,6 +3,7 @@ import type { CommandResult, DriveFile, FileType, OutputFormat } from "../types/
 import { renderSuccess } from "../lib/output.ts";
 import type { DriveScope, ListOptions, OrderKey } from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
+import { TYPE_OPTION_DESCRIPTION } from "./ls.ts";
 
 export interface SearchDeps {
   searchFiles: (query: string, options: ListOptions) => Promise<DriveFile[]>;
@@ -43,7 +44,7 @@ export function createSearchCommand(): Command {
   return new Command("search")
     .description("Search files by name or full text")
     .argument("<query>", "Search query")
-    .option("--type <type>", "Filter by type: folder | doc | sheet | slides | shortcut | file")
+    .option("--type <type>", TYPE_OPTION_DESCRIPTION)
     .option("-n, --limit <n>", "Maximum number of files")
     .option("--order <order>", "Sort: name | modified | created")
     .option("--all-drives", "Search every shared drive as well as My Drive")

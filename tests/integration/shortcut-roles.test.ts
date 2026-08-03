@@ -546,3 +546,40 @@ describe("--type shortcut", () => {
     expect(q).toContain("application/vnd.google-apps.shortcut");
   });
 });
+
+/**
+ * What a live account showed once `forms read` shipped: a form read as
+ * `type: file`, a shortcut to one as `target_type: file`, and no `--type` value
+ * that found a form at all (decision 0034).
+ */
+describe("a form is a type the CLI can name (decision 0034)", () => {
+  it("`info <form>` reports type form", async () => {
+    await run(["-f", "json", "info", "Reports/Survey"]);
+    const parsed: unknown = JSON.parse(stdout.join(""));
+    expect(parsed).toMatchObject({ data: { file: { id: "frm1", type: "form" } } });
+  });
+
+  it("`info <link-to-form>` names the target as a form", async () => {
+    await run(["-f", "json", "info", "Reports/link-to-form"]);
+    const parsed: unknown = JSON.parse(stdout.join(""));
+    expect(parsed).toMatchObject({
+      data: { file: { type: "shortcut", target_id: "frm1", target_type: "form" } },
+    });
+  });
+
+  it("filters `ls` to forms", async () => {
+    await run(["ls", "Reports", "--type", "form"]);
+    const [q] = drive.list.mock.calls
+      .flatMap((call) => (typeof call[0]?.q === "string" ? [call[0].q] : []))
+      .filter((query: string) => query.includes("mimeType"));
+    expect(q).toContain("application/vnd.google-apps.form");
+  });
+
+  it("filters `search` to forms", async () => {
+    await run(["search", "survey", "--type", "form"]);
+    const [q] = drive.list.mock.calls.flatMap((call) =>
+      typeof call[0]?.q === "string" ? [call[0].q] : [],
+    );
+    expect(q).toContain("application/vnd.google-apps.form");
+  });
+});
