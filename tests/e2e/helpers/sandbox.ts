@@ -78,6 +78,8 @@ const driveFileSchema = z.object({
   size: z.number().nullable(),
   trashed: z.boolean(),
   created: z.string(),
+  parents: z.array(z.string()),
+  owners: z.array(z.string()),
   web_view_link: z.string().nullable(),
   target_id: z.string().nullable(),
   target_type: z.string().nullable(),
@@ -268,6 +270,33 @@ async function pruneStaleSandboxes(): Promise<void> {
 }
 
 /**
+ * What the anchor's own metadata has to say before anything is written.
+ *
+ * The string checks above catch a mis-typed anchor; these catch a plausible one
+ * that is still the wrong place. All four were measured rather than assumed:
+ *
+ * | anchor | `parents` | `owners` |
+ * | --- | --- | --- |
+ * | a normal folder | the parent | the account |
+ * | My Drive's root | empty | the account |
+ * | a shared drive's root | empty | **empty** |
+ * | a folder inside a shared drive | the drive | **empty** |
+ *
+ * So an empty `owners` is what a shared drive looks like at any depth, which is
+ * the check `drive:`-by-spelling could not make: a shared drive's id is an
+ * ordinary id, and a folder inside one is indistinguishable by name.
+ */
+function refuseAnchorMetadata(anchor: DriveFile): string | undefined {
+  if (anchor.type !== "folder") return `it names a ${anchor.type}, not a folder`;
+  if (anchor.trashed) return "it is in the trash";
+  if (anchor.parents.length === 0) return "it is a drive root, not a folder inside one";
+  if (anchor.owners.length === 0) {
+    return "it belongs to a shared drive, which E2E never writes to";
+  }
+  return undefined;
+}
+
+/**
  * Refuses an anchor that would let a write escape, before anything is written.
  *
  * This runs where a failure is loud. An anchor that is set but unusable is a
@@ -276,15 +305,32 @@ async function pruneStaleSandboxes(): Promise<void> {
  * variable points somewhere unintended.
  */
 async function requireUsableAnchor(): Promise<void> {
-  const refusal = rejectAnchor(PARENT);
+  const refusal = rejectAnchor(PARENT) ?? refuseAnchorMetadata(await info(PARENT));
   if (refusal !== undefined) {
     throw new Error(`GDRIVE_CLI_E2E_FOLDER is not usable: ${refusal}. Give it a folder id.`);
   }
-  const anchor = await info(PARENT);
-  if (anchor.type !== "folder") {
-    throw new Error(`GDRIVE_CLI_E2E_FOLDER names a ${anchor.type}, not a folder.`);
-  }
 }
+
+/**
+ * A run-level failure is not consulted here, and the reason is measured.
+ *
+ * Review of #19 found that an unhandled rejection fails the run (vitest exits
+ * 1, so `pre-push` does stop the branch) while producing no test result, so the
+ * accounting below deletes the sandbox anyway. The obvious fix — a
+ * `process.on("unhandledRejection")` that sets a flag — was tried and is worse:
+ * under Bun, registering that listener stops vitest from seeing the rejection
+ * at all. Measured with one probe file, run twice:
+ *
+ * | listener registered | vitest reports | exit |
+ * | --- | --- | --- |
+ * | no | `Unhandled Rejection`, 1 unhandled error | **1** |
+ * | yes | nothing | **0** |
+ *
+ * So the flag would have bought evidence retention in this one case at the
+ * price of turning a failing push into a passing one. The failure that matters
+ * is kept and the residual is stated instead: an unhandled rejection outside a
+ * test loses the folder, and nothing else observed does.
+ */
 
 /**
  * Creates a sandbox for the calling test file and hands back its id.
@@ -327,7 +373,11 @@ export function useSandbox(): { readonly id: string } {
       );
       return;
     }
-    await gdrive("rm", handle.id);
+    // Permanent, because this branch is only reached once the run has proved it
+    // succeeded: there is nothing in there anyone would want back, and three
+    // folders per push accumulating in Drive's trash is a leak by a slower
+    // route. What the pruner removes is the opposite case and goes to the trash.
+    await gdrive("rm", handle.id, "--permanent");
   }, LIVE_TIMEOUT);
 
   return {
