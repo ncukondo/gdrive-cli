@@ -43,7 +43,7 @@ Bun · TypeScript · commander · googleapis · smol-toml · zod · vitest · ox
 bun run dev            # run the CLI
 bun run test           # unit + integration, once, then exits
 bun run test:watch     # the same set, re-run on change
-bun run test:unit      # src unit tests
+bun run test:unit      # unit tests under src/ and scripts/
 bun run test:integration
 bun run test:e2e       # requires auth; `test` and `test:watch` exclude it
 bun run lint / format / format:check / typecheck
