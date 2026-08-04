@@ -34,6 +34,35 @@ const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 const SANDBOX_PREFIX = "e2e-";
 
+/**
+ * Exactly what `sandboxName` produces, and nothing a person would type.
+ *
+ * The pruner is the only code here that deletes something it did not create, so
+ * what it recognises has to be narrow. `startsWith("e2e-")` would take a
+ * `e2e-baseline.csv` somebody parked in the folder.
+ */
+const SANDBOX_NAME = /^e2e-\d{8}T\d{6}Z-\d+$/;
+
+/**
+ * Spellings of `GDRIVE_CLI_E2E_FOLDER` that must never be accepted.
+ *
+ * `src/lib/resolve-path.ts` trims a path and maps `root`, `/` and the empty
+ * string to My Drive's root, so an anchor of `" "` would put the sandbox at the
+ * top of the account and point the pruner at everything in it. `drive:` reaches
+ * a shared drive, which decision 0043 §2 rules out. A folder id contains no
+ * slash and no colon, which is what is left after these.
+ */
+function rejectAnchor(anchor: string): string | undefined {
+  const trimmed = anchor.trim();
+  if (trimmed === "" || trimmed === "root" || trimmed === "/") {
+    return "it names My Drive's root";
+  }
+  if (trimmed !== anchor) return "it has surrounding whitespace";
+  if (anchor.includes("/")) return "it is a path, and only a folder id is accepted";
+  if (anchor.includes(":")) return "it addresses a shared drive, which E2E never writes to";
+  return undefined;
+}
+
 const envelopeSchema = z.object({
   success: z.boolean(),
   data: z.unknown().optional(),
@@ -179,17 +208,6 @@ export async function gdriveAs<T>(schema: z.ZodType<T>, ...args: string[]): Prom
   return parsed.data;
 }
 
-/** Runs the CLI in text mode and returns stdout verbatim, newline trimmed. */
-export async function gdriveText(...args: string[]): Promise<string> {
-  const result = await invoke(["-f", "text", ...args]);
-  if (result.code !== 0) {
-    throw new Error(
-      `gdrive ${args.join(" ")} exited ${result.code}\n${result.stderr}${result.stdout}`,
-    );
-  }
-  return result.stdout.replace(/\n$/, "");
-}
-
 /**
  * Runs the CLI expecting failure, and returns the error envelope's code.
  *
@@ -241,7 +259,8 @@ function sandboxName(): string {
 async function pruneStaleSandboxes(): Promise<void> {
   const cutoff = Date.now() - STALE_AFTER_MS;
   for (const child of await list(PARENT)) {
-    if (!child.name.startsWith(SANDBOX_PREFIX)) continue;
+    if (child.type !== "folder") continue;
+    if (!SANDBOX_NAME.test(child.name)) continue;
     const created = Date.parse(child.created);
     if (Number.isNaN(created) || created >= cutoff) continue;
     await gdrive("rm", child.id);
@@ -249,30 +268,63 @@ async function pruneStaleSandboxes(): Promise<void> {
 }
 
 /**
- * Creates this run's sandbox and hands back its id, tearing it down after the
- * last test only when every test passed.
+ * Refuses an anchor that would let a write escape, before anything is written.
  *
- * A failing run leaves the folder in place on purpose. Whatever went wrong is
- * in there, and a suite that deletes the evidence on its way out is a suite
- * nobody can debug.
+ * This runs where a failure is loud. An anchor that is set but unusable is a
+ * misconfiguration, not an absent account, so it fails rather than skips: 0043
+ * §3 buys quiet for the machine that has no credentials, not for the one whose
+ * variable points somewhere unintended.
+ */
+async function requireUsableAnchor(): Promise<void> {
+  const refusal = rejectAnchor(PARENT);
+  if (refusal !== undefined) {
+    throw new Error(`GDRIVE_CLI_E2E_FOLDER is not usable: ${refusal}. Give it a folder id.`);
+  }
+  const anchor = await info(PARENT);
+  if (anchor.type !== "folder") {
+    throw new Error(`GDRIVE_CLI_E2E_FOLDER names a ${anchor.type}, not a folder.`);
+  }
+}
+
+/**
+ * Creates a sandbox for the calling test file and hands back its id.
+ *
+ * One per file, not one per run: vitest gives each file its own process, and a
+ * shared folder would couple files that have no reason to know about each
+ * other. `README.md` says so, because three folders appearing at once is
+ * otherwise a surprise while watching the run.
+ *
+ * Teardown deletes the folder only on a positive account of success — setup
+ * finished, at least one test ran, and none of the ones that ran failed. Every
+ * other outcome keeps it. That direction is the whole point: whatever went
+ * wrong is in there, and inferring "nothing went wrong" from the absence of a
+ * signal is how a `beforeAll` failure ends up destroying its own evidence.
  */
 export function useSandbox(): { readonly id: string } {
   const handle = { id: "" };
-  let failed = false;
+  let setupFinished = false;
+  let passed = 0;
+  let failures = 0;
 
   beforeAll(async () => {
+    await requireUsableAnchor();
     await pruneStaleSandboxes();
     handle.id = (await file("mkdir", sandboxName(), "--parent", PARENT)).id;
+    setupFinished = true;
   }, LIVE_TIMEOUT);
 
   afterEach((context) => {
-    if (context.task.result?.state === "fail") failed = true;
+    if (context.task.result?.state === "pass") passed += 1;
+    else failures += 1;
   });
 
   afterAll(async () => {
     if (handle.id === "") return;
-    if (failed) {
-      console.warn(`E2E: a test failed; the sandbox is kept at ${handle.id} for inspection.`);
+    const everythingPassed = setupFinished && failures === 0 && passed > 0;
+    if (!everythingPassed) {
+      console.warn(
+        `E2E: this file did not finish cleanly; its sandbox is kept at ${handle.id} for inspection.`,
+      );
       return;
     }
     await gdrive("rm", handle.id);

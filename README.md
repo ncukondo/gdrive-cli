@@ -143,9 +143,12 @@ export GDRIVE_CLI_E2E_FOLDER=<the id of a Drive folder you can lose>
 bun run test:e2e
 ```
 
-Each run creates one subfolder there, does every write inside it, and trashes it
-when the run passes; a failing run keeps its folder so you can look at what
-happened. Nothing outside that subfolder is ever addressed. With the variable
+Each test file creates its own subfolder there — three, today, since vitest
+gives each file a process — does every write inside it, and trashes it when that
+file passes. A file that fails anywhere, including in its setup, keeps its folder
+so you can look at what happened. Nothing outside those subfolders is ever
+addressed, and the variable must name a folder id: a path, a `drive:` prefix or
+anything that resolves to My Drive's root is refused before the first write. With the variable
 unset the suite skips and `git push` is not blocked, so a clone with no Google
 account needs no setup at all.
 
