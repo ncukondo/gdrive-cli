@@ -1,6 +1,6 @@
 # Task 0039: The first E2E suite, and the hook that runs it
 
-Status: todo
+Status: in review — PR to follow
 Depends on: 0038 — until `test` stopped being an unfiltered `vitest run`, a file
 under `tests/e2e/` broke CI and the release job.
 Parallel: no — it creates `tests/e2e/` and `.husky/pre-push`, which nothing else
@@ -41,9 +41,16 @@ On a machine with no account, it says so and gets out of the way.
 - `tests/e2e/docs.test.ts` — the Markdown round trip.
 - `tests/e2e/sheets.test.ts` — values in, values out.
 - `.husky/pre-push` — new.
-- `docs/configuration.md` — `GDRIVE_CLI_E2E_FOLDER` in the environment table.
 - `README.md` — the Development block gains how to set the folder up.
 - `CLAUDE.md` — the Commands block says what `pre-push` will do.
+
+Not `docs/configuration.md`, which this task was written to touch.
+`GDRIVE_CLI_E2E_FOLDER` is read by the suite, never by the CLI, and
+`docs/` describes the program for the person using it
+([`0035`](../decisions/0035-docs-are-downstream.md)). A variable only a
+contributor sets belongs where a contributor looks, which is `README.md`'s
+Development block and `CLAUDE.md`. Corrected here before review rather than in
+the outcome notes ([`0041`](../decisions/0041-the-task-is-current-during-review.md) §2).
 
 ## Out of scope
 
