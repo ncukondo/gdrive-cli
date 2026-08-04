@@ -70,6 +70,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0035 The release notes carry the breaking changes](archive/0035-release-notes.md) | — | F | done |
 | [0036 The table stays a table](archive/0036-renderer-properties.md) | 0034 | F | closed unmerged |
 | [0037 The default is machine-readable](archive/0037-machine-format-by-default.md) | 0034 | — | done |
+| [0038 `bun run test` runs the suite once](0038-test-runs-once.md) | — | — | todo |
 
 ## Parallelism notes
 
@@ -195,6 +196,14 @@ is the third time in this stretch the same principle has decided a design — a
 caller must be able to tell what actually happened, not infer it from an exit
 code. 0033 depends on 0027 because the walk copies a shortcut without following
 it, which needs `shortcut` to be a type first.
+
+0038 is not a feature. `bun run test` is `vitest`, which watches and never
+exits, and it is the command every acceptance criterion in this directory names.
+Task 0037 raised it in four review rounds and corrected the one file it was
+holding, which is exactly what `decisions/0040` §1 forbids; this task answers the
+class. It also excludes `tests/e2e/**` from the scripts, because `test:all` is an
+unfiltered `vitest run` and would send CI at a real Google account on the day
+that directory gains a file.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
