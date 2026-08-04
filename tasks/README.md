@@ -21,6 +21,15 @@ Rules (see [`decisions/0001`](../decisions/0001-development-process.md),
   `task/00NN-slug` branch through a pull request, reviewed by an agent holding no
   implementation context. `decisions/` and `tasks/` commit straight to main.
 - Docs (`docs/`, `README.md`) updates implied by a task are part of its DoD.
+- **A task stays current while it is being reviewed**
+  ([`0041`](../decisions/0041-the-task-is-current-during-review.md)): a decision
+  made mid-branch, or a scope that turned out wider than the plan, is committed
+  here before the next review round. A sentence the branch now contradicts is
+  corrected, not annotated.
+- **A deferral is tracked or disowned**
+  ([`0042`](../decisions/0042-deferred-work-is-an-issue.md)): work left undone at
+  archive time either names a GitHub issue or says it will not be done. This
+  table holds work in flight; the tracker holds work that is not.
 
 Before starting, read `decisions/0013-architecture.md` (source-tree map +
 command-registration contract) and `decisions/0012-testing-strategy.md`
@@ -70,7 +79,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0035 The release notes carry the breaking changes](archive/0035-release-notes.md) | — | F | done |
 | [0036 The table stays a table](archive/0036-renderer-properties.md) | 0034 | F | closed unmerged |
 | [0037 The default is machine-readable](archive/0037-machine-format-by-default.md) | 0034 | — | done |
-| [0038 `bun run test` runs the suite once](0038-test-runs-once.md) | — | — | todo |
+| [0038 `bun run test` runs the suite once](0038-test-runs-once.md) | — | — | in review |
+| [0039 The first E2E suite, and the hook that runs it](0039-e2e-suite.md) | 0038 | — | todo |
 
 ## Parallelism notes
 
@@ -204,6 +214,18 @@ holding, which is exactly what `decisions/0040` §1 forbids; this task answers t
 class. It also excludes `tests/e2e/**` from the scripts, because `test:all` is an
 unfiltered `vitest run` and would send CI at a real Google account on the day
 that directory gains a file.
+
+0039 builds the layer `decisions/0012` described and nobody ever wrote.
+`tests/e2e/` has never held a file on any branch, so what has actually verified
+this CLI against Google is a manual pass written into each task's `Verification`
+section. That pass finds what nothing else can — all three of 0023's defects came
+from it — and it is skipped when the task is nearly over: 0027 and 0029 both
+merged with `NOT DONE` in the file, and task 0034 exists to fix what they missed.
+Decision 0043 gives it a cadence (`pre-push`), a containment rule (one folder,
+created per run, trashed after), and a smaller job for the manual pass, which
+survives for what needs a tty or a person. 0039 depends on 0038 because until the
+scripts excluded `tests/e2e/**`, the first file placed there broke CI and the
+release job.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and

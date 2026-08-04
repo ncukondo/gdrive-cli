@@ -20,7 +20,9 @@ Parallel: <yes (worktree-safe) / no> — <which tasks it can run alongside>
 
 ## Out of scope
 
-- <Explicitly deferred work, with the task that owns it if known.>
+- <Explicitly deferred work. Each entry names a GitHub issue or says the work
+  will not be done — a description with neither is what `decisions/0042` §2
+  rules out.>
 
 ## TDD plan
 
@@ -39,5 +41,10 @@ Repeat per sub-feature; commit at green points.
 
 ## Verification
 
-- `bun run test <path>` — <what it covers>
-- <Manual check if any, e.g. run against a real account>
+Two lists, kept apart so that "the automated one passed" cannot stand in for the
+part it never ran (`decisions/0043` §4).
+
+- Automated: `bun run test <path>` — <what it covers>. `bun run test:e2e` —
+  <what this task adds to the live suite, or "nothing">.
+- Manual, against a real account: <what needs a terminal, a browser, or a
+  person's judgement — or "none, and why">.
