@@ -50,6 +50,19 @@ On a machine with no account, it says so and gets out of the way.
 - **Forms.** `forms read` deserves E2E and the fixture needs a form built through
   `forms.batchUpdate`, which is the machinery task 0030 builds anyway. It joins
   the suite there.
+- **Shortcuts.** The two properties task 0034 paid for — a shortcut's `Link`
+  pointing at itself, and `target_id` / `target_type` naming what it points at —
+  need a shortcut in the sandbox, and the CLI cannot make one until task 0028
+  adds `ln`. Building the fixture through raw `googleapis` instead would put a
+  second, untested code path in the helper for one property, so it waits for
+  0028, where it is one command. Both deferrals name a task rather than an issue,
+  which [`0042`](../decisions/0042-deferred-work-is-an-issue.md) §2 asks for and
+  a task satisfies more strongly than a tracker row.
+
+  The consequence is worth stating plainly: the first E2E covers neither of the
+  two defects that motivated it most directly. What it does cover is the write
+  side, which is where all three of 0023's defects were and where a fake is
+  least able to help.
 - **Anything needing a tty or a browser.** [`0043`](../decisions/0043-e2e-runs-before-push.md)
   §4, issue [#17](https://github.com/ncukondo/gdrive-cli/issues/17).
 - **Shared drives.** [`0043`](../decisions/0043-e2e-runs-before-push.md) §2.
@@ -81,14 +94,15 @@ expectation.
      subfolder behind, and the next run prunes nothing because it is fresh.
 
 2. **Drive, read**
-   - Seed the sandbox with a folder, a Doc, a Sheet, a shortcut to the folder,
-     and a file whose name is `研修医へのフィードバックシート`.
-   - `ls` reports `folder`, `document`, `spreadsheet`, `shortcut` for the five,
-     and `--type document` returns exactly the Doc.
-   - `info` on the shortcut carries a `Link`, a `target_id` and a `target_type`,
-     and the `target_id` is the folder's id. This is task 0034's second defect,
-     stated as a property.
-   - `-f text` output for the five rows splits on `\t` back into the names that
+   - Seed the sandbox with a folder, a Doc, a Sheet, and an uploaded binary
+     whose name is `研修医へのフィードバックシート`.
+   - `ls` reports `folder`, `doc`, `sheet` and `file` for the four, and
+     `--type doc` returns exactly the Doc. The vocabulary is the one in
+     `docs/commands.md`'s file object and `lib/api.ts`'s map, not a paraphrase
+     of it: `folder | doc | sheet | slides | form | shortcut | file`.
+   - `info` on each carries a `web_view_link`, and `target_id` is `null` on
+     everything that is not a shortcut.
+   - `-f text` output for the four rows splits on `\t` back into the names that
      went in, including the Japanese one.
 
 3. **Drive, write**
@@ -127,6 +141,8 @@ expectation.
       grepping the suite for the sandbox id being the root of every path built
 - [ ] `git push` on a configured machine runs the suite; on an unconfigured one
       it does not block
+- [ ] `ls --type doc` returns exactly the Doc, and the four seeded files report
+      `folder`, `doc`, `sheet` and `file`
 - [ ] The Markdown round trip covers a table, a list starting at 3, an autolink,
       a bare URL and a soft line break
 - [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run lint:casts`,
