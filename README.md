@@ -146,9 +146,11 @@ bun run test:e2e
 Each test file creates its own subfolder there — three, today, since vitest
 gives each file a process — does every write inside it, and trashes it when that
 file passes. A file that fails anywhere, including in its setup, keeps its folder
-so you can look at what happened. Nothing outside those subfolders is ever
-addressed, and the variable must name a folder id: a path, a `drive:` prefix or
-anything that resolves to My Drive's root is refused before the first write. With the variable
+so you can look at what happened. No test addresses anything outside its own
+subfolder; the only thing the suite touches elsewhere is a sandbox an earlier
+run left, which it trashes once that is a day old. The variable must name a
+folder id you own: a path, a trashed folder, a drive root, or anything inside a
+shared drive is refused before the first write. With the variable
 unset the suite skips and `git push` is not blocked, so a clone with no Google
 account needs no setup at all.
 
