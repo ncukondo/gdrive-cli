@@ -135,6 +135,20 @@ bun run lint            # oxlint
 bun run format          # oxfmt
 ```
 
+`bun run test` never touches Google. The live suite is separate and runs on
+`git push`:
+
+```sh
+export GDRIVE_CLI_E2E_FOLDER=<the id of a Drive folder you can lose>
+bun run test:e2e
+```
+
+Each run creates one subfolder there, does every write inside it, and trashes it
+when the run passes; a failing run keeps its folder so you can look at what
+happened. Nothing outside that subfolder is ever addressed. With the variable
+unset the suite skips and `git push` is not blocked, so a clone with no Google
+account needs no setup at all.
+
 The workflow — decisions, tasks, TDD — is described in
 [`CLAUDE.md`](CLAUDE.md) and [`decisions/0001`](decisions/0001-development-process.md).
 
