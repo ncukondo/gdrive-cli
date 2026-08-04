@@ -96,7 +96,10 @@ expectation.
      destroy its own evidence, which is the review finding this sentence
      replaces ([`0041`](../decisions/0041-the-task-is-current-during-review.md) §2).
    - The anchor is validated before the first write: a value naming My Drive's
-     root, a path, or a shared drive is refused rather than skipped.
+     root, a path, a trashed folder, or anything in a shared drive is refused
+     rather than skipped. A shared drive has to be recognised by *identity*, not
+     by the `drive:` prefix — its id is an ordinary id — and the discriminator
+     is that everything in one reports an empty `owners`.
    - On start, trash any sibling `e2e-*` older than 24 hours.
    - Export `describeLive`, which skips the whole file when the variable is
      unset or no account is authenticated — skipped, never failed
@@ -115,8 +118,12 @@ expectation.
      of it: `folder | doc | sheet | slides | form | shortcut | file`.
    - `info` on each carries a `web_view_link`, and `target_id` is `null` on
      everything that is not a shortcut.
-   - `-f text` output for the four rows splits on `\t` back into the names that
-     went in, including the Japanese one.
+   - Not `-f text`. This plan asked for a tab round trip over the four rows, and
+     review was right that it is a renderer property
+     ([`0035`](../decisions/0035-docs-are-downstream.md) §1,
+     [`0043`](../decisions/0043-e2e-runs-before-push.md) §5) already asserted in
+     `src/commands/file-format.test.ts` over the same Japanese name. That Drive
+     stores and returns the name is asserted through the JSON path instead.
 
 3. **Drive, write**
    - `mkdir`, `upload`, `cp`, `mv`, then `rm`, each inside the sandbox, each
