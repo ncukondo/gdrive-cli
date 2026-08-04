@@ -45,10 +45,18 @@ bun run test           # unit + integration, once, then exits
 bun run test:watch     # the same set, re-run on change
 bun run test:unit      # unit tests under src/ and scripts/
 bun run test:integration
-bun run test:e2e       # requires auth; `test` and `test:watch` exclude it
+bun run test:e2e       # the live suite; `test` and `test:watch` exclude it
 bun run lint / format / format:check / typecheck
 bun run changelog 0.8.0   # print one version's CHANGELOG.md section
 ```
+
+`.husky/pre-push` runs `test:e2e` against a real account
+([`0043`](decisions/0043-e2e-runs-before-push.md)). Set `GDRIVE_CLI_E2E_FOLDER`
+to a Drive folder id and every run works inside one throwaway subfolder of it;
+leave it unset and the suite skips rather than fails, so a push is never blocked
+on a machine with no credentials. What the suite cannot reach — a prompt, a
+browser, how output looks at a real width — stays a manual pass, named
+separately in each task's `Verification` section.
 
 ## Releasing
 

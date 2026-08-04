@@ -1,0 +1,4 @@
+# The live suite (decision 0043 §1). On a machine with no
+# GDRIVE_CLI_E2E_FOLDER it skips and the push goes through (§3); on a
+# configured one a failure stops the branch before it leaves the machine.
+bun run test:e2e
