@@ -1,6 +1,7 @@
 # Task 0039: The first E2E suite, and the hook that runs it
 
-Status: in review — PR to follow
+Status: done — PR [#19](https://github.com/ncukondo/gdrive-cli/pull/19), merged
+2026-08-04, after three review rounds.
 Depends on: 0038 — until `test` stopped being an unfiltered `vitest run`, a file
 under `tests/e2e/` broke CI and the release job.
 Parallel: no — it creates `tests/e2e/` and `.husky/pre-push`, which nothing else
@@ -153,25 +154,91 @@ expectation.
 
 ## Acceptance criteria
 
-- [ ] `bun run test:e2e` with the variable unset reports skipped and exits 0
-- [ ] `bun run test:e2e` with it set creates one `e2e-*` folder per test file,
+- [x] `bun run test:e2e` with the variable unset reports skipped and exits 0
+- [x] `bun run test:e2e` with it set creates one `e2e-*` folder per test file,
       and each is gone when that file passes
-- [ ] A file that fails leaves its folder, including when the failure is in
+- [x] A file that fails leaves its folder, including when the failure is in
       `beforeAll`; the following run does not delete it
-- [ ] `GDRIVE_CLI_E2E_FOLDER` naming My Drive's root, a path, or a shared drive
+- [x] `GDRIVE_CLI_E2E_FOLDER` naming My Drive's root, a path, or a shared drive
       is refused before anything is written
-- [ ] No test addresses any path outside the run's own subfolder, shown by
+- [x] No test addresses any path outside the run's own subfolder, shown by
       grepping the suite for the sandbox id being the root of every path built
-- [ ] `git push` on a configured machine runs the suite; on an unconfigured one
+- [x] `git push` on a configured machine runs the suite; on an unconfigured one
       it does not block
-- [ ] `ls --type doc` returns exactly the Doc, and the four seeded files report
+- [x] `ls --type doc` returns exactly the Doc, and the four seeded files report
       `folder`, `doc`, `sheet` and `file`
-- [ ] The Markdown round trip covers a table, a list starting at 3, an autolink,
+- [x] The Markdown round trip covers a table, a list starting at 3, an autolink,
       a bare URL and a soft line break
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run lint:casts`,
+- [x] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run lint:casts`,
       `bun run format:check` pass
-- [ ] `README.md` and `CLAUDE.md` describe the variable and the hook, and say
+- [x] `README.md` and `CLAUDE.md` describe the variable and the hook, and say
       what a run really creates
+
+## Outcome notes
+
+Three rounds. Every round found something the suite and the author could not,
+and the round that mattered most is the one where the fix was worse than the
+defect.
+
+- **Teardown destroyed the evidence it was written to keep.** Round one: the
+  rule was "keep the folder when a test failed", read from `afterEach`, and all
+  three files do their live work in `beforeAll`. A setup failure produces no
+  test result, so the flag stayed clear and the sandbox was trashed — losing
+  exactly the document a Docs defect would have left behind. Deletion now needs
+  a positive account of success and every other outcome keeps the folder. The
+  reviewer then ran all five members of the class it had named, not just the one
+  it had shown, and found the fix covers four.
+- **The fifth is unfixable here, and the attempt was worse than the gap.** An
+  unhandled rejection fails the run without failing a test. The obvious fix is a
+  `process.on("unhandledRejection")` that sets a flag; it was written, measured
+  and reverted, because under Bun registering that listener stops vitest seeing
+  the rejection at all — the probe went from exit 1 to exit 0. It would have
+  bought evidence retention in one case by letting a failing push through.
+  [`0040`](../../decisions/0040-a-review-finding-names-a-class.md) §3 names this
+  shape: the question is not whether the finding goes away. The measurement is
+  in `sandbox.ts` where the next person will reach for the same fix, and review
+  independently checked the alternatives (a suite's `result.state` never sees
+  it; `expect.getState()` is test-scoped; `process.exitCode` is unset during
+  `afterAll`) and agreed the only complete design is a reporter plus a scratch
+  file, which is more machinery than the case is worth.
+- **A shared drive was refused by spelling, not by identity.** The guard
+  rejected `drive:名前` because of the colon, and a shared drive's id is an
+  ordinary id, so `info` reporting `type: folder` let it through. Review
+  believed the folder-inside-a-drive case needed `files.get(fields=driveId)`,
+  which the CLI does not surface. Measuring four anchors showed it did not:
+
+  | anchor | `parents` | `owners` |
+  | --- | --- | --- |
+  | a normal folder | the parent | the account |
+  | My Drive's root | empty | the account |
+  | a shared drive's root | empty | empty |
+  | a folder inside one | the drive | empty |
+
+  An empty `owners` is what a shared drive looks like at any depth. Both cases
+  are refused by id, verified against a real drive and a folder inside it.
+- **The CLI answered two questions no fake had been asked.** The file object
+  arrives under `data.file` for `info`/`mkdir`/`cp`/`mv`/`rm` and at the top of
+  `data` for `docs create` and `sheets create`; the error envelope goes to
+  stderr while success goes to stdout. Both were wrong in the first draft.
+- **What the plan got wrong, corrected before review rather than after**
+  ([`0041`](../../decisions/0041-the-task-is-current-during-review.md) §2): the
+  type vocabulary is `doc`/`sheet`, not `document`/`spreadsheet`; shortcuts
+  cannot be seeded until `ln` exists; `GDRIVE_CLI_E2E_FOLDER` belongs in
+  `README.md` rather than `docs/configuration.md`, because the CLI never reads
+  it; and the `-f text` round trip was a renderer property
+  ([`0043`](../../decisions/0043-e2e-runs-before-push.md) §5) already asserted in
+  `src/commands/file-format.test.ts` over the same Japanese name.
+- **Deliberately not fixed.** A folder in another person's My Drive, shared with
+  write access, passes the anchor guard: `owners` is theirs, so it is non-empty.
+  Closing it is one line against the authenticated address, and it is not filed
+  as an issue ([`0042`](../../decisions/0042-deferred-work-is-an-issue.md) §2)
+  because the case requires deliberately pointing the variable at someone else's
+  folder, everything written is still contained and destroyed, and the negative
+  path cannot be tested from here.
+- **Still unobserved**: the pruner's older-than-a-day branch. `created` cannot be
+  forged and nothing in the folder is that old, so it is verified only in its
+  "nothing to do" direction. Its predicate is now a folder whose name matches
+  `sandboxName`'s output exactly.
 
 ## Verification
 
