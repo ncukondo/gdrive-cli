@@ -129,7 +129,7 @@ gdrive ls -f text | column -t -s $'\t'            # a table, for a person
 ```sh
 bun install
 bun run dev --help      # run the CLI from source
-bun run test:all        # vitest
+bun run test            # vitest, once; `test:watch` re-runs on change
 bun run typecheck
 bun run lint            # oxlint
 bun run format          # oxfmt

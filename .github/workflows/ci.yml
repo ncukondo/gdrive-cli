@@ -18,7 +18,7 @@ jobs:
       - run: bun run lint
       - run: bun run lint:casts
       - run: bun run format:check
-      - run: bun run test:all
+      - run: bun run test
       - run: bun run build
       - name: Smoke-test the npm package as installed
         run: |
