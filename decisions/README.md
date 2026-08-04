@@ -62,6 +62,7 @@ names the relationship its record has to the ones before it.
 | [0041](0041-the-task-is-current-during-review.md) | A decision made mid-review reaches the task before the next round (extends 0033) |
 | [0042](0042-deferred-work-is-an-issue.md) | Deferred work is a GitHub issue; a stated deferral is tracked or disowned (revises 0032 §6) |
 | [0043](0043-e2e-runs-before-push.md) | E2E exists, runs on `pre-push`, writes only inside one folder (revises 0012) |
+| [0044](0044-the-reviewer-gets-the-current-plan.md) | Rebase before review; the reviewer reads the plan by ref, not from the diff (extends 0041) |
 
 ## Related projects (reference implementations)
 
