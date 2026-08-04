@@ -1,6 +1,7 @@
 # Task 0038: `bun run test` runs the suite once and exits
 
-Status: in review — PR [#16](https://github.com/ncukondo/gdrive-cli/pull/16)
+Status: done — PR [#16](https://github.com/ncukondo/gdrive-cli/pull/16), merged
+2026-08-04 after one review round.
 Depends on: —
 Parallel: no — it changes `package.json`, and every open task's acceptance
 criteria name the script it changes.
@@ -92,15 +93,64 @@ one command is what invites the next reader to pick the wrong one.
 
 ## Acceptance criteria
 
-- [ ] `bun run test </dev/null` exits 0 without waiting for input
-- [ ] `bun run test src/lib/output.test.ts` runs that file alone
-- [ ] `bun run test:watch` enters watch mode
-- [ ] No script and no workflow names `test:all`
-- [ ] A file placed at `tests/e2e/x.test.ts` is not run by `bun run test`
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run lint:casts`,
+- [x] `bun run test </dev/null` exits 0 without waiting for input
+- [x] `bun run test src/lib/output.test.ts` runs that file alone
+- [x] `bun run test:watch` enters watch mode
+- [x] No script and no workflow names `test:all`
+- [x] A file placed at `tests/e2e/x.test.ts` is not run by `bun run test`
+- [x] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run lint:casts`,
       `bun run format:check` pass
-- [ ] No file under `tasks/` outside `archive/`, and no line in `CLAUDE.md`,
+- [x] No file under `tasks/` outside `archive/`, and no line in `CLAUDE.md`,
       names `bun run test` for something that is not a single run
+
+## Outcome notes
+
+One review round, and everything it found was about the process rather than the
+five-file diff. That is the useful result: the change itself was mechanical, and
+it was the first branch to run under
+[`0041`](../../decisions/0041-the-task-is-current-during-review.md), so what got
+tested was the rule.
+
+- **The class was two sites wider than the plan.** A `grep -rn 'test:all'` after
+  the first edit found `.github/workflows/release.yml`, where the same one-line
+  change guards the release job, and `README.md:132`, which told a contributor to
+  run a script that would no longer exist. Both went into `Scope` on main before
+  review began, which is [`0041`](../../decisions/0041-the-task-is-current-during-review.md)
+  §3's first application. The reviewer then closed the class independently rather
+  than from that list: it extracted every `bun run <name>` in the repository and
+  diffed the names against `package.json`, confirming all sixteen resolve, and
+  ran the two other documented commands that could have rotted.
+- **The reviewer was handed a stale plan anyway**, and this is the finding that
+  outlives the task. GitHub stored the pull request's base at `b23c6d3`, so
+  `gh pr diff 16` replayed the main-only `tasks/` commits as if the branch had
+  made them, and served the task file in its pre-widening form: a `Scope` of
+  three files against a branch touching five. Correcting the task on main cannot
+  reach that copy. [`0044`](../../decisions/0044-the-reviewer-gets-the-current-plan.md)
+  is the answer — rebase before requesting review, and read the plan by ref —
+  and the rebase here emptied the phantom, verified with
+  `gh pr diff 16 --name-only`.
+- **The plan file failed this task's own last criterion.** `tasks/README.md`'s
+  note for 0038 was written in the present tense ("`bun run test` is `vitest`,
+  which watches and never exits"), so merging would have made the plan assert
+  two false things. It is not reachable from a branch
+  ([`0033`](../../decisions/0033-implementation-lands-through-review.md) §1), so
+  it was corrected on main, and the general form is now a rule in that file:
+  a note describing current behaviour is written in the past tense, because
+  nothing in the merge routine revisits the prose.
+- **`--exclude` appends, it does not replace.** The worry was that a CLI
+  `--exclude` overrides vitest's defaults and re-exposes `node_modules`. The
+  reviewer settled it by planting `src/node_modules/vendored.test.ts` and running
+  the old and new forms: 52 files both times, neither collected it.
+- **Not verified: Windows.** `--exclude 'tests/e2e/**'` is single-quoted, which
+  `cmd.exe` does not treat as quoting, so a contributor running the scripts
+  outside a POSIX shell may pass the glob through literally. Harmless while
+  `tests/e2e/` is empty and not harmless after task 0039. Filed as issue
+  [#18](https://github.com/ncukondo/gdrive-cli/issues/18)
+  ([`0042`](../../decisions/0042-deferred-work-is-an-issue.md) §2).
+- **One LOW, fixed on the branch**: `CLAUDE.md` described `test:unit` as "src
+  unit tests" while it has run `scripts/changelog.test.ts` since task 0035.
+  A comment change earns no second round
+  ([`0033`](../../decisions/0033-implementation-lands-through-review.md) §4).
 
 ## Verification
 
