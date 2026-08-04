@@ -89,8 +89,14 @@ expectation.
 
 1. **The sandbox, and nothing else**
    - `sandbox.ts` creates `e2e-<utc timestamp>-<pid>` under
-     `GDRIVE_CLI_E2E_FOLDER`, yields its id, trashes it in an `afterAll` that
-     runs only when every test in the file passed.
+     `GDRIVE_CLI_E2E_FOLDER`, yields its id, and trashes it in an `afterAll`
+     only on a positive account of success: setup finished, at least one test
+     ran, and none that ran failed. Anything else keeps it. Inferring success
+     from the absence of a failure signal is what lets a `beforeAll` failure
+     destroy its own evidence, which is the review finding this sentence
+     replaces ([`0041`](../decisions/0041-the-task-is-current-during-review.md) §2).
+   - The anchor is validated before the first write: a value naming My Drive's
+     root, a path, or a shared drive is refused rather than skipped.
    - On start, trash any sibling `e2e-*` older than 24 hours.
    - Export `describeLive`, which skips the whole file when the variable is
      unset or no account is authenticated — skipped, never failed
@@ -141,9 +147,12 @@ expectation.
 ## Acceptance criteria
 
 - [ ] `bun run test:e2e` with the variable unset reports skipped and exits 0
-- [ ] `bun run test:e2e` with it set creates exactly one `e2e-*` folder, and it
-      is gone when the run passes
-- [ ] A failing run leaves its folder; the following run does not delete it
+- [ ] `bun run test:e2e` with it set creates one `e2e-*` folder per test file,
+      and each is gone when that file passes
+- [ ] A file that fails leaves its folder, including when the failure is in
+      `beforeAll`; the following run does not delete it
+- [ ] `GDRIVE_CLI_E2E_FOLDER` naming My Drive's root, a path, or a shared drive
+      is refused before anything is written
 - [ ] No test addresses any path outside the run's own subfolder, shown by
       grepping the suite for the sandbox id being the root of every path built
 - [ ] `git push` on a configured machine runs the suite; on an unconfigured one
@@ -154,8 +163,8 @@ expectation.
       a bare URL and a soft line break
 - [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run lint:casts`,
       `bun run format:check` pass
-- [ ] `docs/configuration.md`, `README.md` and `CLAUDE.md` describe the variable
-      and the hook
+- [ ] `README.md` and `CLAUDE.md` describe the variable and the hook, and say
+      what a run really creates
 
 ## Verification
 
