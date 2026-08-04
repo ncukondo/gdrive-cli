@@ -59,6 +59,9 @@ names the relationship its record has to the ones before it.
 | [0038](0038-quiet-asks-for-a-value.md) | `--quiet` asks for a value, not for a format (revises 0007) |
 | [0039](0039-what-0036-and-0037-got-wrong.md) | Two unmeasured claims corrected: the width evidence, and what catches padding (revises 0036, 0037) |
 | [0040](0040-a-review-finding-names-a-class.md) | A review finding names a class; the list is only its symptoms (extends 0033) |
+| [0041](0041-the-task-is-current-during-review.md) | A decision made mid-review reaches the task before the next round (extends 0033) |
+| [0042](0042-deferred-work-is-an-issue.md) | Deferred work is a GitHub issue; a stated deferral is tracked or disowned (revises 0032 §6) |
+| [0043](0043-e2e-runs-before-push.md) | E2E exists, runs on `pre-push`, writes only inside one folder (revises 0012) |
 
 ## Related projects (reference implementations)
 
