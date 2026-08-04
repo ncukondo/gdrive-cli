@@ -1,6 +1,6 @@
 # Task 0038: `bun run test` runs the suite once and exits
 
-Status: todo
+Status: in review — PR [#16](https://github.com/ncukondo/gdrive-cli/pull/16)
 Depends on: —
 Parallel: no — it changes `package.json`, and every open task's acceptance
 criteria name the script it changes.
@@ -39,8 +39,21 @@ says so.
 ## Scope
 
 - `package.json` — the `scripts` block only.
-- `.github/workflows/ci.yml` — the line that names the script.
+- `.github/workflows/ci.yml` and `.github/workflows/release.yml` — the line in
+  each that names the script.
 - `CLAUDE.md` — the Commands block.
+- `README.md` — the Development block.
+
+The last two of those are not in the list this task was written with. A
+`grep -rn 'test:all'` after the first edit found `release.yml`, where the same
+one-line change guards the release job, and `README.md:132`, which tells a
+contributor to run a script that would no longer exist. Recorded here rather
+than fixed quietly, per [`0040`](../decisions/0040-a-review-finding-names-a-class.md)
+§1: the class was two sites wider than the plan, and the plan is where that has
+to be visible before review, not after
+([`0033`](../decisions/0033-implementation-lands-through-review.md) §2).
+`decisions/0002` also names `test:all` in its script list and is left alone
+([`0032`](../decisions/0032-decisions-are-append-only.md) §3).
 
 Not `tasks/_template.md`, `tasks/README.md` or the five open task files. Their
 `bun run test` lines become true the moment the script does what its name says,
