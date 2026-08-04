@@ -26,6 +26,11 @@ Rules (see [`decisions/0001`](../decisions/0001-development-process.md),
   made mid-branch, or a scope that turned out wider than the plan, is committed
   here before the next review round. A sentence the branch now contradicts is
   corrected, not annotated.
+- **A note below is written to survive its own task.** This file is never
+  archived, and nothing in the merge routine revisits its prose. A note that
+  describes how the repository behaves today is written in the past tense, or it
+  becomes a false present-tense claim the moment the task it describes merges.
+  The review of 0038 found the first one.
 - **A deferral is tracked or disowned**
   ([`0042`](../decisions/0042-deferred-work-is-an-issue.md)): work left undone at
   archive time either names a GitHub issue or says it will not be done. This
@@ -207,13 +212,13 @@ caller must be able to tell what actually happened, not infer it from an exit
 code. 0033 depends on 0027 because the walk copies a shortcut without following
 it, which needs `shortcut` to be a type first.
 
-0038 is not a feature. `bun run test` is `vitest`, which watches and never
-exits, and it is the command every acceptance criterion in this directory names.
+0038 is not a feature. `bun run test` was `vitest`, which watches and never
+exits, and it was the command every acceptance criterion in this directory names.
 Task 0037 raised it in four review rounds and corrected the one file it was
-holding, which is exactly what `decisions/0040` §1 forbids; this task answers the
-class. It also excludes `tests/e2e/**` from the scripts, because `test:all` is an
-unfiltered `vitest run` and would send CI at a real Google account on the day
-that directory gains a file.
+holding, which is exactly what `decisions/0040` §1 forbids; this task answered
+the class. It also excluded `tests/e2e/**` from the scripts, because `test:all`
+was an unfiltered `vitest run` and would have sent CI at a real Google account on
+the day that directory gained a file.
 
 0039 builds the layer `decisions/0012` described and nobody ever wrote.
 `tests/e2e/` has never held a file on any branch, so what has actually verified
