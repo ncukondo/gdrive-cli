@@ -1,6 +1,7 @@
 # Task 0040: An insert stops inheriting the formatting next to it
 
-Status: in review — PR [#20](https://github.com/ncukondo/gdrive-cli/pull/20)
+Status: done — PR [#20](https://github.com/ncukondo/gdrive-cli/pull/20), merged
+2026-08-05, after two review rounds.
 Depends on: — (0023, 0025 and 0026 built what this changes; all are archived)
 Parallel: no — it owns `src/lib/markdown-doc.ts` and `src/lib/docs-api.ts`,
 which every `docs` write command goes through.
