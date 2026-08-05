@@ -86,6 +86,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0037 The default is machine-readable](archive/0037-machine-format-by-default.md) | 0034 | — | done |
 | [0038 `bun run test` runs the suite once](archive/0038-test-runs-once.md) | — | — | done |
 | [0039 The first E2E suite, and the hook that runs it](archive/0039-e2e-suite.md) | 0038 | — | done |
+| [0040 The rules that can be checked become scripts](0040-rules-are-executed.md) | — | G | todo |
+| [0041 The rules a script cannot check move to where they are read](0041-rules-are-read-where-they-apply.md) | — | G | todo |
 
 ## Parallelism notes
 
@@ -107,6 +109,11 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 - **Group F** (0035 / 0036): disjoint scopes — `.github/workflows/release.yml`
   plus a new root `CHANGELOG.md`, against `commands/file-format.ts` and its
   tests. Neither reads the other's files.
+- **Group G** (0040 / 0041): the two halves of decision 0045, and they share no
+  file. 0040 owns `scripts/`, `.husky/`, `.claude/`, `package.json` and
+  `ci.yml`; 0041 owns `CLAUDE.md` files and nothing else. Either order of merge
+  works: 0041's `decisions/CLAUDE.md` is exempted by name from the landing check
+  0040 builds, and until 0040 merges there is no check to satisfy.
 - **Group E** (0031 / 0032): Slides. Same shape as group D and disjoint from it
   (`commands/slides/`, `lib/slides-api.ts`), so D and E can run side by side.
   Sequential within the group. 0031 needs 0029 only for the `yaml` dependency
@@ -231,6 +238,21 @@ created per run, trashed after), and a smaller job for the manual pass, which
 survives for what needs a tty or a person. 0039 depends on 0038 because until the
 scripts excluded `tests/e2e/**`, the first file placed there broke CI and the
 release job.
+
+0040 and 0041 split decision 0045 along the line it draws. The failure it
+answers had happened four times: 0027 and 0029 merged with the manual pass marked
+`NOT DONE`, task 0037's `runFlow` deferral was archived eight minutes after it
+was written, and #16's reviewer measured a five-file branch against a three-file
+plan. Each produced a record — 0043, 0042, 0044 — that closed one instance and
+left the rest of the rules where they were. The fourth was measured while 0045
+was being written and had never been noticed: `scripts/lint-casts.ts` had gated
+CI since 2026-07-24, and the root document's `## Commands` block, edited seven
+times since, had never listed it. 0040 turns the rules a script can decide into
+scripts that a git hook and a Claude Code hook both run; 0041 moves the rest into
+the directory where they are read and deletes the blocks that copy
+`package.json`. The split is not cosmetic — a git hook binds every contributor
+and a directory `CLAUDE.md` binds only an agent, so which half a rule lands in
+decides who it reaches.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
