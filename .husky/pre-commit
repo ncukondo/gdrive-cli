@@ -1,3 +1,12 @@
 bun run lint
 bun run typecheck
+
+# The guards that execute a rule instead of describing it (decision 0045 §1).
+# Each one is bypassable with --no-verify, which is where 0032 §3's typo
+# exception lives now (0045 §2).
+bun run lint:casts
+bun run lint:widths
+bun run lint:records
+bun run lint:landing
+
 bunx vitest --changed --run --exclude 'tests/e2e/**'
