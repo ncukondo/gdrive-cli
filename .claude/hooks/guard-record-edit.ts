@@ -14,7 +14,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { relative } from "node:path";
-import { isDecisionRecord } from "../../scripts/lint-records.js";
+import { STATUS_FORMAT, isDecisionRecord } from "../../scripts/lint-records.js";
 
 interface HookPayload {
   tool_input?: { file_path?: unknown; notebook_path?: unknown };
@@ -36,7 +36,22 @@ function isTracked(path: string): boolean {
 }
 
 const raw = await Bun.stdin.text();
-const parsed: unknown = raw.trim() === "" ? {} : JSON.parse(raw);
+let parsed: unknown = {};
+if (raw.trim() !== "") {
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // A payload this cannot read is a payload it cannot clear. Exit 2 blocks;
+    // an unhandled throw exits 1, which the harness treats as non-blocking and
+    // which would turn a parse error into a silently disabled guard.
+    process.stderr.write(
+      "guard-record-edit: could not parse the hook payload, so it cannot tell\n" +
+        "whether this edit targets a committed decision. Refusing rather than\n" +
+        "passing (decision 0047 §2).\n",
+    );
+    process.exit(2);
+  }
+}
 const payload: HookPayload = typeof parsed === "object" && parsed !== null ? parsed : {};
 
 const target = targetPath(payload);
@@ -49,9 +64,8 @@ if (target !== null) {
         `list inside it. A record that may be edited must be edited to stay true, and\n` +
         `each place needing an edit is a place the edit can be missed.\n\n` +
         `Write the new position as a new decision, stating itself in full so it reads\n` +
-        `without the one it replaces, with a Status line naming the relationship:\n\n` +
-        `  Status: accepted — revises [NNNN](NNNN-slug.md) §N\n` +
-        `  Status: accepted — extends [NNNN](NNNN-slug.md)\n\n` +
+        `without the one it replaces.\n\n` +
+        `${STATUS_FORMAT}\n\n` +
         `Then add its row to decisions/README.md, which is where that relationship is\n` +
         `visible without opening either file (0032 §4).\n\n` +
         `A typo or a broken link is the only exception and is a person's to make.\n`,

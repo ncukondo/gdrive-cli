@@ -36,7 +36,19 @@ const DECISION_FILE = /^decisions\/(\d{4}-[^/]+\.md)$/;
  * list follows the records, and a list that led them would be this file
  * legislating.
  */
-const RELATIONSHIPS = ["revises", "extends", "corrects"] as const;
+export const RELATIONSHIPS = ["revises", "extends", "corrects"] as const;
+
+/**
+ * What a `Status` line has to look like, in one place so every caller teaches
+ * the same thing. `.claude/hooks/guard-record-edit.ts` prints this at the moment
+ * an edit is refused, which is the moment a new record gets written.
+ */
+export const STATUS_FORMAT =
+  `A Status line reads "accepted", optionally followed by "— <verb>" and a link,\n` +
+  `where <verb> is one of: ${RELATIONSHIPS.join(", ")}.\n` +
+  `"revises" narrows or contradicts; "extends" adds without contradicting;\n` +
+  `"corrects" fixes a factual claim without changing the position taken.\n` +
+  `The new file carries the pointer; the old one gains nothing (0032 §3).`;
 
 export interface StagedFile {
   /** The `git diff --cached --name-status` letter: `A`, `M`, `D`, `R`, … */
@@ -123,12 +135,9 @@ function statusDeclaration(source: string): string | null {
  */
 export function checkStatusLine(path: string, source: string): RecordFinding[] {
   const declaration = statusDeclaration(source);
-  const wanted =
-    `    A Status line reads "accepted", optionally followed by "— <verb>" and a\n` +
-    `    link, where <verb> is one of: ${RELATIONSHIPS.join(", ")}.\n` +
-    `    "revises" narrows or contradicts; "extends" adds without contradicting;\n` +
-    `    "corrects" fixes a factual claim without changing the position taken.\n` +
-    `    The new file carries the pointer; the old one gains nothing (0032 §3).`;
+  const wanted = STATUS_FORMAT.split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
 
   if (declaration === null) {
     return [{ path, message: `${path} has no Status line.\n${wanted}` }];
