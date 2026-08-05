@@ -90,11 +90,23 @@ There is no code here, so the Red step is not a test file — it is the check th
 each candidate line fails to belong somewhere better. Applied in order to every
 line before it is written:
 
-1. **Red — is it checkable?** If a script could decide it, it belongs in task
-   0041 and not in a document (0047 §1). This removes `git add -A`, the landing
-   path, the index row and the width rule from the prose; the width rule stays in
-   `src/CLAUDE.md` as a statement of intent because an agent about to add a
-   column needs the reason, not just the refusal.
+1. **Red — is it checkable, and is the refusal enough?** If a script could decide
+   it, its *enforcement* belongs in task 0041 (0047 §1). Whether it also belongs
+   here is a second question, and the test is what the agent needs: a rule whose
+   guard message says everything worth saying stays out, and a rule an agent must
+   understand *before* it acts stays in, because a guard only refuses afterwards
+   and by then the work is done. So `git add -A`, the landing path and the index
+   row go — each is a refusal that explains itself — while the width ban stays in
+   `src/CLAUDE.md` and the append-only rule stays in `decisions/CLAUDE.md`. An
+   agent that has already rewritten a record, or already built the aligned table,
+   has lost the work either way.
+
+   *Corrected mid-branch (`decisions/0041` §1).* This step first said the filter
+   was simply "if a script could decide it, it does not go in prose", with the
+   width rule as a one-off exception. Writing the three files showed the
+   exception was the rule: applied literally, `decisions/CLAUDE.md` came out at
+   three lines, which the `Out of scope` below rejects `tasks/` and `docs/` for
+   being.
 2. **Red — is it an inventory?** If adding a file, a command or a dependency to
    the directory would make the line wrong, it does not go in (0047 §3).
 3. **Red — is it needed here?** If it reads just as well from `decisions/`, it
@@ -116,8 +128,12 @@ line before it is written:
 - [ ] Adding a new command file under `src/commands/` would not make
       `src/CLAUDE.md` wrong — checked by reading it against that hypothetical,
       not by adding one
-- [ ] The root `CLAUDE.md` no longer names any `package.json` script or
-      dependency, except that `changelog` takes a version
+- [ ] The root `CLAUDE.md` carries no list copied from `package.json`. 0047 §4
+      keeps two things a manifest cannot say — which scripts a person runs day to
+      day, and that `changelog` takes a version — so naming those is the intended
+      outcome, not a leftover. *Corrected mid-branch (`decisions/0041` §1): this
+      first read "names no script or dependency", which is stricter than the
+      decision it was meant to check.*
 - [ ] The `pre-push` / `GDRIVE_CLI_E2E_FOLDER` paragraph survives intact — it is
       not a copy of anything and 0047 §4's test is what keeps it
 - [ ] `bun run test` and `bun run typecheck` pass — no code changes, so this is a
