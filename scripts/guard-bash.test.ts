@@ -4,15 +4,45 @@ import { checkBashCommand } from "./guard-bash.js";
 const rebased = { rebased: true };
 const behind = { rebased: false };
 
-describe("staging everything (decision 0001)", () => {
-  it("blocks the three spellings", () => {
-    expect(checkBashCommand("git add -A", rebased)).not.toBeNull();
-    expect(checkBashCommand("git add .", rebased)).not.toBeNull();
-    expect(checkBashCommand("git add --all", rebased)).not.toBeNull();
+describe("staging the caller did not name (decisions 0001, 0048 §1)", () => {
+  it("blocks every spelling the #23 review got through", () => {
+    for (const command of [
+      "git add -A",
+      "git add .",
+      "git add --all",
+      "git add -u",
+      "git add --update",
+      "git commit -a -m x",
+      "git commit -am x",
+      "git stage -A",
+      "git -C . add -A",
+      "git add *",
+    ]) {
+      expect(checkBashCommand(command, rebased), command).not.toBeNull();
+    }
   });
 
-  it("blocks a combined short flag carrying A", () => {
+  it("blocks a combined short flag carrying A, u or a", () => {
     expect(checkBashCommand("git add -Av", rebased)).not.toBeNull();
+    expect(checkBashCommand("git add -uv", rebased)).not.toBeNull();
+    expect(checkBashCommand("git commit -av", rebased)).not.toBeNull();
+  });
+
+  it("sees past a global option that swallows its value", () => {
+    expect(checkBashCommand("git -c core.hooksPath=/dev/null add -A", rebased)).not.toBeNull();
+    expect(checkBashCommand("git --git-dir=.git add -A", rebased)).not.toBeNull();
+  });
+
+  it("does not fire on a message that merely mentions a flag", () => {
+    expect(checkBashCommand('git commit -m "fix the -a flag"', rebased)).toBeNull();
+    expect(checkBashCommand("git commit -m 'stop using git add -A'", rebased)).toBeNull();
+  });
+
+  it("leaves the flags that stage nothing alone", () => {
+    expect(checkBashCommand("git commit --amend --no-edit", rebased)).toBeNull();
+    expect(checkBashCommand("git commit --allow-empty -m x", rebased)).toBeNull();
+    expect(checkBashCommand("git add -N src/new.ts", rebased)).toBeNull();
+    expect(checkBashCommand("git add -p src/index.ts", rebased)).toBeNull();
   });
 
   it("blocks it inside a compound command", () => {
