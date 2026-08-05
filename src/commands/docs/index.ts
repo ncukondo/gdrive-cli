@@ -87,8 +87,10 @@ export function registerDocs(program: Command): void {
       const result = await handleDocsCreate({
         resolvePath: (arg) => resolveTargetId(drive, arg),
         createDocument: (t) => createDocument(docsClient, t),
-        insertText: (id, index, text) => insertText(docsClient, id, index, text),
-        insertMarkdown: (id, index, source) => insertMarkdown(docsClient, id, index, source),
+        insertText: (id, index, text, boundary) =>
+          insertText(docsClient, id, index, text, boundary),
+        insertMarkdown: (id, index, source, options) =>
+          insertMarkdown(docsClient, id, index, source, options),
         moveFile: (id, parentId) => moveFile(drive, id, parentId),
         readInput: input,
         title,
@@ -116,7 +118,7 @@ export function registerDocs(program: Command): void {
       const result = await handleDocsAppend({
         resolvePath: (arg) => resolveTargetId(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
-        insertText: (id, index, t) => insertText(docsClient, id, index, t),
+        insertText: (id, index, t, boundary) => insertText(docsClient, id, index, t, boundary),
         insertMarkdown: (id, index, source, options) =>
           insertMarkdown(docsClient, id, index, source, options),
         readInput: input,
@@ -181,8 +183,9 @@ export function registerDocs(program: Command): void {
       const result = await handleDocsInsert({
         resolvePath: (arg) => resolveTargetId(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
-        insertText: (id, index, t) => insertText(docsClient, id, index, t),
-        insertMarkdown: (id, index, source) => insertMarkdown(docsClient, id, index, source),
+        insertText: (id, index, t, boundary) => insertText(docsClient, id, index, t, boundary),
+        insertMarkdown: (id, index, source, options) =>
+          insertMarkdown(docsClient, id, index, source, options),
         readInput: input,
         file,
         text,

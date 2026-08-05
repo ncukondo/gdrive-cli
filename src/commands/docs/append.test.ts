@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleDocsAppend } from "./append.ts";
-import type { DocumentRaw } from "../../lib/docs-api.ts";
+import type { DocumentRaw, ParagraphBoundary } from "../../lib/docs-api.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -18,12 +18,22 @@ const document = (endIndex: number): DocumentRaw => ({
   body: { content: [{ startIndex: 1, endIndex, paragraph: {} }] },
 });
 
+/** Appending lands on the last paragraph's own newline, never inside it. */
+const AT_END: ParagraphBoundary = { atParagraphStart: false, atParagraphEnd: true };
+
 const baseDeps = () => ({
   resolvePath: vi.fn(async () => "D1"),
   getDocument: vi.fn(async () => document(7)),
-  insertText: vi.fn(async (_id: string, _index: number, _text: string) => {}),
+  insertText: vi.fn(
+    async (_id: string, _index: number, _text: string, _b: ParagraphBoundary) => {},
+  ),
   insertMarkdown: vi.fn(
-    async (_id: string, _index: number, _source: string, _o?: { leadingNewline?: boolean }) => [],
+    async (
+      _id: string,
+      _index: number,
+      _source: string,
+      _o: { leadingNewline: boolean; boundary: ParagraphBoundary },
+    ) => [],
   ),
   readInput: vi.fn(async (arg: string) => arg),
   warn: vi.fn(),
@@ -40,7 +50,10 @@ describe("handleDocsAppend", () => {
     const out = collect();
     await handleDocsAppend({ ...d, write: out.write });
     expect(d.resolvePath).toHaveBeenCalledWith("Notes");
-    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 6, "new line", { leadingNewline: true });
+    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 6, "new line", {
+      leadingNewline: true,
+      boundary: AT_END,
+    });
     expect(d.insertText).not.toHaveBeenCalled();
     expect(out.output).toBe("Appended to Meeting notes (D1)");
   });
@@ -48,18 +61,24 @@ describe("handleDocsAppend", () => {
   it("--as text appends the exact bytes, as it always did", async () => {
     const d = baseDeps();
     await handleDocsAppend({ ...d, as: "text" });
-    expect(d.insertText).toHaveBeenCalledWith("D1", 6, "\nnew line");
+    expect(d.insertText).toHaveBeenCalledWith("D1", 6, "\nnew line", AT_END);
     expect(d.insertMarkdown).not.toHaveBeenCalled();
   });
 
   it("does not add a leading newline to an empty document", async () => {
     const d = baseDeps();
     await handleDocsAppend({ ...d, getDocument: vi.fn(async () => document(1)) });
-    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 1, "new line", { leadingNewline: false });
+    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 1, "new line", {
+      leadingNewline: false,
+      boundary: { atParagraphStart: true, atParagraphEnd: false },
+    });
 
     const t = baseDeps();
     await handleDocsAppend({ ...t, as: "text", getDocument: vi.fn(async () => document(1)) });
-    expect(t.insertText).toHaveBeenCalledWith("D1", 1, "new line");
+    expect(t.insertText).toHaveBeenCalledWith("D1", 1, "new line", {
+      atParagraphStart: true,
+      atParagraphEnd: false,
+    });
   });
 
   it("reads the text through the @file/stdin reader", async () => {
@@ -67,7 +86,7 @@ describe("handleDocsAppend", () => {
     const readInput = vi.fn(async () => "from file");
     await handleDocsAppend({ ...d, as: "text", text: "@note.txt", readInput });
     expect(readInput).toHaveBeenCalledWith("@note.txt");
-    expect(d.insertText).toHaveBeenCalledWith("D1", 6, "\nfrom file");
+    expect(d.insertText).toHaveBeenCalledWith("D1", 6, "\nfrom file", AT_END);
   });
 
   it("rejects an --as value that is neither format", async () => {

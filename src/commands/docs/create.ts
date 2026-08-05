@@ -1,14 +1,25 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
 import { formatValues, line, renderSuccess } from "../../lib/output.ts";
+import type { ParagraphBoundary } from "../../lib/docs-api.ts";
 import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
 import { parseDocsFormat, reportUnsupported } from "./format.ts";
 
 export interface DocsCreateDeps {
   resolvePath: (arg: string) => Promise<string>;
   createDocument: (title: string) => Promise<{ id: string; title: string }>;
-  insertText: (documentId: string, index: number, text: string) => Promise<void>;
-  insertMarkdown: (documentId: string, index: number, source: string) => Promise<UnsupportedNote[]>;
+  insertText: (
+    documentId: string,
+    index: number,
+    text: string,
+    boundary: ParagraphBoundary,
+  ) => Promise<void>;
+  insertMarkdown: (
+    documentId: string,
+    index: number,
+    source: string,
+    options: { boundary: ParagraphBoundary },
+  ) => Promise<UnsupportedNote[]>;
   /** Drive move — the Docs API cannot create a document inside a folder. */
   moveFile: (documentId: string, parentId: string) => Promise<unknown>;
   readInput: (arg: string) => Promise<string>;
@@ -30,8 +41,11 @@ export async function handleDocsCreate(deps: DocsCreateDeps): Promise<CommandRes
   if (deps.content !== undefined) {
     const text = await deps.readInput(deps.content);
     if (text !== "") {
-      if (as === "markdown") notes = await deps.insertMarkdown(created.id, 1, text);
-      else await deps.insertText(created.id, 1, text);
+      // The document was created a moment ago, so index 1 is both edges of the
+      // one empty paragraph it has (decision 0045 §2).
+      const boundary = { atParagraphStart: true, atParagraphEnd: true };
+      if (as === "markdown") notes = await deps.insertMarkdown(created.id, 1, text, { boundary });
+      else await deps.insertText(created.id, 1, text, boundary);
     }
   }
 
