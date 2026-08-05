@@ -3,8 +3,8 @@
  * scanner looking for a construct never matches the same word written in prose.
  *
  * Extracted from `scripts/lint-casts.ts`, which needed it first, once
- * `scripts/lint-widths.ts` needed the same thing. The alternative — a second
- * copy — is the duplication `decisions/0047` was written about.
+ * `scripts/lint-widths.ts` needed the same thing. The alternative was a second
+ * copy of forty lines that would have to be kept identical by hand.
  *
  * This is a blanker, not a parser: it returns one entry per input line with the
  * noise removed and the code kept, and every guard that uses it reports against

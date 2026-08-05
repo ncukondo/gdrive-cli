@@ -14,7 +14,20 @@ interface HookPayload {
 }
 
 const raw = await Bun.stdin.text();
-const parsed: unknown = raw.trim() === "" ? {} : JSON.parse(raw);
+let parsed: unknown = {};
+if (raw.trim() !== "") {
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // Exit 2 blocks; an unhandled throw exits 1, which the harness treats as
+    // non-blocking — a parse error would silently disable the guard.
+    process.stderr.write(
+      "guard-bash: could not parse the hook payload, so it cannot tell what this\n" +
+        "command does. Refusing rather than passing (decision 0047 §2).\n",
+    );
+    process.exit(2);
+  }
+}
 const payload: HookPayload = typeof parsed === "object" && parsed !== null ? parsed : {};
 
 const command = payload.tool_input?.command;
