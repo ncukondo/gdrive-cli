@@ -24,6 +24,20 @@ import { existsSync, readFileSync } from "node:fs";
 /** A record file: four digits, a slug, `.md`. `README.md` is not one. */
 const DECISION_FILE = /^decisions\/(\d{4}-[^/]+\.md)$/;
 
+/**
+ * The verbs a `Status` line may use to name what a record does to an earlier
+ * one. 0032 §3 glosses two of them — `revises` narrows or contradicts, `extends`
+ * adds without contradicting — and says the wording is "already in use", which
+ * makes the corpus the authority rather than that sentence. `corrects` entered
+ * the corpus with 0046, for a record that fixes a factual claim in an earlier
+ * one without changing the position it took.
+ *
+ * A verb added here is a verb some record already uses. That order matters: this
+ * list follows the records, and a list that led them would be this file
+ * legislating.
+ */
+const RELATIONSHIPS = ["revises", "extends", "corrects"] as const;
+
 export interface StagedFile {
   /** The `git diff --cached --name-status` letter: `A`, `M`, `D`, `R`, … */
   status: string;
@@ -110,9 +124,10 @@ function statusDeclaration(source: string): string | null {
 export function checkStatusLine(path: string, source: string): RecordFinding[] {
   const declaration = statusDeclaration(source);
   const wanted =
-    `    A Status line reads "accepted", optionally followed by\n` +
-    `    "— revises [NNNN](NNNN-slug.md)" or "— extends [NNNN](NNNN-slug.md)".\n` +
-    `    "revises" narrows or contradicts; "extends" adds without contradicting.\n` +
+    `    A Status line reads "accepted", optionally followed by "— <verb>" and a\n` +
+    `    link, where <verb> is one of: ${RELATIONSHIPS.join(", ")}.\n` +
+    `    "revises" narrows or contradicts; "extends" adds without contradicting;\n` +
+    `    "corrects" fixes a factual claim without changing the position taken.\n` +
     `    The new file carries the pointer; the old one gains nothing (0032 §3).`;
 
   if (declaration === null) {
@@ -137,7 +152,7 @@ export function checkStatusLine(path: string, source: string): RecordFinding[] {
   }
   if (rest.trim() === "") return [];
 
-  const names = /—\s*(revises|extends)\b/.test(rest);
+  const names = new RegExp(String.raw`—\s*(${RELATIONSHIPS.join("|")})\b`).test(rest);
   const links = /\[\d{4}\]\(\d{4}-[^)]+\.md\)/.test(rest);
   if (names && links) return [];
 
