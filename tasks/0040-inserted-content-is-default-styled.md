@@ -1,6 +1,6 @@
 # Task 0040: An insert stops inheriting the formatting next to it
 
-Status: todo
+Status: in review — PR [#20](https://github.com/ncukondo/gdrive-cli/pull/20)
 Depends on: — (0023, 0025 and 0026 built what this changes; all are archived)
 Parallel: no — it owns `src/lib/markdown-doc.ts` and `src/lib/docs-api.ts`,
 which every `docs` write command goes through.
@@ -67,9 +67,12 @@ text.
    - Table cell fills reset the text they write (`planCellFills`).
 2. **Green** — the mask constant and the reset request.
 3. **Red — the paragraph reset (`markdown-doc.test.ts`)**
-   - With `firstParagraphIsNew`, one `updateParagraphStyle` (full mask, empty
-     style) and one `deleteParagraphBullets` span every inserted paragraph,
-     ahead of the per-block requests, so a heading and a quote still land.
+   - With `firstParagraphIsNew`, one `deleteParagraphBullets` and one
+     `updateParagraphStyle` span every inserted paragraph, ahead of the
+     per-block requests, so a heading and a quote still land. The style names
+     `NORMAL_TEXT` rather than clearing the field: the live suite's first run
+     answered `Named style property is not inherited and cannot be cleared`,
+     so the default has to be said out loud.
    - Without it, the span starts at the second block's paragraph; with a single
      block, neither request is emitted at all.
    - A list run still gets its `createParagraphBullets` after the blanket

@@ -86,7 +86,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0037 The default is machine-readable](archive/0037-machine-format-by-default.md) | 0034 | — | done |
 | [0038 `bun run test` runs the suite once](archive/0038-test-runs-once.md) | — | — | done |
 | [0039 The first E2E suite, and the hook that runs it](archive/0039-e2e-suite.md) | 0038 | — | done |
-| [0040 An insert stops inheriting the formatting next to it](0040-inserted-content-is-default-styled.md) | — | — | todo |
+| [0040 An insert stops inheriting the formatting next to it](0040-inserted-content-is-default-styled.md) | — | — | in review |
 
 ## Parallelism notes
 
