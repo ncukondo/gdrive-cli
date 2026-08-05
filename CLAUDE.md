@@ -7,8 +7,12 @@ multi-account switching. Sibling of `gcal-cli`, designed for AI-agent use.
 
 - Read `decisions/README.md` for the design (source of truth for *why*).
 - Read `tasks/README.md` for the current plan; pick a task, follow its TDD plan.
-- Architecture map: `decisions/0013`. Testing conventions: `decisions/0012`.
 - User-facing behavior lives in `docs/` and `README.md`.
+- The conventions that govern a directory sit in its own `CLAUDE.md` —
+  `src/`, `tests/`, `decisions/` — and are loaded when you edit there
+  ([`0047`](decisions/0047-rules-are-executed.md) §3). `decisions/0013` still
+  holds the architecture map and `decisions/0012` the testing rationale; the
+  directory files carry the part you need at the moment you type.
 
 ## Reference implementations
 
@@ -33,22 +37,13 @@ git clone https://github.com/ncukondo/yaml-form-cli # ../yaml-form-cli if not pr
 Our `decisions/` fully specify behavior; the siblings are an accelerator, not a
 hard dependency.
 
-## Tech Stack (see `decisions/0002`)
-
-Bun · TypeScript · commander · googleapis · smol-toml · zod · vitest · oxlint · oxfmt
-
 ## Commands
 
-```bash
-bun run dev            # run the CLI
-bun run test           # unit + integration, once, then exits
-bun run test:watch     # the same set, re-run on change
-bun run test:unit      # unit tests under src/ and scripts/
-bun run test:integration
-bun run test:e2e       # the live suite; `test` and `test:watch` exclude it
-bun run lint / format / format:check / typecheck
-bun run changelog 0.8.0   # print one version's CHANGELOG.md section
-```
+`package.json`'s `scripts` is the list, and the only one — see
+[`0047`](decisions/0047-rules-are-executed.md) §4 for why it is not copied here.
+Day to day: `dev`, `test`, `test:watch`, `typecheck`. `changelog` takes a
+version. `.github/workflows/ci.yml` holds the set CI runs, and `.husky/` the set
+a commit and a push run.
 
 `.husky/pre-push` runs `test:e2e` against a real account
 ([`0043`](decisions/0043-e2e-runs-before-push.md)). Set `GDRIVE_CLI_E2E_FOLDER`
