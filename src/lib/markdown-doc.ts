@@ -345,9 +345,37 @@ function resolveOrderedRuns(
   return out;
 }
 
+/**
+ * Whether `insertText` drops this character on the way in, by the ranges its
+ * reference lists: U+0000-U+0008, U+000C-U+001F, and the private use area. Tab,
+ * newline and the U+000B a line break is spelled with all sit outside them and
+ * survive — which they must, being what nesting, paragraphs and 0024's breaks
+ * are made of. A code point above the plane is never in range, so reading a
+ * surrogate pair whole is safe.
+ */
+function droppedByDocs(character: string): boolean {
+  const code = character.codePointAt(0) ?? 0;
+  return code <= 0x08 || (code >= 0x0c && code <= 0x1f) || (code >= 0xe000 && code <= 0xf8ff);
+}
+
+/**
+ * `text` as the document will hold it (decision 0045 §1). Every range this
+ * module computes is measured in characters, so anything Docs silently drops
+ * would shift each one past what it was meant to name and into the text after
+ * it. Sending what we measured is what keeps the two in step; a carriage return
+ * becomes the newline Docs would otherwise have been left without.
+ */
+export function asDocsStoresIt(text: string): string {
+  let kept = "";
+  for (const character of text.replace(/\r\n?/g, "\n")) {
+    if (!droppedByDocs(character)) kept += character;
+  }
+  return kept;
+}
+
 /** Parses Markdown into blocks Docs can hold. Never throws (decision 0021 §3). */
 export function parseMarkdown(source: string): ParsedMarkdown {
-  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  const lines = asDocsStoresIt(source).split("\n");
   const blocks: MarkdownBlock[] = [];
   const markers = new Map<number, string>();
   const unsupported: UnsupportedNote[] = [];

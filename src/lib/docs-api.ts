@@ -1,5 +1,6 @@
 import { mapDriveError as mapApiError } from "./api.ts";
 import {
+  asDocsStoresIt,
   LINE_BREAK,
   parseMarkdown,
   planCellFills,
@@ -380,14 +381,23 @@ function literalResetRequests(
   return requests;
 }
 
-/** Inserts `text` at a 1-based character index in the body, in the default style. */
+/**
+ * Inserts `text` at a 1-based character index in the body, in the default style.
+ *
+ * What is sent is `text` as Docs would have stored it: the reset ranges are
+ * measured in characters, and a character the API drops on the way in would
+ * push every one of them past what it was meant to name. `--as text` is where
+ * that bites — a CRLF log is what the flag is for.
+ */
 export async function insertText(
   client: DocsClient,
   documentId: string,
   index: number,
-  text: string,
+  raw: string,
   boundary: ParagraphBoundary = INSIDE_A_PARAGRAPH,
 ): Promise<void> {
+  const text = asDocsStoresIt(raw);
+  if (text === "") return;
   try {
     await client.documents.batchUpdate({
       documentId,

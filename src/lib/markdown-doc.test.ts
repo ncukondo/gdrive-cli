@@ -700,6 +700,42 @@ describe("round trip with renderDocument", () => {
  * API's behaviour, not the request array's (0043) — so what these pin is that
  * the requests that undo it are sent, and sent before anything styles the text.
  */
+/**
+ * Docs drops some characters from an `insertText` — the API reference names
+ * U+0000-U+0008, U+000C-U+001F and the BMP private use area — so a range
+ * measured against the payload would name a character the document does not
+ * have and reach into the text after it. What we send is what we measured.
+ */
+describe("what a write measures is what Docs stores", () => {
+  it("drops the characters Docs would drop, so the text and the ranges agree", () => {
+    const { requests } = planTextRun(parseMarkdown("a\u0000b\u001Fc\uE000d").blocks, 1, {
+      firstParagraphIsNew: true,
+    });
+    expect(requests[0]).toEqual({ insertText: { location: { index: 1 }, text: "abcd\n" } });
+    expect(reset(requests)[0]).toMatchObject({
+      updateTextStyle: { range: { startIndex: 1, endIndex: 6 } },
+    });
+  });
+
+  it("keeps the tab, the newline and the break character, which Docs does store", () => {
+    // U+000B is how Docs spells a line break inside a paragraph (0024), and a
+    // leading tab is what tells createParagraphBullets a nesting level (0023).
+    const { requests } = planTextRun(parseMarkdown("- top\n  - deep\u000Bmore").blocks, 1);
+    expect(requests[0]).toEqual({
+      insertText: { location: { index: 1 }, text: "top\n\tdeep\u000Bmore\n" },
+    });
+  });
+
+  it("spells a carriage return as the newline Docs would have been left with", () => {
+    const { blocks } = parseMarkdown("one\r\ntwo\rthree");
+    expect(blocks).toEqual([
+      { kind: "paragraph", spans: [{ text: "one" }] },
+      { kind: "paragraph", spans: [{ text: "two" }] },
+      { kind: "paragraph", spans: [{ text: "three" }] },
+    ]);
+  });
+});
+
 describe("the blank slate an insert writes first (0045)", () => {
   const TEXT_FIELDS =
     "bold,italic,underline,strikethrough,smallCaps,backgroundColor,foregroundColor," +
