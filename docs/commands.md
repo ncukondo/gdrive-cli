@@ -655,6 +655,17 @@ Kept as plain text: image (line 12)
 Appended to Meeting notes (1BzqpK...)
 ```
 
+**What you write arrives in the document's default style**, not in the style of
+the text next to it. Appending after a heading writes body text; inserting into
+a bulleted list writes an ordinary paragraph; inserting after bold red 20pt text
+writes plain text in the document's own body font. `--as text` is no different —
+it says the content is not Markdown, not that it should inherit formatting.
+
+The one exception is an insert that lands *inside* an existing paragraph, which
+`--index` and `--before` / `--after` can do. The characters written are still
+plain, but a paragraph cannot be half-heading, so the paragraph they joined
+keeps its own style.
+
 One source line is one paragraph, matching what `read` prints — Markdown's rule
 that consecutive lines join into one paragraph does not apply. The exception is
 a **hard break**: end a line with a backslash (or with two spaces) to put a line

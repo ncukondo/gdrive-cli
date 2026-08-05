@@ -21,6 +21,47 @@ missing version, because nothing else can tell the two apart.
 Releases before 0.8.0 are not backfilled; their notes are whatever GitHub
 generated at the time.
 
+## 0.9.0 — 2026-08-05
+
+**Text written into a document arrives in the document's default style.** It
+used to arrive wearing whatever formatting sat at the insertion point.
+
+### Breaking changes
+
+Pre-1.0 output changes, permitted by [decision
+0014](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0014-pre-1.0-compatibility.md)
+and listed here because that record makes the release notes the compatibility
+log for 0.x.
+
+1. **`docs create --content`, `docs append`, `docs insert` and `docs replace`
+   no longer inherit the style at the insertion point.** The Docs API gives
+   inserted characters the style of the text they land after, and gives a
+   paragraph split the style of the paragraph it split — so appending after a
+   `Heading 1` produced a heading, inserting into a bulleted list produced
+   bullets, and inserting after 20pt red bold text produced 20pt red bold text.
+   All four commands now reset what they wrote: the character style always, and
+   the paragraph style of every paragraph the insert wholly created, bullets
+   included. `--as text` is included — it says the content is not Markdown, not
+   that it should inherit formatting.
+
+   "Default" means *your document's* default: a reset field inherits from the
+   named style, so a document whose body is Noto Sans 12 gets Noto Sans 12, not
+   Arial 11.
+
+   **One exception, by design**: an insert that lands inside an existing
+   paragraph — which `--index` and `--before` / `--after` can do — leaves that
+   paragraph's own style alone, because a paragraph cannot be half-heading. The
+   characters it wrote are still reset.
+
+   What to do: nothing, if you wanted plain text. If you were relying on an
+   append picking up the surrounding formatting, apply that formatting in the
+   Docs UI afterwards — there is no flag to restore the old behaviour.
+   [Decision 0045](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0045-inserted-content-is-default-styled.md)
+   is the reasoning, and
+   [0021](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0021-markdown-writes.md) §4
+   is the contract it meets: a document this CLI writes should be
+   indistinguishable from one Drive imported from the same Markdown.
+
 ## 0.8.0 — 2026-08-03
 
 **A command that is not told a format now prints JSON, not text**, with three
