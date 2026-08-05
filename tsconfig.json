@@ -22,6 +22,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", ".claude/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
