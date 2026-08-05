@@ -408,6 +408,27 @@ describe("Docs API wrappers", () => {
       });
     });
 
+    it("measures what Docs will store, not what it was handed", async () => {
+      // A CRLF log through --as text: Docs drops the CR, so a range measured
+      // against the payload would reach one character past what it wrote.
+      const client = mockDocs();
+      await insertText(client, "D1", 5, "x\r\ny\r\n", {
+        atParagraphStart: true,
+        atParagraphEnd: true,
+      });
+      const requests = callArgs(vi.mocked(client.documents.batchUpdate))[0].requestBody.requests;
+      expect(requests[0]).toEqual({ insertText: { location: { index: 5 }, text: "x\ny\n" } });
+      expect(requests[1]).toMatchObject({
+        updateTextStyle: { range: { startIndex: 5, endIndex: 9 } },
+      });
+    });
+
+    it("writes nothing at all when the payload is only characters Docs drops", async () => {
+      const client = mockDocs();
+      await insertText(client, "D1", 5, "\u0000\uE000");
+      expect(client.documents.batchUpdate).not.toHaveBeenCalled();
+    });
+
     it("resets only the paragraphs its own newlines bound", async () => {
       // "a\nb\nc" dropped inside a paragraph: "a" joins what was before it and
       // "c" joins what came after, so "b" is the only paragraph it made.
@@ -438,6 +459,18 @@ describe("Docs API wrappers", () => {
         ],
       },
     });
+  });
+
+  /**
+   * Decision 0046. Every other write path resets what it wrote; this one cannot,
+   * because the API performs the substitution without saying where. The test is
+   * here so the exception cannot drift in either direction unnoticed.
+   */
+  it("replaceAllText substitutes and styles nothing, which is the documented exception", async () => {
+    const client = mockDocs();
+    await replaceAllText(client, "D1", "old", "new", false);
+    const requests = callArgs(vi.mocked(client.documents.batchUpdate))[0].requestBody.requests;
+    expect(requests.every((r) => "replaceAllText" in r)).toBe(true);
   });
 
   it("replaceAllText reports zero when the API omits the count", async () => {
