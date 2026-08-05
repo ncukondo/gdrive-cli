@@ -72,7 +72,7 @@ function isRecord(path: string): boolean {
 }
 
 /**
- * Whether a staged `package.json` diff is a release commit rather than
+ * Whether a staged `package.json` is a release commit rather than
  * implementation.
  *
  * 0033's `Out of scope` exempts these in as many words — "Version bumps and tags
@@ -82,24 +82,45 @@ function isRecord(path: string): boolean {
  * `--no-verify`, which 0047 §2 reserves for something else and 0043 §3 warns is
  * how a gate teaches people to route around it.
  *
- * The discriminator is that a version bump changes the `version` line and
- * nothing else. `diff` is the unified diff of the staged change; a caller with
- * no diff to offer passes `null` and gets `false`, which fails closed.
+ * The two copies are parsed and their key sets compared, because the question is
+ * *which keys changed* and a diff only shows which lines did. An earlier version
+ * matched changed lines against a version-shaped pattern and let
+ * `"version": "0.10.0", "postinstall": "curl … | sh",` through on one physical
+ * line. Either side failing to parse returns `false`, which fails closed.
  */
-export function isVersionBump(diff: string | null): boolean {
-  if (diff === null) return false;
+export function isVersionBump(staged: string | null, head: string | null): boolean {
+  if (staged === null || head === null) return false;
 
-  const changed = diff
-    .split("\n")
-    .filter((line) => /^[+-]/.test(line) && !/^(\+\+\+|---)/.test(line))
-    .map((line) => line.slice(1).trim());
+  let before: unknown;
+  let after: unknown;
+  try {
+    before = JSON.parse(head);
+    after = JSON.parse(staged);
+  } catch {
+    return false;
+  }
+  if (!isObject(before) || !isObject(after)) return false;
 
-  return changed.length > 0 && changed.every((line) => /^"version":\s*".+",?$/.test(line));
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  const changed = [...keys].filter(
+    (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
+  );
+
+  // A deleted `version` is a change to that key and to no other, so require the
+  // new value to be a string as well: a release sets a version, it does not
+  // remove one.
+  return changed.length === 1 && changed[0] === "version" && typeof after["version"] === "string";
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export interface LandingContext {
-  /** The staged unified diff of `package.json`, or null when there is none. */
-  packageJsonDiff?: string | null;
+  /** The staged `package.json`, or null when it is not staged. */
+  stagedPackageJson?: string | null;
+  /** `HEAD`'s `package.json`, or null when it cannot be read. */
+  headPackageJson?: string | null;
 }
 
 /** Where each staged path does not belong, given the branch it is being committed on. */
@@ -110,7 +131,9 @@ export function checkLanding(
 ): LandingFinding[] {
   if (branch === "main") {
     const exempt = new Set<string>();
-    if (isVersionBump(context.packageJsonDiff ?? null)) exempt.add("package.json");
+    if (isVersionBump(context.stagedPackageJson ?? null, context.headPackageJson ?? null)) {
+      exempt.add("package.json");
+    }
 
     return paths
       .filter((path) => isReviewed(path) && !exempt.has(path))
@@ -152,17 +175,22 @@ function stagedPaths(): string[] {
   return out.split("\0").filter((path) => path !== "");
 }
 
-/** The staged diff of `package.json`, or null when it is not staged. */
-function stagedPackageJsonDiff(paths: string[]): string | null {
-  if (!paths.includes("package.json")) return null;
-  return execFileSync("git", ["diff", "--cached", "--", "package.json"], { encoding: "utf8" });
+/** The contents of `<ref>:package.json`, or null when it cannot be read. */
+function packageJsonAt(ref: string): string | null {
+  try {
+    return execFileSync("git", ["show", `${ref}:package.json`], { encoding: "utf8" });
+  } catch {
+    return null;
+  }
 }
 
 if (import.meta.main) {
   const branch = currentBranch();
   const paths = stagedPaths();
+  const staged = paths.includes("package.json") ? packageJsonAt("") : null;
   const findings = checkLanding(branch, paths, {
-    packageJsonDiff: stagedPackageJsonDiff(paths),
+    stagedPackageJson: staged,
+    headPackageJson: staged === null ? null : packageJsonAt("HEAD"),
   });
 
   if (findings.length > 0) {
