@@ -5,9 +5,13 @@ decision, numbered in the order they were made. These are the source of truth
 for *why* things are the way they are; the user-facing *what* lives in
 [`docs/`](../docs/) and the code.
 
-Format per file: `Date`, `Status` (`accepted`, plus `— revises NNNN` or
-`— extends NNNN` where it applies), `Context`, `Decision`, `Consequences`. Keep
-records short; link to them from task files instead of restating them.
+Format per file: `Date`, `Status` (`accepted`, plus `— revises NNNN`,
+`— extends NNNN` or `— corrects NNNN` where it applies), `Context`, `Decision`,
+`Consequences`. `revises` narrows or contradicts, `extends` adds without
+contradicting, `corrects` fixes a factual claim without changing the position
+taken. The set follows the records rather than leading them: a verb is listed
+here after some record uses it. Keep records short; link to them from task files
+instead of restating them.
 
 The code is the source of truth for *what*; these records hold the *why* the code
 cannot show ([0032](0032-decisions-are-append-only.md)). A committed decision is

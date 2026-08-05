@@ -55,7 +55,14 @@ changes — only what happens when they are broken.
 - `.husky/pre-commit`, `.husky/pre-push`.
 - `.claude/settings.json` (new), `.claude/hooks/guard-record-edit.ts` (new),
   `.claude/hooks/guard-bash.ts` (new) — thin shims that read the hook payload on
-  stdin and call the exported functions above.
+  stdin and call the exported functions above. **A shim that cannot read its
+  payload blocks rather than passes**, and neither hand-writes a rule the script
+  it calls already states. *Both added mid-branch (`decisions/0041` §1): the
+  second review fed a shim malformed JSON and got exit 1, which Claude Code
+  treats as non-blocking, so the guard silently stopped guarding; and found
+  `guard-record-edit.ts` teaching the two-verb `Status` vocabulary the same
+  branch had already corrected to three — the copy being made inside the change
+  that exists to remove copies.*
 - `package.json` — the new `lint:*` script entries.
 - `.github/workflows/ci.yml` — `lint:widths` only (see below).
 - `vitest.config.ts` — include `.claude/**/*.test.ts` only if a shim turns out
@@ -151,6 +158,15 @@ nothing in the plan would ever have run it against one.*
      tags continue as they are", and every release in this repository is a direct
      commit to main touching `package.json` alone. A staged `package.json` whose
      diff changes only the `version` field is that commit and passes.
+
+     **Decided by parsing, not by the shape of a diff line.** `JSON.parse` the
+     staged and the `HEAD` copies and assert the set of differing keys is exactly
+     `{version}`. *Corrected mid-branch (`decisions/0041` §1): the first
+     implementation matched changed diff lines against a version-shaped regular
+     expression, which its own comment already described as something else. The
+     second review got `+ "version": "0.10.0", "postinstall": "curl … | sh",`
+     through it — one physical line, two keys — and a deleted `version` field
+     as well.*
      *Both bullets corrected mid-branch (`decisions/0041` §1): review of #23 found
      that the plan's list blocked every future release, and that the root
      `README.md` — which 0033 §1 names in as many words, "a task's `docs/` and
@@ -173,14 +189,35 @@ nothing in the plan would ever have run it against one.*
    `checkBashCommand(command, state): Block | null`.
    - **Any command that adds to the index something the caller did not name as a
      path** → blocked, quoting [`0048`](../decisions/0048-staging-refuses-a-class.md)
-     §1. Tests carry the seven the #23 review found — `git add -A`, `git add .`,
-     `git add --all`, `git add -u`, `git commit -am`, `git stage -A`,
-     `git -C . add -A` — plus `git add ./src`, a path literally named `-A` after
-     `--`, and `git add src/index.ts` passing. 0048 §2 says the matcher is an
-     approximation and a spelling that gets through is a defect in the script, so
-     the header says that rather than implying a census. *Rewritten mid-branch
-     (`decisions/0041` §1): the plan named 0001's two spellings and the script
-     answered them literally, which is the class failure 0048 exists to close.*
+     §1.
+
+     **One predicate, not two lists.** Normalise the segment first — drop leading
+     shell punctuation and keywords, drop environment assignments, drop a wrapper
+     word (`sudo`, `env`, `command`, `exec`), resolve the binary by basename, look
+     past git's global options, expand a short cluster into single letters, and
+     split the arguments at `--` into flags and pathspecs. Then ask one question:
+     *does any flag stage implicitly, or is any pathspec not a named path?* A flag
+     only counts before `--`; a pathspec counts on both sides, which is what 0048
+     §1's carve-out actually says — a file **named** `-A` commits, not everything
+     that follows the separator.
+
+     Tests carry the sixteen spellings two review rounds found, each of which
+     passed a version of this script: `git add -A/./--all/-u/--update`,
+     `git commit -a/-am`, `git stage -A`, `git -C . add -A`, `git add *`,
+     `git add -- .`, `git add :/`, `git add *.ts`, `git add src/*`,
+     `sudo git add -A`, `env git add -A`, `/usr/bin/git add -A`,
+     `( git add -A )`, `GIT_DIR=.git git add -A` — plus the near-misses that must
+     pass: `git add ./src`, `git add -- -A`, `git add -N`, `git add -p <path>`,
+     `git commit --amend`, `git commit -m "fix the -a flag"`.
+
+     0048 §2 says the matcher is an approximation and a spelling that gets through
+     is a defect in the script, so the header says that rather than implying a
+     census. *Rewritten twice mid-branch (`decisions/0041` §1): the plan first
+     named 0001's two spellings and the script answered them literally; the
+     rewrite that followed still had two independent places to stop looking, and
+     the second review found nine more ways through — including `git add -- .`,
+     whose exit was documented in a comment two lines above the check while the
+     header claimed there was no escape hatch.*
    - `guard-bash.ts` is a library, not a command: it has no `import.meta.main`,
      no shebang and no `package.json` entry, because the only caller is the
      `.claude/` shim. Its header says so.

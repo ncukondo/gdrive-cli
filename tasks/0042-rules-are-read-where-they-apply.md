@@ -41,7 +41,13 @@ blocks that copy `package.json`, one of which has been wrong since 2026-07-24.
 
 - `src/CLAUDE.md`, `tests/CLAUDE.md`, `decisions/CLAUDE.md` — new.
 - `CLAUDE.md` at the root — remove `## Commands` and `## Tech Stack`, keep the
-  E2E paragraph that sits below the first of them.
+  E2E paragraph that sits below the first of them, and apply the same three tests
+  to `## Development Rules`. *Widened mid-branch (`decisions/0041` §1): the branch
+  cites 0047 four times and left that section carrying an abridged copy of 0033
+  §1 that 0047 §5 has since widened, a second statement of the append-only rule
+  that `decisions/CLAUDE.md` now makes at length, and the `git add -A` sentence
+  that 0048 turned into a guard. The test the branch applied to the three new
+  files was not applied to the file it was trimming.*
 
 Each new file is a short list of rules with a link to the record behind each. No
 file list, no command table, no flag list, no dependency list — 0047 §3, and the
@@ -107,12 +113,46 @@ line before it is written:
    exception was the rule: applied literally, `decisions/CLAUDE.md` came out at
    three lines, which the `Out of scope` below rejects `tasks/` and `docs/` for
    being.
-2. **Red — is it an inventory?** If adding a file, a command or a dependency to
-   the directory would make the line wrong, it does not go in (0047 §3).
-3. **Red — is it needed here?** If it reads just as well from `decisions/`, it
+2. **Red — is it an inventory?** Two tests, and the second is the one that
+   catches things.
+   - *Against the filesystem*: if adding a file, a command or a dependency to the
+     directory would make the line wrong, it does not go in (0047 §3).
+   - *Against the source*: **is this line a list that a dated record froze?** A
+     record states its position on its date and is never edited (0032 §3), so any
+     enumeration copied out of one is a snapshot, and the set it names has
+     usually already grown. Name the criterion instead of the members.
+
+   *Second test added mid-branch (`decisions/0041` §1). Review found four lines
+   that pass the filesystem test and fail this one, because what they enumerate
+   lives outside the directory they sit in — and one of them,
+   0012's "Drive, Docs, Sheets and OAuth clients", was already wrong on the day
+   it was written into the branch, because `src/lib/forms-api.ts` exists.*
+
+3. **Red — where does this rule load?** Claude Code loads a `CLAUDE.md` from the
+   edited file's own directory and its ancestors. So a rule about unit tests does
+   not reach a unit test that sits beside its source: editing
+   `src/lib/output.test.ts` loads the root file and `src/CLAUDE.md`, never
+   `tests/CLAUDE.md`. **49 of this repository's 54 test files are under `src/`.**
+
+   For each rule, ask which directories it loads from and whether that is the set
+   of directories it applies in. Where they differ, the answer is a pointer from
+   the loading directory — never a second copy, which is the problem 0047 §4
+   exists to remove. *Added mid-branch (`decisions/0041` §1): the first plan split
+   the files by subject and named them after the directories those subjects are
+   about, which is not how the mechanism splits. The rule this branch spends most
+   words on — the field round trip, which guards 0036 §2 — was written into the
+   one file guaranteed not to load when you open the renderer's tests.*
+
+4. **Red — is the claim true of `main`, not of a sibling branch?** A directory
+   file that says a guard exists is wrong until the guard merges, and two tasks
+   declared disjoint must not acquire a merge order through prose. *Added
+   mid-branch (`decisions/0041` §1): `decisions/CLAUDE.md` asserted that a commit
+   hook and a `PreToolUse` hook both refuse an edit to a committed record. Both
+   arrive in 0041, still open.*
+5. **Red — is it needed here?** If it reads just as well from `decisions/`, it
    stays there. Background and history are not just-in-time.
-4. **Green** — write the three files, one line per rule, each linking its record.
-5. **Refactor** — the root document, once the three exist: remove the two copied
+6. **Green** — write the three files, one line per rule, each linking its record.
+7. **Refactor** — the root document, once the three exist: remove the two copied
    blocks, and confirm what remains says nothing `package.json` also says. Then
    re-read `Getting Started`, which points at `decisions/0013` and `0012` for the
    architecture and testing conventions — the parts an agent needs at edit time
