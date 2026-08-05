@@ -35,9 +35,9 @@ log for 0.x.
 
 1. **`docs create --content`, `docs append`, `docs insert` and `docs replace`
    no longer inherit the style at the insertion point**, with two exceptions
-   named below. The Docs API gives
-   inserted characters the style of the text they land after, and gives a
-   paragraph split the style of the paragraph it split — so appending after a
+   named below. The Docs API gives inserted characters the style of the text
+   they land after, and gives a paragraph split the style of the paragraph it
+   split — so appending after a
    `Heading 1` produced a heading, inserting into a bulleted list produced
    bullets, and inserting after 20pt red bold text produced 20pt red bold text.
    They now reset what they wrote: the character style always, and the
