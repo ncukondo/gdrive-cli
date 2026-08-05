@@ -472,6 +472,83 @@ const BULLET_PRESET = {
   unordered: "BULLET_DISC_CIRCLE_SQUARE",
 } as const;
 
+/**
+ * Every writable field of a `TextStyle` (decision 0045 §1). An `updateTextStyle`
+ * resets exactly the fields its mask names and leaves every other one where it
+ * was, so naming them all is what stops inserted text wearing the style at the
+ * insertion point. Reset does not mean Arial 11: a field the payload leaves
+ * unset inherits from the paragraph's named style, which is this document's own
+ * default.
+ */
+const TEXT_STYLE_FIELDS = [
+  "bold",
+  "italic",
+  "underline",
+  "strikethrough",
+  "smallCaps",
+  "backgroundColor",
+  "foregroundColor",
+  "fontSize",
+  "weightedFontFamily",
+  "baselineOffset",
+  "link",
+].join(",");
+
+/**
+ * Every writable `ParagraphStyle` field except three (decision 0045 §2):
+ * `headingId` and `tabStops` are read-only, and `direction` is not inherited,
+ * so resetting it would only force LTR onto a right-to-left document.
+ */
+const PARAGRAPH_STYLE_FIELDS = [
+  "namedStyleType",
+  "alignment",
+  "lineSpacing",
+  "spacingMode",
+  "spaceAbove",
+  "spaceBelow",
+  "indentStart",
+  "indentEnd",
+  "indentFirstLine",
+  "keepLinesTogether",
+  "keepWithNext",
+  "avoidWidowAndOrphan",
+  "pageBreakBefore",
+  "shading",
+  "borderBetween",
+  "borderTop",
+  "borderBottom",
+  "borderLeft",
+  "borderRight",
+].join(",");
+
+/** Puts a range back to the document's default character style (0045 §1). */
+export function resetTextStyle(range: DocsRange): DocsRequest {
+  return { updateTextStyle: { range, textStyle: {}, fields: TEXT_STYLE_FIELDS } };
+}
+
+/**
+ * Puts whole paragraphs back to the document's default (0045 §2). Bullets go
+ * first: `deleteParagraphBullets` re-indents what it unbullets to preserve the
+ * look, so a style reset that ran before it would leave that indent behind.
+ *
+ * `namedStyleType` is named rather than cleared. Docs refuses to clear it —
+ * "Named style property is not inherited and cannot be cleared", which the live
+ * suite is how we know — because it is the thing every other field inherits
+ * *from*, so the default has to be said out loud.
+ */
+export function resetParagraphStyle(range: DocsRange): DocsRequest[] {
+  return [
+    { deleteParagraphBullets: { range } },
+    {
+      updateParagraphStyle: {
+        range,
+        paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+        fields: PARAGRAPH_STYLE_FIELDS,
+      },
+    },
+  ];
+}
+
 function spanText(spans: InlineSpan[]): string {
   return spans.map((span) => span.text).join("");
 }
@@ -633,11 +710,18 @@ function paragraphEnd(block: MarkdownBlock, start: number): number {
  * request's indices are read against the document as of the preceding request.
  * The style units go back to front: `createParagraphBullets` deletes the tabs
  * that told it the nesting level, which moves everything after them.
+ *
+ * Between the two comes the blank slate of decision 0045: the run resets what it
+ * wrote before anything styles it. `firstParagraphIsNew` says whether the first
+ * paragraph is the run's own — a leading newline makes it so, and otherwise only
+ * the caller knows, because it is a fact about the document at `start` and not
+ * about the payload. Without it the reset begins at the second paragraph, so an
+ * insert that merged into a paragraph leaves that paragraph's style alone.
  */
 export function planTextRun(
   blocks: MarkdownBlock[],
   start: number,
-  options: { leadingNewline?: boolean } = {},
+  options: { leadingNewline?: boolean; firstParagraphIsNew?: boolean } = {},
 ): TextRunPlan {
   const lead = options.leadingNewline === true ? "\n" : "";
   const lines = blocks.map((block) => `${blockText(block)}\n`);
@@ -765,6 +849,17 @@ export function planTextRun(
   }
 
   const requests: DocsRequest[] = [{ insertText: { location: { index: start }, text } }];
+  requests.push(resetTextStyle({ startIndex: start, endIndex: start + text.length }));
+
+  // Which paragraphs are the run's own. The last always is — every block ends
+  // in a newline of ours — so only the first is in question, and a leading
+  // newline settles it: the paragraph at `start` is the one it closed.
+  const ownedFrom = lead !== "" || options.firstParagraphIsNew === true ? starts[0] : starts[1];
+  const ownedTo = start + text.length;
+  if (ownedFrom !== undefined && ownedFrom < ownedTo) {
+    requests.push(...resetParagraphStyle({ startIndex: ownedFrom, endIndex: ownedTo }));
+  }
+
   for (let u = units.length - 1; u >= 0; u -= 1) requests.push(...(units[u]?.requests ?? []));
   const tabsRemoved = blocks.reduce((sum, block) => sum + tabs(block).length, 0);
   return { requests, length: text.length - tabsRemoved };
@@ -800,6 +895,7 @@ export function planCellFills(table: TableRaw, rows: TableRows): CellFillPlan {
       const start = cells[c]?.content?.[0]?.startIndex;
       if (text === "" || typeof start !== "number") continue;
       requests.push({ insertText: { location: { index: start }, text } });
+      requests.push(resetTextStyle({ startIndex: start, endIndex: start + text.length }));
       requests.push(...spanRequests(spans, start));
       added += text.length;
     }

@@ -5,6 +5,8 @@ import {
   planCellFills,
   planTable,
   planTextRun,
+  resetParagraphStyle,
+  resetTextStyle,
   toSegments,
   type UnsupportedNote,
 } from "./markdown-doc.ts";
@@ -326,17 +328,75 @@ export async function createDocument(
   }
 }
 
-/** Inserts `text` at a 1-based character index in the body. */
+/**
+ * What the insertion point is bounded by (decision 0045 §2). Docs copies the
+ * paragraph style of a paragraph it splits, so an insert may only reset the
+ * paragraphs it wholly created — and whether the first and last are among them
+ * is a fact about the document at that index, not about the payload.
+ */
+export interface ParagraphBoundary {
+  /** Nothing of a paragraph precedes the index, so an insert opens one of its own. */
+  atParagraphStart: boolean;
+  /** The index is a paragraph's own newline, so an insert closes one of its own. */
+  atParagraphEnd: boolean;
+}
+
+const INSIDE_A_PARAGRAPH: ParagraphBoundary = { atParagraphStart: false, atParagraphEnd: false };
+
+/** Reads the boundary at `index` from a document the caller already has. */
+export function paragraphBoundary(document: DocumentRaw, index: number): ParagraphBoundary {
+  let atParagraphStart = false;
+  let atParagraphEnd = false;
+  for (const element of document.body?.content ?? []) {
+    if (!element.paragraph) continue;
+    if (element.startIndex === index) atParagraphStart = true;
+    if (element.endIndex === index + 1) atParagraphEnd = true;
+  }
+  return { atParagraphStart, atParagraphEnd };
+}
+
+/**
+ * The blank slate for a literal insert (decision 0045 §1, §3). The characters
+ * are exactly ours, so their style always resets; a paragraph is ours only when
+ * our own newlines bound it, or the index did.
+ */
+function literalResetRequests(
+  index: number,
+  text: string,
+  boundary: ParagraphBoundary,
+): DocsRequest[] {
+  if (text === "") return [];
+  const requests = [resetTextStyle({ startIndex: index, endIndex: index + text.length })];
+
+  // The first paragraph the insert filled is its own when the index opened one,
+  // and otherwise starts after the payload's first newline; the last is its own
+  // when the index closed one, and otherwise ends at the payload's last.
+  const past = (breakAt: number): number | null => (breakAt === -1 ? null : index + breakAt + 1);
+  const from = boundary.atParagraphStart ? index : past(text.indexOf("\n"));
+  const to = boundary.atParagraphEnd ? index + text.length : past(text.lastIndexOf("\n"));
+  if (from !== null && to !== null && from < to) {
+    requests.push(...resetParagraphStyle({ startIndex: from, endIndex: to }));
+  }
+  return requests;
+}
+
+/** Inserts `text` at a 1-based character index in the body, in the default style. */
 export async function insertText(
   client: DocsClient,
   documentId: string,
   index: number,
   text: string,
+  boundary: ParagraphBoundary = INSIDE_A_PARAGRAPH,
 ): Promise<void> {
   try {
     await client.documents.batchUpdate({
       documentId,
-      requestBody: { requests: [{ insertText: { location: { index }, text } }] },
+      requestBody: {
+        requests: [
+          { insertText: { location: { index }, text } },
+          ...literalResetRequests(index, text, boundary),
+        ],
+      },
     });
   } catch (error) {
     mapApiError(error);
@@ -413,16 +473,23 @@ export async function insertMarkdown(
   documentId: string,
   index: number,
   source: string,
-  options: { leadingNewline?: boolean } = {},
+  options: { leadingNewline?: boolean; boundary?: ParagraphBoundary } = {},
 ): Promise<UnsupportedNote[]> {
   const { blocks, unsupported } = parseMarkdown(source);
   let cursor = index;
   let leadingNewline = options.leadingNewline === true;
   let pending: DocsRequest[] = [];
+  let first = true;
 
   for (const segment of toSegments(blocks)) {
+    // Only the first segment can land inside a paragraph that was already
+    // there; every later one starts where the segment before it left off, which
+    // is a paragraph of this write's own making (decision 0045 §2).
+    const firstParagraphIsNew = !first || options.boundary?.atParagraphStart === true;
+    first = false;
+
     if (segment.kind === "text") {
-      const plan = planTextRun(segment.blocks, cursor, { leadingNewline });
+      const plan = planTextRun(segment.blocks, cursor, { leadingNewline, firstParagraphIsNew });
       pending.push(...plan.requests);
       cursor += plan.length;
       leadingNewline = false;
@@ -516,8 +583,14 @@ export async function replaceMarkdown(
   let unsupported: UnsupportedNote[] = [];
 
   for (const range of [...ranges].reverse()) {
+    // Read at the marker's own edges: once it is gone, what followed it sits at
+    // its start, so that is where the replacement's last paragraph ends.
+    const boundary: ParagraphBoundary = {
+      atParagraphStart: paragraphBoundary(document, range.startIndex).atParagraphStart,
+      atParagraphEnd: paragraphBoundary(document, range.endIndex).atParagraphEnd,
+    };
     await applyRequests(client, documentId, [{ deleteContentRange: { range } }]);
-    unsupported = await insertMarkdown(client, documentId, range.startIndex, source);
+    unsupported = await insertMarkdown(client, documentId, range.startIndex, source, { boundary });
   }
   return { replaced: ranges.length, unsupported };
 }
