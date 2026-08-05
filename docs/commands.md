@@ -659,7 +659,8 @@ Appended to Meeting notes (1BzqpK...)
 the text next to it. Appending after a heading writes body text; inserting into
 a bulleted list writes an ordinary paragraph; inserting after bold red 20pt text
 writes plain text in the document's own body font. `--as text` is no different —
-it says the content is not Markdown, not that it should inherit formatting.
+it says the content is not Markdown, not that it should inherit formatting,
+with the one exception below.
 
 Two exceptions, both narrow:
 

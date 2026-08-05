@@ -362,8 +362,12 @@ function droppedByDocs(character: string): boolean {
  * `text` as the document will hold it (decision 0045 §1). Every range this
  * module computes is measured in characters, so anything Docs silently drops
  * would shift each one past what it was meant to name and into the text after
- * it. Sending what we measured is what keeps the two in step; a carriage return
- * becomes the newline Docs would otherwise have been left without.
+ * it. Sending what we measured is what keeps the two in step.
+ *
+ * A carriage return is the one character this does not reproduce: Docs drops it,
+ * and here it becomes a newline, so a classic-Mac file arrives as paragraphs
+ * rather than as one run-together line. The invariant is unharmed — what is sent
+ * is still what is measured — and the release notes say so.
  */
 export function asDocsStoresIt(text: string): string {
   let kept = "";
