@@ -1,4 +1,22 @@
 # The live suite (decision 0043 §1). On a machine with no
 # GDRIVE_CLI_E2E_FOLDER it skips and the push goes through (§3); on a
 # configured one a failure stops the branch before it leaves the machine.
-bun run test:e2e
+if ! bun run test:e2e; then
+  # 0012's CRITICAL policy, printed at the one moment anybody reads it. A fake
+  # can only confirm what its author believed the API does; Google is the only
+  # party that can contradict them, and this is it doing so (0043 Context).
+  cat <<'POLICY'
+
+────────────────────────────────────────────────────────────────────────────
+E2E failed. Do NOT add mocks to bypass it, do NOT change expected values to
+match broken behaviour, and do NOT skip or delete the test. Investigate the
+root cause and fix the implementation.
+  — decisions/0012-testing-strategy.md, "E2E policy (CRITICAL)"
+
+The failing file's folder is left in Drive on purpose: the contents are the
+evidence (decisions/0043-e2e-runs-before-push.md §2).
+────────────────────────────────────────────────────────────────────────────
+
+POLICY
+  exit 1
+fi
