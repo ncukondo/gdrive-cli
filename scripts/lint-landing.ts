@@ -27,7 +27,17 @@ const REVIEWED_PREFIXES = [
   ".husky/",
   ".claude/",
 ];
-const REVIEWED_FILES = ["package.json", "bun.lock", "install.sh", "install.ps1"];
+const REVIEWED_FILES = [
+  "package.json",
+  "bun.lock",
+  "install.sh",
+  "install.ps1",
+  // 0033 §1 names this one: "a task's docs/ and root README.md edits belong in
+  // the same pull request, never ahead of it". The root CLAUDE.md is not here,
+  // because 0047 §5 does not name it and inventing the rule is worse than
+  // leaving it unenforced.
+  "README.md",
+];
 
 /** The record directories, which 0033 §1 keeps off every branch. */
 const RECORD_PREFIXES = ["decisions/", "tasks/"];
@@ -61,17 +71,57 @@ function isRecord(path: string): boolean {
   return RECORD_PREFIXES.some((p) => path.startsWith(p));
 }
 
+/**
+ * Whether a staged `package.json` diff is a release commit rather than
+ * implementation.
+ *
+ * 0033's `Out of scope` exempts these in as many words — "Version bumps and tags
+ * continue as they are" — and `CLAUDE.md`'s Releasing §2 says both stay outside a
+ * pull request. Every release in this repository is a direct commit to main
+ * touching this one file, so without the exemption the next release needs
+ * `--no-verify`, which 0047 §2 reserves for something else and 0043 §3 warns is
+ * how a gate teaches people to route around it.
+ *
+ * The discriminator is that a version bump changes the `version` line and
+ * nothing else. `diff` is the unified diff of the staged change; a caller with
+ * no diff to offer passes `null` and gets `false`, which fails closed.
+ */
+export function isVersionBump(diff: string | null): boolean {
+  if (diff === null) return false;
+
+  const changed = diff
+    .split("\n")
+    .filter((line) => /^[+-]/.test(line) && !/^(\+\+\+|---)/.test(line))
+    .map((line) => line.slice(1).trim());
+
+  return changed.length > 0 && changed.every((line) => /^"version":\s*".+",?$/.test(line));
+}
+
+export interface LandingContext {
+  /** The staged unified diff of `package.json`, or null when there is none. */
+  packageJsonDiff?: string | null;
+}
+
 /** Where each staged path does not belong, given the branch it is being committed on. */
-export function checkLanding(branch: string, paths: string[]): LandingFinding[] {
+export function checkLanding(
+  branch: string,
+  paths: string[],
+  context: LandingContext = {},
+): LandingFinding[] {
   if (branch === "main") {
-    return paths.filter(isReviewed).map((path) => ({
-      path,
-      message:
-        `${path} lands through a pull request, not on main.\n` +
-        `    Cut a task/00NN-slug branch matching the task file, commit there, and\n` +
-        `    let an agent holding none of the implementation context read the diff\n` +
-        `    against the task's acceptance criteria (decision 0033 §1–§2).`,
-    }));
+    const exempt = new Set<string>();
+    if (isVersionBump(context.packageJsonDiff ?? null)) exempt.add("package.json");
+
+    return paths
+      .filter((path) => isReviewed(path) && !exempt.has(path))
+      .map((path) => ({
+        path,
+        message:
+          `${path} lands through a pull request, not on main.\n` +
+          `    Cut a task/00NN-slug branch matching the task file, commit there, and\n` +
+          `    let an agent holding none of the implementation context read the diff\n` +
+          `    against the task's acceptance criteria (decision 0033 §1–§2).`,
+      }));
   }
 
   if (branch.startsWith("task/")) {
@@ -102,9 +152,18 @@ function stagedPaths(): string[] {
   return out.split("\0").filter((path) => path !== "");
 }
 
+/** The staged diff of `package.json`, or null when it is not staged. */
+function stagedPackageJsonDiff(paths: string[]): string | null {
+  if (!paths.includes("package.json")) return null;
+  return execFileSync("git", ["diff", "--cached", "--", "package.json"], { encoding: "utf8" });
+}
+
 if (import.meta.main) {
   const branch = currentBranch();
-  const findings = checkLanding(branch, stagedPaths());
+  const paths = stagedPaths();
+  const findings = checkLanding(branch, paths, {
+    packageJsonDiff: stagedPackageJsonDiff(paths),
+  });
 
   if (findings.length > 0) {
     process.stderr.write(
