@@ -74,6 +74,10 @@ things, recorded here rather than annotated later
    test says so above itself and the case it was meant to cover stays in the
    manual list below, where the manual pass did exercise it.
 
+Round two found nothing severe and asked for one thing: 0046 rests on
+`replaceAllText` reaching segments the marker walk does not, and that was
+written as fact without being measured. It is measured now — see `Verification`.
+
 ## Out of scope
 
 - **Resetting a paragraph the insert merged into.** 0045 §2 rules it out by
@@ -145,6 +149,13 @@ part it never ran ([`0043`](../decisions/0043-e2e-runs-before-push.md) §4).
   src/commands/docs` — the request arrays and the boundary logic.
   `bun run test:e2e` — appending after a heading, inserting into a list, and
   inserting after bold text, each read back through `docs read` (0045 §4).
+- Measured, against a real account, because
+  [`0046`](../decisions/0046-replace-as-text-keeps-its-reach.md) rests on it: a
+  document with a `MARK` in a header, a footer and a footnote, put through
+  `docs replace --find MARK --replace GONE --as text`, answers
+  `"replaced": 3` and comes back with all three substituted. So the reach that
+  record keeps is real, and routing that path through `findMarkerRanges` would
+  have lost it.
 - Manual, against a real account: font family, size and colour, which `docs read`
   cannot see — and the `append` case the live suite cannot reach at all, since a
   document built by this CLI always ends in an unstyled paragraph. In a document whose body is 20pt red Courier, run
