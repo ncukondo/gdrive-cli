@@ -85,23 +85,29 @@ never pass the record. Keep the entry; keep the links in it absolute.
 
 Preview what the release will say with `bun run changelog <version>`.
 
-## Development Rules (see `decisions/0001`, `0032`, `0033`)
+## Development Rules (see `decisions/0001`, `0032`, `0033`, `0047`)
 
 - **No living SPEC**: the code is the source of truth for *what*. `decisions/`
   holds the *why* the code cannot show; `docs/` describes behavior for a user;
   `tasks/NNNN-*.md` decide what to build before the code exists (TDD
   Red→Green→Refactor). Where a document and the code disagree, the code wins.
-- **Decisions are append-only** (`0032`): never edit a committed decision file —
-  not even to add a dependency to a list. Write a new one and read the directory
-  from the highest number down. `decisions/README.md` indexes the relationships.
 - **Tasks expire** (`0032` §5): a merged task is archived in the next commit, not
   at the end of a batch. Correct it once on the way out if the implementation
   diverged; after that it is history.
 - **TDD**: failing test first, minimal code to pass, refactor green.
-- **Commits**: small; specific `git add <file>` (never `-A`/`.`); English.
-- **Implementation lands via PR** (`0033`): `src/`, `tests/`, `docs/`,
-  `package.json` go on a `task/00NN-slug` branch, reviewed by a fresh agent that
-  holds no implementation context, then rebase-merged. `decisions/` and `tasks/`
-  commit straight to main; a task's status/archive update follows the merge.
+- **Commits**: small, in English, staging the paths you name.
+- **Implementation lands through a pull request** (`0033` §1, widened by `0047`
+  §5): the code, its tests, its docs, the manifest, the installers, `.github/`,
+  `.husky/`, `.claude/` and a directory `CLAUDE.md` go on a `task/00NN-slug`
+  branch, reviewed by a fresh agent that holds no implementation context, then
+  rebase-merged. `decisions/` and `tasks/` commit straight to main; a task's
+  status and archive update follow the merge. Rebase before requesting review
+  (`0044` §1).
 - **Parallel**: parallel-safe tasks use `git worktree`; deps declared per task.
 - Docs updates are part of a task's Definition of Done, in the same PR.
+- **A rule a script can decide is a script, not a sentence** (`0047` §1). The
+  ones above that are checkable are checked by `.husky/pre-commit` and by
+  `.claude/`; the conventions that govern a directory live in its own
+  `CLAUDE.md`. Read `decisions/README.md` from the highest number down for
+  anything not covered here — including the append-only rule, which
+  `decisions/CLAUDE.md` states where it applies.
