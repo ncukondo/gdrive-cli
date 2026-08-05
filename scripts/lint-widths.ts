@@ -5,15 +5,23 @@
  *
  * The rule is unusual in that the code it forbids is not wrong-looking. A
  * `padEnd` is the obvious way to line a column up, and 0036 was written because
- * every available answer to "how wide is this?" disagrees with the terminals
- * that have to draw it — Unicode Annex #11, `Bun.stringWidth`, `string-width`
- * and `eastasianwidth` gave four answers for the same code points, and the
- * mismatch put an id up against a name where no reader could split them. Pull
- * request #14 built a 123-range table before that was established and was closed
- * unmerged rather than merged and deleted.
+ * no oracle for "how wide does this draw?" can be trusted across versions and
+ * terminals. The measured case is `🟰` U+1F7F0, where `string-width@5.1.2` says
+ * one column and both Unicode Annex #11 and `Bun.stringWidth` say two — a
+ * disagreement inside one dependency tree ([0039](../decisions/0039-what-0036-and-0037-got-wrong.md)
+ * §1, which corrected 0036's own example after measuring it; do not restate that
+ * example from 0036's `Context`). A column computed from a wrong answer is a
+ * column that does not line up, and for a machine reader that is the id running
+ * into the name.
  *
  * So this guard is not protecting an invariant the type system could hold. It is
  * there so the next person reaching for the obvious tool meets the reason first.
+ *
+ * What it does *not* cover is worth stating, because the header would otherwise
+ * imply it: this matches identifiers, so a hand-rolled width table like the one
+ * pull request #14 built, or `" ".repeat(width - len)`, passes. 0036 §3 forbids
+ * those too. The guard is the cheap half of the rule; the expensive half is
+ * still a reader.
  *
  * Usage: `bun scripts/lint-widths.ts` — scans `src/` and `scripts/`, skipping
  * tests, and exits 1 with the offending lines.
