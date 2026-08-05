@@ -47,10 +47,40 @@ text.
 - `tests/e2e/docs.test.ts` — the live assertions of 0045 §4.
 - `docs/commands.md`, `CHANGELOG.md`.
 
+## What the first review round changed
+
+Round one of [#20](https://github.com/ncukondo/gdrive-cli/pull/20) found three
+things, recorded here rather than annotated later
+([`0041`](../decisions/0041-the-task-is-current-during-review.md)):
+
+1. **Every range is measured in characters, and `insertText` drops some of the
+   characters it is handed** — U+0000-U+0008, U+000C-U+001F and the private use
+   area — so a payload carrying any of them shifted every range past what it
+   named and into the text after it. A CRLF log through `--as text` is the
+   realistic case. Both entry points now send what they measured
+   (`asDocsStoresIt`, applied in `parseMarkdown` and in `insertText`), which is
+   the whole class: those two are where text enters the request builders.
+2. **`replace --as text` cannot reset what it wrote.** `replaceAllText`
+   substitutes without reporting where, and it reaches headers, footers and
+   footnotes that `findMarkerRanges` does not.
+   [`0046`](../decisions/0046-replace-as-text-keeps-its-reach.md) keeps the
+   reach and names the exception; `docs/commands.md` and `CHANGELOG.md` say so,
+   and a test pins it. Issue
+   [#21](https://github.com/ncukondo/gdrive-cli/issues/21) is what would close
+   it.
+3. **The live "append after a heading" assertion cannot fail.** A document this
+   CLI builds always ends in the empty `NORMAL_TEXT` paragraph
+   `documents.create` gave it, so `append` never splits a styled paragraph. The
+   test says so above itself and the case it was meant to cover stays in the
+   manual list below, where the manual pass did exercise it.
+
 ## Out of scope
 
 - **Resetting a paragraph the insert merged into.** 0045 §2 rules it out by
   design; it will not be done.
+- **Resetting what `replace --as text` wrote.** 0046; issue
+  [#21](https://github.com/ncukondo/gdrive-cli/issues/21) tracks the work that
+  would make it possible.
 - **`--inherit-style`.** 0045's Out of scope: no issue, will not be done unless
   someone reports needing it.
 - **The `read` side.** Nothing about rendering changes.
@@ -93,16 +123,18 @@ text.
 
 ## Acceptance criteria
 
-- [ ] `docs append` after a heading writes body text, not a heading
-- [ ] `docs insert` into a bulleted list writes an unbulleted paragraph
-- [ ] `docs insert` after bold / coloured / resized text writes default text
-- [ ] `--as text` behaves the same as the Markdown path (0045 §3)
-- [ ] `insert --after` pointing into the middle of a paragraph leaves that
+- [x] `docs append` after a heading writes body text, not a heading
+- [x] `docs insert` into a bulleted list writes an unbulleted paragraph
+- [x] `docs insert` after bold / coloured / resized text writes default text
+- [x] `--as text` behaves the same as the Markdown path, except `replace`
+      (0045 §3 as corrected by [`0046`](../decisions/0046-replace-as-text-keeps-its-reach.md))
+- [x] A payload carrying characters Docs drops still lands with correct ranges
+- [x] `insert --after` pointing into the middle of a paragraph leaves that
       paragraph's own style alone (0045 §2)
-- [ ] Headings, quotes, lists, nesting, links and tables still land as before
-- [ ] No write costs an extra round trip
-- [ ] `bun run test` and `bun run typecheck` pass
-- [ ] `docs/commands.md` and `CHANGELOG.md` updated
+- [x] Headings, quotes, lists, nesting, links and tables still land as before
+- [x] No write costs an extra round trip
+- [x] `bun run test` and `bun run typecheck` pass
+- [x] `docs/commands.md` and `CHANGELOG.md` updated
 
 ## Verification
 
@@ -114,7 +146,8 @@ part it never ran ([`0043`](../decisions/0043-e2e-runs-before-push.md) §4).
   `bun run test:e2e` — appending after a heading, inserting into a list, and
   inserting after bold text, each read back through `docs read` (0045 §4).
 - Manual, against a real account: font family, size and colour, which `docs read`
-  cannot see. In a document whose body is 20pt red Courier, run
+  cannot see — and the `append` case the live suite cannot reach at all, since a
+  document built by this CLI always ends in an unstyled paragraph. In a document whose body is 20pt red Courier, run
   `docs append`, `docs insert --after`, and `docs replace`, then look at the
   result in the browser: the new text is the document's default, and the
   paragraph an `--after` insert landed inside keeps its own style.
