@@ -1,19 +1,29 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
 import { formatValues, line, renderSuccess } from "../../lib/output.ts";
-import { endOfBody, type DocumentRaw } from "../../lib/docs-api.ts";
+import {
+  endOfBody,
+  paragraphBoundary,
+  type DocumentRaw,
+  type ParagraphBoundary,
+} from "../../lib/docs-api.ts";
 import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
 import { parseDocsFormat, reportUnsupported } from "./format.ts";
 
 export interface DocsAppendDeps {
   resolvePath: (arg: string) => Promise<string>;
   getDocument: (documentId: string) => Promise<DocumentRaw>;
-  insertText: (documentId: string, index: number, text: string) => Promise<void>;
+  insertText: (
+    documentId: string,
+    index: number,
+    text: string,
+    boundary: ParagraphBoundary,
+  ) => Promise<void>;
   insertMarkdown: (
     documentId: string,
     index: number,
     source: string,
-    options: { leadingNewline: boolean },
+    options: { leadingNewline: boolean; boundary: ParagraphBoundary },
   ) => Promise<UnsupportedNote[]>;
   readInput: (arg: string) => Promise<string>;
   file: string;
@@ -37,11 +47,12 @@ export async function handleDocsAppend(deps: DocsAppendDeps): Promise<CommandRes
   const index = endOfBody(document);
   // Start a new paragraph unless the document is still empty.
   const leadingNewline = index > 1;
+  const boundary = paragraphBoundary(document, index);
   let notes: UnsupportedNote[] = [];
   if (as === "markdown") {
-    notes = await deps.insertMarkdown(documentId, index, text, { leadingNewline });
+    notes = await deps.insertMarkdown(documentId, index, text, { leadingNewline, boundary });
   } else {
-    await deps.insertText(documentId, index, leadingNewline ? `\n${text}` : text);
+    await deps.insertText(documentId, index, leadingNewline ? `\n${text}` : text, boundary);
   }
 
   const title = document.title ?? "";

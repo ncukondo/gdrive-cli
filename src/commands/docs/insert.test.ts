@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleDocsInsert, resolveInsertIndex } from "./insert.ts";
-import type { DocumentRaw } from "../../lib/docs-api.ts";
+import type { DocumentRaw, ParagraphBoundary } from "../../lib/docs-api.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -44,11 +44,18 @@ const marked: DocumentRaw = {
   },
 };
 
+/** No edge of a paragraph, so an insert there may restyle none of it (0045 §2). */
+const INSIDE: ParagraphBoundary = { atParagraphStart: false, atParagraphEnd: false };
+
 const baseDeps = () => ({
   resolvePath: vi.fn(async () => "D1"),
   getDocument: vi.fn(async () => document),
-  insertText: vi.fn(async (_id: string, _index: number, _text: string) => {}),
-  insertMarkdown: vi.fn(async (_id: string, _index: number, _source: string) => []),
+  insertText: vi.fn(
+    async (_id: string, _index: number, _text: string, _b: ParagraphBoundary) => {},
+  ),
+  insertMarkdown: vi.fn(
+    async (_id: string, _index: number, _source: string, _o: { boundary: ParagraphBoundary }) => [],
+  ),
   readInput: vi.fn(async (arg: string) => arg),
   warn: vi.fn(),
   file: "Notes",
@@ -128,7 +135,7 @@ describe("handleDocsInsert", () => {
     const d = baseDeps();
     const out = collect();
     await handleDocsInsert({ ...d, index: "4", write: out.write });
-    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 4, "hi");
+    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 4, "hi", { boundary: INSIDE });
     expect(d.insertText).not.toHaveBeenCalled();
     expect(out.output).toBe("Inserted into Meeting notes (D1)");
   });
@@ -136,7 +143,7 @@ describe("handleDocsInsert", () => {
   it("--as text inserts the exact bytes", async () => {
     const d = baseDeps();
     await handleDocsInsert({ ...d, index: "4", as: "text" });
-    expect(d.insertText).toHaveBeenCalledWith("D1", 4, "hi");
+    expect(d.insertText).toHaveBeenCalledWith("D1", 4, "hi", INSIDE);
     expect(d.insertMarkdown).not.toHaveBeenCalled();
   });
 
@@ -150,13 +157,18 @@ describe("handleDocsInsert", () => {
       text: "@table.md",
       readInput: vi.fn(async () => "| a |\n| --- |"),
     });
-    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 8, "| a |\n| --- |");
+    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 8, "| a |\n| --- |", {
+      boundary: INSIDE,
+    });
   });
 
   it("inserts at the end of the body with --at end", async () => {
     const d = baseDeps();
     await handleDocsInsert({ ...d, at: "end" });
-    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 11, "hi");
+    // The body ends at 12, so 11 is the last paragraph's own newline.
+    expect(d.insertMarkdown).toHaveBeenCalledWith("D1", 11, "hi", {
+      boundary: { atParagraphStart: false, atParagraphEnd: true },
+    });
   });
 
   it("reads the text through the @file/stdin reader and rejects empty text", async () => {
@@ -164,7 +176,10 @@ describe("handleDocsInsert", () => {
     const readInput = vi.fn(async () => "from stdin");
     await handleDocsInsert({ ...d, text: "-", readInput, at: "start", as: "text" });
     expect(readInput).toHaveBeenCalledWith("-");
-    expect(d.insertText).toHaveBeenCalledWith("D1", 1, "from stdin");
+    expect(d.insertText).toHaveBeenCalledWith("D1", 1, "from stdin", {
+      atParagraphStart: true,
+      atParagraphEnd: false,
+    });
 
     await expect(
       handleDocsInsert({ ...baseDeps(), at: "start", text: "", readInput: vi.fn(async () => "") }),

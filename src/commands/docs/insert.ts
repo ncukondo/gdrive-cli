@@ -1,7 +1,13 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
 import { formatValues, line, renderSuccess } from "../../lib/output.ts";
-import { endOfBody, findMarkerRanges, type DocumentRaw } from "../../lib/docs-api.ts";
+import {
+  endOfBody,
+  findMarkerRanges,
+  paragraphBoundary,
+  type DocumentRaw,
+  type ParagraphBoundary,
+} from "../../lib/docs-api.ts";
 import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
 import { parseDocsFormat, reportUnsupported } from "./format.ts";
 
@@ -90,8 +96,18 @@ export function resolveInsertIndex(position: InsertPosition, document: DocumentR
 export interface DocsInsertDeps {
   resolvePath: (arg: string) => Promise<string>;
   getDocument: (documentId: string) => Promise<DocumentRaw>;
-  insertText: (documentId: string, index: number, text: string) => Promise<void>;
-  insertMarkdown: (documentId: string, index: number, source: string) => Promise<UnsupportedNote[]>;
+  insertText: (
+    documentId: string,
+    index: number,
+    text: string,
+    boundary: ParagraphBoundary,
+  ) => Promise<void>;
+  insertMarkdown: (
+    documentId: string,
+    index: number,
+    source: string,
+    options: { boundary: ParagraphBoundary },
+  ) => Promise<UnsupportedNote[]>;
   readInput: (arg: string) => Promise<string>;
   file: string;
   text: string;
@@ -126,9 +142,13 @@ export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandRes
     },
     document,
   );
+  // Which paragraphs the insert may restyle is a fact about the document at
+  // this index, and this is the document the index was resolved against
+  // (decision 0045 §2).
+  const boundary = paragraphBoundary(document, index);
   let notes: UnsupportedNote[] = [];
-  if (as === "markdown") notes = await deps.insertMarkdown(documentId, index, text);
-  else await deps.insertText(documentId, index, text);
+  if (as === "markdown") notes = await deps.insertMarkdown(documentId, index, text, { boundary });
+  else await deps.insertText(documentId, index, text, boundary);
 
   const title = document.title ?? "";
   deps.write(
