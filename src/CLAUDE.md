@@ -7,8 +7,12 @@ Neither is repeated below ([`0047`](../decisions/0047-rules-are-executed.md) §3
 - **A handler validates, delegates, and emits — in that order.** Parse arguments
   with zod, call into `lib/*`, and print through `lib/output.ts`. Never build a
   JSON envelope by hand ([`0013`](../decisions/0013-architecture.md)).
+- **The unit tests beside this source follow
+  [`tests/CLAUDE.md`](../tests/CLAUDE.md).** That file does not load when you
+  open a `*.test.ts` here, and 49 of this project's 54 test files are here. Read
+  it before writing one.
 - **A handler never calls `process.exit`.** It throws `AppError { code }`;
-  `index.ts` maps the code to an exit code and a format
+  `src/index.ts` maps the code to an exit code and a format
   ([`0013`](../decisions/0013-architecture.md),
   [`0007`](../decisions/0007-output-and-errors.md)).
 - **`commands/index.ts` is the only shared edit outside your own scope**, and it
@@ -25,7 +29,7 @@ Neither is repeated below ([`0047`](../decisions/0047-rules-are-executed.md) §3
   does not line up, and for a machine reader that is the id running into the
   name. A person who wants columns pipes the output through a formatter
   ([`0036`](../decisions/0036-machine-format-by-default.md) §2–§3).
-- **Parse at the edges instead of asserting.** Untrusted input — config, stored
-  tokens, `--values` JSON, a release payload — goes through a zod schema, and a
-  closed string set goes through `lib/args.ts`
+- **Parse at the edges instead of asserting.** Anything crossing a boundary into
+  this program goes through a zod schema, and a closed string set goes through
+  `lib/args.ts`. No type assertions anywhere
   ([`0015`](../decisions/0015-no-type-assertions.md)).
