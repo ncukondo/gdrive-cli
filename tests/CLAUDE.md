@@ -1,7 +1,9 @@
 # tests/
 
-Conventions that hold while you edit anything here, including the unit tests
-that live beside their source under `src/`.
+Conventions for every test in this project. Most of them are not in this
+directory — a unit test lives beside its source under `src/`, and this file does
+not load when you open one, so `src/CLAUDE.md` points here instead of repeating
+any of it.
 
 - **A test asserts what the program does, never what it is made of.** Given
   these inputs, this output; given this state, this change. Not which functions
@@ -28,9 +30,9 @@ that live beside their source under `src/`.
   either to contain a particular string. They are downstream and free to be
   reworded ([`0035`](../decisions/0035-docs-are-downstream.md) §2).
 - **Inject rather than reach out.** The filesystem goes through `FsAdapter`;
-  Drive, Docs, Sheets and OAuth clients are constructor arguments to the
-  `lib/*-api.ts` wrappers; stdin is passed in. Production wires the real thing
-  and a test passes a fake ([`0012`](../decisions/0012-testing-strategy.md)).
+  every Google API client is a constructor argument to its `lib/*-api.ts`
+  wrapper; stdin is passed in. Production wires the real thing and a test passes
+  a fake ([`0012`](../decisions/0012-testing-strategy.md)).
 - **A fake is shared from `tests/helpers/`.** The first task needing one creates
   it there and later tasks import it, so parallel worktrees cannot disagree about
   what the API looks like ([`0012`](../decisions/0012-testing-strategy.md)).
