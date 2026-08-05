@@ -8,12 +8,18 @@ that live beside their source under `src/`.
   exist, not what a file contains, not how something is spelled
   ([`0037`](../decisions/0037-tests-assert-behaviour.md) §1).
 - **A rule about form is tested through its consequence.** "No renderer aligns"
-  is not "no file calls `padEnd`" — it is that a row's rendering does not depend
-  on the other rows, which fails for any alignment scheme and passes for an
-  innocent `padEnd`. The question to ask of a proposed test: _can this fail when
-  the program is wrong, and pass when it is right?_
-  ([`0037`](../decisions/0037-tests-assert-behaviour.md) §2, and §3 for where a
-  form rule goes instead.)
+  is not "no file calls `padEnd`". Its consequence is the **field round trip** —
+  split a rendered row on the separator and get back exactly the fields that went
+  in, which a padded field fails for every alignment scheme. Row independence,
+  where widening one field changes that row alone, is worth asserting beside it
+  but is the weaker of the two: constant-width padding is row-independent and
+  slips through. The question to ask of a proposed test: _can this fail when the
+  program is wrong, and pass when it is right?_
+  ([`0037`](../decisions/0037-tests-assert-behaviour.md) §2 for the rule, §3 for
+  where a form rule goes instead, and
+  [`0039`](../decisions/0039-what-0036-and-0037-got-wrong.md) §2, which measured
+  0037's own example and found it insufficient. Read down from the highest
+  number — including when the record you are quoting is days old.)
 - **Output correctness is asserted at the renderer, as a property.** Every type
   is followed by a separator; every field that is present is shown. A property
   holds for inputs nobody thought of, which is what the defects that produced
