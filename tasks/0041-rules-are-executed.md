@@ -60,6 +60,13 @@ changes — only what happens when they are broken.
 - `.github/workflows/ci.yml` — `lint:widths` only (see below).
 - `vitest.config.ts` — include `.claude/**/*.test.ts` only if a shim turns out
   to need its own test; the intent is that it does not.
+- `tsconfig.json` and the `oxlint`/`oxfmt` argument lists — add `.claude/`.
+  *Added mid-branch (`decisions/0041` §1): review of #23 found the two shims are
+  the only new files under no typecheck, no lint and no formatter, and
+  `guard-record-edit.ts` fails **open** — a runtime error there means the
+  append-only guard silently stops guarding. 0047 §5 routes `.claude/` through
+  review because "a broken one stops work"; leaving it uncompiled is the same
+  risk arriving unobserved.*
 
 ## Out of scope
 
@@ -89,6 +96,15 @@ tests call the functions with literal inputs — a staged file list, a branch na
 a `tasks/README.md` fragment — so no test touches git, and the git plumbing lives
 in the six lines the tests do not cover.
 
+**Every check also runs against this repository's own records**, in a test that
+reads `decisions/README.md`, `tasks/README.md` and each `decisions/*.md` with
+`readFileSync` and asserts no findings. It is hermetic in the sense that matters:
+no git, no network. A literal input can only confirm the assumption the code
+beside it was written from, and the corpus is the only thing that contradicts it.
+*Added mid-branch (`decisions/0041` §1): review of #23 found that
+`checkStatusLine` blocks `decisions/0046`, the newest record on main, and that
+nothing in the plan would ever have run it against one.*
+
 1. **Red — `scripts/lib/ts-source.ts`.** Move `stripNoise` out of
    `lint-casts.ts` and export it. Test: a `padEnd` inside a line comment, a block
    comment, a single-quoted string and a template literal all strip; code
@@ -113,9 +129,13 @@ in the six lines the tests do not cover.
      `decisions/README.md` linking its exact filename. Missing row is a finding
      that quotes 0032's "the index becomes load-bearing".
    - `checkStatusLine(path, source)` — an added decision's `Status:` line is
-     `accepted`, optionally followed by `— revises`/`— extends` and at least one
-     `[NNNN](NNNN-….md)` link. A `superseded by` status is a finding, because
-     0032 §3 removed it.
+     `accepted`, optionally followed by `— revises`, `— extends` or `— corrects`
+     and at least one `[NNNN](NNNN-….md)` link. A `superseded by` status is a
+     finding, because 0032 §3 removed it. *Corrected mid-branch
+     (`decisions/0041` §1): the plan said `revises`/`extends`, which is the two
+     verbs 0032 §3 glosses, and `decisions/0046` — written the day before this
+     task — uses `corrects`. The vocabulary is what the records use, not what one
+     record happened to illustrate.*
    - `checkArchivedTasks(readme)` — a row in `tasks/README.md`'s plan table whose
      status is neither `todo` nor `in-progress` must link into `archive/`. This
      is the exact 0032 §5 failure: the status flips and the file does not move.
@@ -125,8 +145,17 @@ in the six lines the tests do not cover.
    `checkLanding(branch, paths): Finding[]`.
    - On `main`, a staged path under `src/`, `tests/`, `docs/`, `scripts/`,
      `.github/`, `.husky/`, `.claude/`, or equal to `package.json`, `bun.lock`,
-     `install.sh`, `install.ps1`, or a `CLAUDE.md` below the root, is a finding
-     naming the `task/00NN-slug` branch it belongs on.
+     `install.sh`, `install.ps1`, `README.md`, or a `CLAUDE.md` below the root, is
+     a finding naming the `task/00NN-slug` branch it belongs on.
+   - **A release commit is exempt.** 0033's `Out of scope` says "Version bumps and
+     tags continue as they are", and every release in this repository is a direct
+     commit to main touching `package.json` alone. A staged `package.json` whose
+     diff changes only the `version` field is that commit and passes.
+     *Both bullets corrected mid-branch (`decisions/0041` §1): review of #23 found
+     that the plan's list blocked every future release, and that the root
+     `README.md` — which 0033 §1 names in as many words, "a task's `docs/` and
+     root `README.md` edits belong in the same pull request" — was left out of it.
+     The root `CLAUDE.md` stays out, because 0047 §5 does not name it.*
    - On a `task/*` branch, a staged path under `decisions/` or `tasks/` is a
      finding quoting 0044 §1 — this is the phantom that cost #16 a round.
    - **`decisions/CLAUDE.md` and `tasks/CLAUDE.md` are the exception to both
@@ -142,9 +171,19 @@ in the six lines the tests do not cover.
 
 5. **Red — `scripts/guard-bash.ts`.** Export
    `checkBashCommand(command, state): Block | null`.
-   - `git add -A`, `git add .`, `git add --all` → blocked, quoting 0001. Tests
-     cover the flag spellings, `git add ./src`, a path literally named `-A`
-     after `--`, and `git add src/index.ts` passing.
+   - **Any command that adds to the index something the caller did not name as a
+     path** → blocked, quoting [`0048`](../decisions/0048-staging-refuses-a-class.md)
+     §1. Tests carry the seven the #23 review found — `git add -A`, `git add .`,
+     `git add --all`, `git add -u`, `git commit -am`, `git stage -A`,
+     `git -C . add -A` — plus `git add ./src`, a path literally named `-A` after
+     `--`, and `git add src/index.ts` passing. 0048 §2 says the matcher is an
+     approximation and a spelling that gets through is a defect in the script, so
+     the header says that rather than implying a census. *Rewritten mid-branch
+     (`decisions/0041` §1): the plan named 0001's two spellings and the script
+     answered them literally, which is the class failure 0048 exists to close.*
+   - `guard-bash.ts` is a library, not a command: it has no `import.meta.main`,
+     no shebang and no `package.json` entry, because the only caller is the
+     `.claude/` shim. Its header says so.
    - `gh pr create` / `gh pr ready` with `state.rebased === false` → blocked,
      quoting 0044 §1 and printing the command to run
      (`git rebase main && git push --force-with-lease`). The shim computes

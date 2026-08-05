@@ -66,6 +66,7 @@ names the relationship its record has to the ones before it.
 | [0045](0045-inserted-content-is-default-styled.md) | An insert resets what it wrote to the document's default style (extends 0021) |
 | [0046](0046-replace-as-text-keeps-its-reach.md) | `replace --as text` keeps `replaceAllText`, and so keeps the style it replaced (corrects 0045 §3) |
 | [0047](0047-rules-are-executed.md) | A checkable rule is a script a hook runs; a directory's `CLAUDE.md` holds no inventory (extends 0032 §6, 0033 §1) |
+| [0048](0048-staging-refuses-a-class.md) | Staging the caller did not name is refused whatever its spelling; the matcher is not the rule (extends 0001, 0047 §1) |
 
 ## Related projects (reference implementations)
 
