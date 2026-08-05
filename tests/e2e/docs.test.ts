@@ -193,6 +193,18 @@ describeLive("Docs against a real account", () => {
         "text",
       );
       await gdrive("docs", "insert", styled, "joined", "--after", "first item", "--as", "text");
+      // A CRLF payload: Docs drops each CR, so a range measured against what we
+      // handed it would reach two characters into the bold run below.
+      await gdrive(
+        "docs",
+        "insert",
+        styled,
+        "one\r\ntwo\r\n",
+        "--before",
+        "strong",
+        "--as",
+        "text",
+      );
       after = (await gdriveAs(bodySchema, "docs", "read", styled)).content;
     }, LIVE_TIMEOUT);
 
@@ -237,6 +249,17 @@ describeLive("Docs against a real account", () => {
       () => {
         expect(after).toMatch(/^literal insert$/m);
         expect(after).toMatch(/^# Trailing heading$/m);
+      },
+      LIVE_TIMEOUT,
+    );
+
+    it(
+      "measures a CRLF payload as Docs stores it, leaving the run below it alone",
+      () => {
+        expect(after).toMatch(/^one$/m);
+        expect(after).toMatch(/^two$/m);
+        // Two characters short and the reset would have eaten "st" out of it.
+        expect(after).toMatch(/\*\*strong\*\*tail/);
       },
       LIVE_TIMEOUT,
     );

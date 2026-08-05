@@ -34,7 +34,7 @@ and listed here because that record makes the release notes the compatibility
 log for 0.x.
 
 1. **`docs create --content`, `docs append`, `docs insert` and `docs replace`
-   no longer inherit the style at the insertion point**, with one exception
+   no longer inherit the style at the insertion point**, with two exceptions
    named below. The Docs API gives
    inserted characters the style of the text they land after, and gives a
    paragraph split the style of the paragraph it split — so appending after a
@@ -67,6 +67,16 @@ log for 0.x.
    What to do: nothing, if you wanted plain text. If you were relying on an
    append picking up the surrounding formatting, apply that formatting in the
    Docs UI afterwards — there is no flag to restore the old behaviour.
+
+   **One byte-level change comes with this**, on the `--as text` path only: the
+   payload is now sent as Docs would have stored it, because every reset range
+   is measured in characters and a character the API drops on the way in would
+   push those ranges past what they name. The API drops U+0000-U+0008,
+   U+000C-U+001F and the private use area, so those disappear as they always
+   did — but a lone carriage return, which Docs would have dropped, now becomes
+   a newline instead. A classic-Mac text file therefore arrives as separate
+   paragraphs rather than one run-together line. CRLF is unaffected: it was
+   already a newline either way.
    [Decision 0045](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0045-inserted-content-is-default-styled.md)
    is the reasoning, and
    [0021](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0021-markdown-writes.md) §4
