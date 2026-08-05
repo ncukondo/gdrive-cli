@@ -6,7 +6,46 @@ import {
   planTextRun,
   toSegments,
 } from "./markdown-doc.ts";
-import { renderDocument, type DocumentRaw, type StructuralElementRaw } from "./docs-api.ts";
+import {
+  renderDocument,
+  type DocsRequest,
+  type DocumentRaw,
+  type StructuralElementRaw,
+} from "./docs-api.ts";
+
+/**
+ * A style request that sets nothing is a reset: decision 0045 puts one in front
+ * of every insert so the text stops wearing the style at the insertion point.
+ * The bullets it deletes belong to the same slate, which is why this only reads
+ * the run of requests that directly follows the insert — the unbulleting that
+ * 0023 §2 does inside a list comes later and is nobody's slate.
+ */
+function isBlankSlate(request: DocsRequest | undefined): boolean {
+  if (request === undefined) return false;
+  if ("updateTextStyle" in request) {
+    return Object.keys(request.updateTextStyle.textStyle).length === 0;
+  }
+  if ("updateParagraphStyle" in request) {
+    // The slate is the only thing that names NORMAL_TEXT: Docs refuses to clear
+    // a named style, so the reset has to set the default rather than unset it.
+    return request.updateParagraphStyle.paragraphStyle.namedStyleType === "NORMAL_TEXT";
+  }
+  return "deleteParagraphBullets" in request;
+}
+
+/** The plan with its blank slate taken out: the requests that add style. */
+function afterReset(requests: DocsRequest[]): DocsRequest[] {
+  let i = 1;
+  while (isBlankSlate(requests[i])) i += 1;
+  return [...requests.slice(0, 1), ...requests.slice(i)];
+}
+
+/** Just the blank slate, in the order it is sent. */
+function reset(requests: DocsRequest[]): DocsRequest[] {
+  let i = 1;
+  while (isBlankSlate(requests[i])) i += 1;
+  return requests.slice(1, i);
+}
 
 describe("parseMarkdown — blocks", () => {
   it("maps ATX headings to their level", () => {
@@ -654,6 +693,140 @@ describe("round trip with renderDocument", () => {
   });
 });
 
+/**
+ * Decision 0045. Docs gives inserted text the style at the insertion point, and
+ * a paragraph split leaves both halves with the paragraph style of the one that
+ * was split, bullet included. Nothing here can show that happening — it is the
+ * API's behaviour, not the request array's (0043) — so what these pin is that
+ * the requests that undo it are sent, and sent before anything styles the text.
+ */
+describe("the blank slate an insert writes first (0045)", () => {
+  const TEXT_FIELDS =
+    "bold,italic,underline,strikethrough,smallCaps,backgroundColor,foregroundColor," +
+    "fontSize,weightedFontFamily,baselineOffset,link";
+  const PARAGRAPH_FIELDS =
+    "namedStyleType,alignment,lineSpacing,spacingMode,spaceAbove,spaceBelow," +
+    "indentStart,indentEnd,indentFirstLine,keepLinesTogether,keepWithNext," +
+    "avoidWidowAndOrphan,pageBreakBefore,shading,borderBetween,borderTop," +
+    "borderBottom,borderLeft,borderRight";
+  const blocks = parseMarkdown("# Title\nplain **bold**\n- item").blocks;
+
+  it("resets every character it wrote, naming every field it can carry", () => {
+    // "Title\nplain bold\nitem\n" is [1,23)
+    const { requests } = planTextRun(blocks, 1, { firstParagraphIsNew: true });
+    expect(reset(requests)[0]).toEqual({
+      updateTextStyle: {
+        range: { startIndex: 1, endIndex: 23 },
+        textStyle: {},
+        fields: TEXT_FIELDS,
+      },
+    });
+  });
+
+  it("unbullets the paragraphs it created before resetting them, not after", () => {
+    // deleteParagraphBullets re-indents what it unbullets to preserve the look,
+    // so a reset that ran first would leave that indent behind.
+    const { requests } = planTextRun(blocks, 1, { firstParagraphIsNew: true });
+    expect(reset(requests).slice(1)).toEqual([
+      { deleteParagraphBullets: { range: { startIndex: 1, endIndex: 23 } } },
+      {
+        updateParagraphStyle: {
+          range: { startIndex: 1, endIndex: 23 },
+          paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+          fields: PARAGRAPH_FIELDS,
+        },
+      },
+    ]);
+  });
+
+  it("styles what it wrote only after the slate, so bold and a heading survive", () => {
+    const { requests } = planTextRun(blocks, 1, { firstParagraphIsNew: true });
+    const slateEnd = reset(requests).length;
+    const bold = requests.findIndex(
+      (r) => "updateTextStyle" in r && r.updateTextStyle.fields === "bold",
+    );
+    const heading = requests.findIndex(
+      (r) => "updateParagraphStyle" in r && r.updateParagraphStyle.fields === "namedStyleType",
+    );
+    expect(slateEnd).toBe(3);
+    expect(bold).toBeGreaterThan(slateEnd);
+    expect(heading).toBeGreaterThan(slateEnd);
+  });
+
+  it("bullets the list after the slate has unbulleted it", () => {
+    const { requests } = planTextRun(parseMarkdown("- one\n- two").blocks, 1, {
+      firstParagraphIsNew: true,
+    });
+    const slate = requests.findIndex((r) => "deleteParagraphBullets" in r);
+    const bullets = requests.findIndex((r) => "createParagraphBullets" in r);
+    expect(slate).toBeLessThan(bullets);
+  });
+
+  it("leaves the paragraph it merged into alone, resetting from the next one", () => {
+    // Inserted mid-paragraph, "Title" joins text that was already there, so
+    // that paragraph is not ours to restyle. The run starts at "plain bold\n".
+    const { requests } = planTextRun(blocks, 1);
+    const paragraphs = reset(requests).filter((r) => "updateParagraphStyle" in r);
+    expect(paragraphs).toEqual([
+      {
+        updateParagraphStyle: {
+          range: { startIndex: 7, endIndex: 23 },
+          paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+          fields: PARAGRAPH_FIELDS,
+        },
+      },
+    ]);
+    // The characters are still ours, and still reset.
+    expect(reset(requests)[0]).toMatchObject({
+      updateTextStyle: { range: { startIndex: 1, endIndex: 23 } },
+    });
+  });
+
+  it("resets no paragraph at all when the only one it wrote is not its own", () => {
+    const { requests } = planTextRun(parseMarkdown("tail").blocks, 5);
+    expect(reset(requests)).toEqual([
+      {
+        updateTextStyle: {
+          range: { startIndex: 5, endIndex: 10 },
+          textStyle: {},
+          fields: TEXT_FIELDS,
+        },
+      },
+    ]);
+  });
+
+  it("starts after the newline it prepends, which still belongs to the paragraph above", () => {
+    const { requests } = planTextRun(parseMarkdown("tail").blocks, 9, { leadingNewline: true });
+    const paragraphs = reset(requests).filter((r) => "updateParagraphStyle" in r);
+    expect(paragraphs).toEqual([
+      {
+        updateParagraphStyle: {
+          range: { startIndex: 10, endIndex: 15 },
+          paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+          fields: PARAGRAPH_FIELDS,
+        },
+      },
+    ]);
+  });
+
+  it("resets the text it writes into a table cell", () => {
+    const table = {
+      tableRows: [{ tableCells: [{ content: [{ startIndex: 10 }] }] }],
+    };
+    const { requests } = planCellFills(table, [[[{ text: "ab" }]]]);
+    expect(requests).toEqual([
+      { insertText: { location: { index: 10 }, text: "ab" } },
+      {
+        updateTextStyle: {
+          range: { startIndex: 10, endIndex: 12 },
+          textStyle: {},
+          fields: TEXT_FIELDS,
+        },
+      },
+    ]);
+  });
+});
+
 describe("planTextRun", () => {
   const blocks = parseMarkdown("# Title\nplain **bold**\n- item").blocks;
 
@@ -661,7 +834,7 @@ describe("planTextRun", () => {
     const { requests, length } = planTextRun(blocks, 1);
 
     // "Title\n" [1,7)  "plain bold\n" [7,18)  "item\n" [18,23)
-    expect(requests).toEqual([
+    expect(afterReset(requests)).toEqual([
       { insertText: { location: { index: 1 }, text: "Title\nplain bold\nitem\n" } },
       {
         createParagraphBullets: {
@@ -692,7 +865,7 @@ describe("planTextRun", () => {
     expect(requests[0]).toEqual({
       insertText: { location: { index: 101 }, text: "Title\nplain bold\nitem\n" },
     });
-    expect(requests[3]).toEqual({
+    expect(afterReset(requests)[3]).toEqual({
       updateParagraphStyle: {
         range: { startIndex: 101, endIndex: 107 },
         paragraphStyle: { namedStyleType: "HEADING_1" },
@@ -739,7 +912,7 @@ describe("planTextRun", () => {
   describe("one list across interleaved content (0023 §2)", () => {
     it("bullets the whole span, then unbullets the paragraph between the items", () => {
       const { requests, length } = planTextRun(parseMarkdown("1. one\n\nbody\n\n2. two").blocks, 1);
-      expect(requests).toEqual([
+      expect(afterReset(requests)).toEqual([
         { insertText: { location: { index: 1 }, text: "one\nbody\ntwo\n" } },
         {
           createParagraphBullets: {
@@ -766,7 +939,7 @@ describe("planTextRun", () => {
       });
       // [5,9) is "a\n" and "b\n" once the tab is gone — the range is right, but
       // by then nothing distinguishes "b" as nested.
-      expect(requests[3]).toEqual({
+      expect(afterReset(requests)[3]).toEqual({
         createParagraphBullets: {
           range: { startIndex: 5, endIndex: 9 },
           bulletPreset: "BULLET_DISC_CIRCLE_SQUARE",
@@ -776,7 +949,7 @@ describe("planTextRun", () => {
 
     it("gives an intervening bulleted run its own list, after taking it out of this one", () => {
       const { requests } = planTextRun(parseMarkdown("1. one\n\n- a\n- b\n\n2. two").blocks, 1);
-      expect(requests.slice(1)).toEqual([
+      expect(afterReset(requests).slice(1)).toEqual([
         {
           createParagraphBullets: {
             range: { startIndex: 1, endIndex: 13 },
@@ -795,7 +968,7 @@ describe("planTextRun", () => {
 
     it("restyles an intervening heading after the bullets, which would have wiped it", () => {
       const { requests } = planTextRun(parseMarkdown("1. one\n\n## head\n\n2. two").blocks, 1);
-      expect(requests.slice(1)).toEqual([
+      expect(afterReset(requests).slice(1)).toEqual([
         {
           createParagraphBullets: {
             range: { startIndex: 1, endIndex: 14 },
@@ -822,7 +995,7 @@ describe("planTextRun", () => {
         insertText: { location: { index: 1 }, text: "one\n\tsub\nbody\ntwo\n" },
       });
       // "body\n" sits at [10,15) as sent, and at [9,14) once the tab is gone.
-      expect(requests[2]).toEqual({
+      expect(afterReset(requests)[2]).toEqual({
         deleteParagraphBullets: { range: { startIndex: 9, endIndex: 14 } },
       });
       expect(length).toBe(17);
@@ -830,13 +1003,14 @@ describe("planTextRun", () => {
 
     it("leaves a lone run exactly as it was, with no unbulleting", () => {
       const { requests } = planTextRun(parseMarkdown("1. one\n2. two").blocks, 1);
-      expect(requests.some((r) => "deleteParagraphBullets" in r)).toBe(false);
+      // The slate's own unbulleting is not this: it runs before the list exists.
+      expect(afterReset(requests).some((r) => "deleteParagraphBullets" in r)).toBe(false);
     });
   });
 
   it("maps a quote to an indent and code to a monospace run", () => {
     const { requests } = planTextRun(parseMarkdown("> quoted\n\n```\nls\n```").blocks, 1);
-    expect(requests).toEqual([
+    expect(afterReset(requests)).toEqual([
       { insertText: { location: { index: 1 }, text: "quoted\nls\n" } },
       {
         updateTextStyle: {
@@ -857,7 +1031,7 @@ describe("planTextRun", () => {
 
   it("carries a link across a styled span", () => {
     const { requests } = planTextRun(parseMarkdown("[**x**](https://e.com)").blocks, 1);
-    expect(requests[1]).toEqual({
+    expect(afterReset(requests)[1]).toEqual({
       updateTextStyle: {
         range: { startIndex: 1, endIndex: 2 },
         textStyle: { bold: true, link: { url: "https://e.com" } },
@@ -901,14 +1075,13 @@ describe("toSegments / planTable / planCellFills", () => {
       ],
     };
 
-    expect(planCellFills(table, rows)).toEqual({
-      requests: [
-        { insertText: { location: { index: 17 }, text: "2" } },
-        { insertText: { location: { index: 15 }, text: "1" } },
-        { insertText: { location: { index: 12 }, text: "b" } },
-        { insertText: { location: { index: 10 }, text: "a" } },
-      ],
-      added: 4,
-    });
+    const { requests, added } = planCellFills(table, rows);
+    expect(requests.filter((r) => "insertText" in r)).toEqual([
+      { insertText: { location: { index: 17 }, text: "2" } },
+      { insertText: { location: { index: 15 }, text: "1" } },
+      { insertText: { location: { index: 12 }, text: "b" } },
+      { insertText: { location: { index: 10 }, text: "a" } },
+    ]);
+    expect(added).toBe(4);
   });
 });

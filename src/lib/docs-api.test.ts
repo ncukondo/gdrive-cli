@@ -8,10 +8,12 @@ import {
   endOfBody,
   getDocument,
   insertText,
+  paragraphBoundary,
   renderDocument,
   replaceAllText,
   type DocsClient,
   type DocumentRaw,
+  type ParagraphBoundary,
   type StructuralElementRaw,
 } from "./docs-api.ts";
 
@@ -361,11 +363,59 @@ describe("Docs API wrappers", () => {
   });
 
   it("insertText issues an insertText request at the index", async () => {
-    const batchUpdate = vi.fn(async () => ({ data: {} }));
-    await insertText(mockDocs({ batchUpdate }), "D1", 5, "hi");
-    expect(batchUpdate).toHaveBeenCalledWith({
-      documentId: "D1",
-      requestBody: { requests: [{ insertText: { location: { index: 5 }, text: "hi" } }] },
+    const client = mockDocs();
+    await insertText(client, "D1", 5, "hi");
+    const [call] = callArgs(vi.mocked(client.documents.batchUpdate));
+    expect(call.requestBody.requests[0]).toEqual({
+      insertText: { location: { index: 5 }, text: "hi" },
+    });
+  });
+
+  /**
+   * Decision 0045 §3: `--as text` says the payload is not Markdown, never that
+   * it should come out wearing the formatting next to it.
+   */
+  describe("insertText resets what it wrote", () => {
+    const requestsFor = async (index: number, text: string, boundary?: ParagraphBoundary) => {
+      const client = mockDocs();
+      await insertText(client, "D1", index, text, boundary);
+      return callArgs(vi.mocked(client.documents.batchUpdate))[0].requestBody.requests;
+    };
+
+    it("clears the character style over exactly the range it wrote", async () => {
+      const requests = await requestsFor(5, "hi");
+      expect(requests[1]).toMatchObject({
+        updateTextStyle: { range: { startIndex: 5, endIndex: 7 }, textStyle: {} },
+      });
+    });
+
+    it("leaves the paragraph alone when the insert only joined one", async () => {
+      const requests = await requestsFor(5, "hi");
+      expect(requests.some((r) => "updateParagraphStyle" in r)).toBe(false);
+      expect(requests.some((r) => "deleteParagraphBullets" in r)).toBe(false);
+    });
+
+    it("resets the one paragraph it filled when the index bounds it on both sides", async () => {
+      const requests = await requestsFor(5, "hi", {
+        atParagraphStart: true,
+        atParagraphEnd: true,
+      });
+      expect(requests[3]).toMatchObject({
+        updateParagraphStyle: {
+          range: { startIndex: 5, endIndex: 7 },
+          paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+        },
+      });
+    });
+
+    it("resets only the paragraphs its own newlines bound", async () => {
+      // "a\nb\nc" dropped inside a paragraph: "a" joins what was before it and
+      // "c" joins what came after, so "b" is the only paragraph it made.
+      const requests = await requestsFor(5, "a\nb\nc");
+      const paragraph = requests.filter((r) => "updateParagraphStyle" in r);
+      expect(paragraph).toMatchObject([
+        { updateParagraphStyle: { range: { startIndex: 7, endIndex: 9 } } },
+      ]);
     });
   });
 
@@ -393,6 +443,37 @@ describe("Docs API wrappers", () => {
   it("replaceAllText reports zero when the API omits the count", async () => {
     const batchUpdate = vi.fn(async () => ({ data: { replies: [{}] } }));
     expect(await replaceAllText(mockDocs({ batchUpdate }), "D1", "x", "y", false)).toBe(0);
+  });
+});
+
+/**
+ * What an insert may reset comes from the document, not from the payload
+ * (decision 0045 §2), and this is the only place that reads it.
+ */
+describe("paragraphBoundary", () => {
+  const body = doc([
+    { startIndex: 1, endIndex: 8, ...para(["X here\n"]) },
+    { startIndex: 8, endIndex: 9, ...para(["\n"]) },
+  ]);
+
+  it("reports the start of a paragraph", () => {
+    expect(paragraphBoundary(body, 1)).toEqual({ atParagraphStart: true, atParagraphEnd: false });
+  });
+
+  it("reports the newline a paragraph ends with", () => {
+    expect(paragraphBoundary(body, 7)).toEqual({ atParagraphStart: false, atParagraphEnd: true });
+  });
+
+  it("reports both for an empty paragraph, which is all newline", () => {
+    expect(paragraphBoundary(body, 8)).toEqual({ atParagraphStart: true, atParagraphEnd: true });
+  });
+
+  it("reports neither inside a paragraph, and for an index it cannot place", () => {
+    expect(paragraphBoundary(body, 4)).toEqual({ atParagraphStart: false, atParagraphEnd: false });
+    expect(paragraphBoundary(doc([]), 99)).toEqual({
+      atParagraphStart: false,
+      atParagraphEnd: false,
+    });
   });
 });
 
@@ -435,7 +516,8 @@ describe("insertMarkdown", () => {
     expect(callArgs(vi.mocked(client.documents.batchUpdate), 0)[0].requestBody.requests).toEqual([
       { insertTable: { location: { index: 1 }, rows: 1, columns: 2 } },
     ]);
-    expect(callArgs(vi.mocked(client.documents.batchUpdate), 1)[0].requestBody.requests).toEqual([
+    const fills = callArgs(vi.mocked(client.documents.batchUpdate), 1)[0].requestBody.requests;
+    expect(fills.filter((r) => "insertText" in r)).toEqual([
       { insertText: { location: { index: 6 }, text: "b" } },
       { insertText: { location: { index: 4 }, text: "a" } },
     ]);
@@ -465,14 +547,60 @@ describe("insertMarkdown", () => {
 
     const last = vi.mocked(client.documents.batchUpdate).mock.calls.at(-1)?.[0];
     // the table ended at 9 and one character went into its cell
-    expect(last?.requestBody.requests).toEqual([
-      { insertText: { location: { index: 10 }, text: "after\n" } },
-    ]);
+    expect(last?.requestBody.requests[0]).toEqual({
+      insertText: { location: { index: 10 }, text: "after\n" },
+    });
   });
 
   it("reports what Docs cannot hold", async () => {
     const notes = await insertMarkdown(mockDocs(), "D1", 1, "text\n![alt](x.png)");
     expect(notes).toEqual([{ line: 2, kind: "image" }]);
+  });
+
+  it("resets the first paragraph only when the boundary says it is its own", async () => {
+    const owned = mockDocs();
+    await insertMarkdown(owned, "D1", 1, "# Title\nbody", {
+      boundary: { atParagraphStart: true, atParagraphEnd: false },
+    });
+    const first = callArgs(vi.mocked(owned.documents.batchUpdate))[0].requestBody.requests;
+    expect(first.filter((r) => "updateParagraphStyle" in r)[0]).toMatchObject({
+      updateParagraphStyle: {
+        range: { startIndex: 1 },
+        paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+      },
+    });
+
+    const joined = mockDocs();
+    await insertMarkdown(joined, "D1", 1, "# Title\nbody");
+    const merged = callArgs(vi.mocked(joined.documents.batchUpdate))[0].requestBody.requests;
+    // "Title" merged into what was already at index 1; the reset starts at "body".
+    expect(merged.filter((r) => "updateParagraphStyle" in r)[0]).toMatchObject({
+      updateParagraphStyle: {
+        range: { startIndex: 7 },
+        paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+      },
+    });
+  });
+
+  it("treats the text after a table as opening a paragraph of its own", async () => {
+    const filled: DocumentRaw = {
+      body: {
+        content: [
+          {
+            startIndex: 1,
+            endIndex: 9,
+            table: { tableRows: [{ tableCells: [{ content: [{ startIndex: 4 }] }] }] },
+          },
+        ],
+      },
+    };
+    const client = mockDocs({ get: vi.fn(async () => ({ data: filled })) });
+    await insertMarkdown(client, "D1", 1, "| a |\n| --- |\n\nafter");
+
+    const last = vi.mocked(client.documents.batchUpdate).mock.calls.at(-1)?.[0];
+    expect(last?.requestBody.requests.filter((r) => "updateParagraphStyle" in r)).toMatchObject([
+      { updateParagraphStyle: { range: { startIndex: 10, endIndex: 16 } } },
+    ]);
   });
 });
 
@@ -520,6 +648,30 @@ describe("replaceMarkdown", () => {
       { deleteContentRange: { range: { startIndex: 12, endIndex: 13 } } },
       { deleteContentRange: { range: { startIndex: 1, endIndex: 2 } } },
     ]);
+  });
+
+  it("reads the boundary at the marker's own edges, not at the paragraph's", async () => {
+    // "MARK" is the whole of the second paragraph, so what replaces it owns
+    // that paragraph; the first marker sits mid-paragraph and owns nothing.
+    const document: DocumentRaw = doc([
+      { startIndex: 1, endIndex: 13, ...para(["a MARK here\n"]) },
+      { startIndex: 13, endIndex: 18, ...para(["MARK\n"]) },
+    ]);
+    const client = mockDocs({ get: vi.fn(async () => ({ data: document })) });
+
+    await replaceMarkdown(client, "D1", "MARK", "new", true);
+
+    const batches = vi.mocked(client.documents.batchUpdate).mock.calls;
+    const paragraphResets = (call: number) =>
+      (
+        callArgs(vi.mocked(client.documents.batchUpdate), call)[0].requestBody.requests ?? []
+      ).filter((r) => "updateParagraphStyle" in r);
+    // Written last to first: the delete of the second occurrence comes first.
+    expect(batches).toHaveLength(4);
+    expect(paragraphResets(1)).toMatchObject([
+      { updateParagraphStyle: { range: { startIndex: 13, endIndex: 17 } } },
+    ]);
+    expect(paragraphResets(3)).toEqual([]);
   });
 
   it("reports zero without touching the document when the marker is absent", async () => {
