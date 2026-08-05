@@ -5,7 +5,7 @@ const rebased = { rebased: true };
 const behind = { rebased: false };
 
 describe("staging the caller did not name (decisions 0001, 0048 §1)", () => {
-  it("blocks every spelling the #23 review got through", () => {
+  it("blocks every spelling the first review round got through", () => {
     for (const command of [
       "git add -A",
       "git add .",
@@ -20,6 +20,36 @@ describe("staging the caller did not name (decisions 0001, 0048 §1)", () => {
     ]) {
       expect(checkBashCommand(command, rebased), command).not.toBeNull();
     }
+  });
+
+  it("blocks every spelling the second round got through", () => {
+    for (const command of [
+      // `--` was read as "stop checking" rather than as 0048 §1's carve-out for
+      // a file whose *name* is a flag. A `.` after it is as unnamed as before.
+      "git add -- .",
+      "git add -- :/",
+      // Magic pathspecs and globs name the tree, not a file.
+      "git add :/",
+      "git add *.ts",
+      "git add src/*",
+      // A word in front of the binary, in every shape one can take.
+      "sudo git add -A",
+      "env git add -A",
+      "/usr/bin/git add -A",
+      "( git add -A )",
+      "GIT_DIR=.git git add -A",
+    ]) {
+      expect(checkBashCommand(command, rebased), command).not.toBeNull();
+    }
+  });
+
+  it("blocks a wrapper and a global option stacked together", () => {
+    expect(checkBashCommand("sudo /usr/bin/git -C . stage -u", rebased)).not.toBeNull();
+  });
+
+  it("blocks the parent directory as well as the current one", () => {
+    expect(checkBashCommand("git add ..", rebased)).not.toBeNull();
+    expect(checkBashCommand("git add ../", rebased)).not.toBeNull();
   });
 
   it("blocks a combined short flag carrying A, u or a", () => {
@@ -58,6 +88,7 @@ describe("staging the caller did not name (decisions 0001, 0048 §1)", () => {
 
   it("allows a file that is literally named -A, passed after --", () => {
     expect(checkBashCommand("git add -- -A", rebased)).toBeNull();
+    expect(checkBashCommand("git add -- -A src/index.ts", rebased)).toBeNull();
   });
 
   it("allows --no-all, which is not --all", () => {

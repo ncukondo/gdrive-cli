@@ -75,20 +75,53 @@ function segments(command: string): string[][] {
   return command.split(/&&|\|\||[;|\n]/).map((segment) => tokenize(segment.trim()));
 }
 
-/** Global options that swallow the next token, so the subcommand is not there. */
+/** Leading noise a shell leaves in a segment: punctuation and block keywords. */
+const SHELL_LEAD = new Set(["(", ")", "{", "}", "!", "if", "then", "else", "elif", "do", "while"]);
+
+/** Words that run the command that follows them, so the real binary is later. */
+const WRAPPERS = new Set(["sudo", "env", "command", "exec", "nohup", "time", "builtin"]);
+
+/** Global git options that swallow the next token, so the subcommand is not there. */
 const GIT_GLOBAL_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
 
-/**
- * The git subcommand and its arguments, looking past global options.
- *
- * `git -C . add -A` is `git add -A` with a word in front, and a guard that reads
- * `tokens[1]` misses it — one of the seven spellings the #23 review got through
- * ([0048](../decisions/0048-staging-refuses-a-class.md) §2).
- */
-function gitCommand(tokens: string[]): { name: string; args: string[] } | null {
-  if (tokens[0] !== "git") return null;
+/** Flags that stage without naming anything, once a cluster is expanded. */
+const IMPLICIT_ADD_FLAGS = new Set(["-A", "-u", "--all", "--update", "--no-ignore-removal"]);
+const IMPLICIT_COMMIT_FLAGS = new Set(["-a", "--all"]);
 
-  let i = 1;
+/**
+ * A parsed git invocation: what it is, which flags it carries before `--`, and
+ * every pathspec on either side of it.
+ *
+ * Normalising here is what lets the rule below be one question. Two review
+ * rounds found sixteen spellings, and every one of them was a way of moving the
+ * interesting token somewhere the previous scan had stopped looking — behind a
+ * wrapper word, behind an environment assignment, behind shell punctuation,
+ * behind an absolute path, behind a global option, or behind `--`. None of them
+ * changed what the command does to the index.
+ */
+interface GitInvocation {
+  name: string;
+  /** Flags before `--`, with short clusters expanded so `-am` yields `-a`. */
+  flags: string[];
+  /** Everything that is a path argument, from before and after `--`. */
+  pathspecs: string[];
+}
+
+function parseGit(tokens: string[]): GitInvocation | null {
+  let i = 0;
+  // Shell punctuation, block keywords, environment assignments and wrapper
+  // words all sit in front of the binary without changing it.
+  while (i < tokens.length) {
+    const token = tokens[i] ?? "";
+    if (SHELL_LEAD.has(token) || WRAPPERS.has(token) || /^[A-Za-z_][\w]*=/.test(token)) i++;
+    else break;
+  }
+
+  // `/usr/bin/git` is git. Match the basename, not the string.
+  const binary = (tokens[i] ?? "").split("/").pop();
+  if (binary !== "git") return null;
+  i++;
+
   while (i < tokens.length) {
     const token = tokens[i] ?? "";
     if (!token.startsWith("-")) break;
@@ -96,45 +129,74 @@ function gitCommand(tokens: string[]): { name: string; args: string[] } | null {
   }
 
   const name = tokens[i];
-  return name === undefined ? null : { name, args: tokens.slice(i + 1) };
+  if (name === undefined) return null;
+
+  const flags: string[] = [];
+  const pathspecs: string[] = [];
+  let separated = false;
+
+  for (const token of tokens.slice(i + 1)) {
+    if (!separated && token === "--") {
+      separated = true;
+      continue;
+    }
+    // After `--` every token is a path, which is 0048 §1's carve-out: a file
+    // genuinely named `-A` still commits. That is about the *name*, not about
+    // switching the rule off — a `.` after `--` is as unnamed as one before it.
+    if (separated || !token.startsWith("-")) {
+      pathspecs.push(token);
+      continue;
+    }
+    // Expand a short cluster: `-am` is `-a` and `-m`.
+    if (/^-[A-Za-z]+$/.test(token) && !token.startsWith("--")) {
+      for (const letter of token.slice(1)) flags.push(`-${letter}`);
+    } else {
+      flags.push(token);
+    }
+  }
+
+  return { name, flags, pathspecs };
 }
 
-/** A short-flag cluster carrying `letter`, e.g. `a` in `-am`. */
-const cluster = (letter: string) => new RegExp(String.raw`^-[A-Za-z]*${letter}[A-Za-z]*$`);
+/**
+ * Whether a pathspec names something, as opposed to sweeping whatever is there.
+ *
+ * `./src` names a directory and is allowed. `.`, `..` and `:/` name the tree,
+ * and a glob names whatever happens to match — in both cases the caller has not
+ * said which files they mean, which is the whole of 0001's rule.
+ */
+function isNamedPath(spec: string): boolean {
+  if (["", ".", "./", "..", "../", ":/", ":/."].includes(spec)) return false;
+  if (/[*?]|\[.*\]/.test(spec)) return false;
+  return true;
+}
 
 /**
  * Whether `tokens` adds to the index something the caller did not name as a
  * path ([0048](../decisions/0048-staging-refuses-a-class.md) §1).
  *
- * The list below is this rule's current approximation and is expected to be
- * incomplete — 0048 §2 is explicit that a spelling which gets through is a
- * defect here rather than a permission, so do not read the allowed set as the
- * permitted set.
+ * One question over a normalised invocation: does a flag stage implicitly, or is
+ * a pathspec not a named path? Every spelling either review found collapses into
+ * it, and `--` stops being a special case.
+ *
+ * 0048 §2 is explicit that this remains an approximation and that a spelling
+ * which gets through is a defect here rather than a permission. Do not read the
+ * allowed set as the permitted set — two rounds of doing exactly that are why
+ * this function has the shape it has.
  */
 function stagesUnnamed(tokens: string[]): boolean {
-  const git = gitCommand(tokens);
+  const git = parseGit(tokens);
   if (git === null) return false;
 
   if (git.name === "add" || git.name === "stage") {
-    for (const token of git.args) {
-      // Everything after `--` is a pathspec, so a file really named `-A` commits.
-      if (token === "--") return false;
-      if (token === "." || token === "./" || token === "*") return true;
-      if (token === "--all" || token === "--update" || token === "--no-ignore-removal") return true;
-      if (cluster("A").test(token) || cluster("u").test(token)) return true;
-    }
-    return false;
+    return (
+      git.flags.some((flag) => IMPLICIT_ADD_FLAGS.has(flag)) ||
+      git.pathspecs.some((spec) => !isNamedPath(spec))
+    );
   }
 
   if (git.name === "commit") {
-    for (const token of git.args) {
-      if (token === "--") return false;
-      if (token === "--all") return true;
-      // `--amend` and `--allow-empty` start with `--` and are matched exactly
-      // above, so only a short cluster reaches this.
-      if (!token.startsWith("--") && cluster("a").test(token)) return true;
-    }
-    return false;
+    return git.flags.some((flag) => IMPLICIT_COMMIT_FLAGS.has(flag));
   }
 
   return false;
