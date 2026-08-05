@@ -196,8 +196,19 @@ describeLive("Docs against a real account", () => {
       after = (await gdriveAs(bodySchema, "docs", "read", styled)).content;
     }, LIVE_TIMEOUT);
 
+    /**
+     * This one cannot fail, and says so rather than looking like cover.
+     *
+     * A document this CLI builds always ends in the empty `NORMAL_TEXT`
+     * paragraph `documents.create` gave it — every Markdown write inserts
+     * before it — so `append` splits a paragraph that never had a style to
+     * spread. The case where it does is a document written in the Docs UI,
+     * which the suite cannot author. That is a manual check (0043 §4), and
+     * task 0040 names it; what is left here is a smoke test that the append
+     * still lands as its own body paragraph.
+     */
     it(
-      "appends body text after a heading, rather than another heading",
+      "appends body text as a paragraph of its own",
       () => {
         expect(after).toMatch(/^appended body$/m);
       },

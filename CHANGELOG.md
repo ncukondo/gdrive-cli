@@ -34,21 +34,32 @@ and listed here because that record makes the release notes the compatibility
 log for 0.x.
 
 1. **`docs create --content`, `docs append`, `docs insert` and `docs replace`
-   no longer inherit the style at the insertion point.** The Docs API gives
+   no longer inherit the style at the insertion point**, with one exception
+   named below. The Docs API gives
    inserted characters the style of the text they land after, and gives a
    paragraph split the style of the paragraph it split — so appending after a
    `Heading 1` produced a heading, inserting into a bulleted list produced
    bullets, and inserting after 20pt red bold text produced 20pt red bold text.
-   All four commands now reset what they wrote: the character style always, and
-   the paragraph style of every paragraph the insert wholly created, bullets
+   They now reset what they wrote: the character style always, and the
+   paragraph style of every paragraph the write wholly created, bullets
    included. `--as text` is included — it says the content is not Markdown, not
    that it should inherit formatting.
+
+   **`replace --as text` is the exception** and still inherits. It substitutes
+   through the API's own `replaceAllText` in one request, which reaches headers,
+   footers and footnotes that nothing else in this CLI can address, and which
+   reports how many occurrences it changed but never where — and a style reset
+   needs a range.
+   [Decision 0046](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0046-replace-as-text-keeps-its-reach.md)
+   records why keeping the reach won, and
+   [issue #21](https://github.com/ncukondo/gdrive-cli/issues/21) is what would
+   close the gap. `replace` without `--as text` resets like the rest.
 
    "Default" means *your document's* default: a reset field inherits from the
    named style, so a document whose body is Noto Sans 12 gets Noto Sans 12, not
    Arial 11.
 
-   **One exception, by design**: an insert that lands inside an existing
+   **A second exception, by design**: an insert that lands inside an existing
    paragraph — which `--index` and `--before` / `--after` can do — leaves that
    paragraph's own style alone, because a paragraph cannot be half-heading. The
    characters it wrote are still reset.

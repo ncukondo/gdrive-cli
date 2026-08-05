@@ -661,10 +661,18 @@ a bulleted list writes an ordinary paragraph; inserting after bold red 20pt text
 writes plain text in the document's own body font. `--as text` is no different —
 it says the content is not Markdown, not that it should inherit formatting.
 
-The one exception is an insert that lands *inside* an existing paragraph, which
-`--index` and `--before` / `--after` can do. The characters written are still
-plain, but a paragraph cannot be half-heading, so the paragraph they joined
-keeps its own style.
+Two exceptions, both narrow:
+
+- An insert that lands *inside* an existing paragraph, which `--index` and
+  `--before` / `--after` can do. The characters written are still plain, but a
+  paragraph cannot be half-heading, so the paragraph they joined keeps its own
+  style.
+- `replace --as text`, which substitutes through the API in one request and so
+  keeps the formatting of the text it replaced. That request reaches headers,
+  footers and footnotes, which nothing else here can address, and it reports
+  only how many occurrences it changed — never where. `replace` without
+  `--as text` deletes the marker and writes in the default style like the
+  others.
 
 One source line is one paragraph, matching what `read` prints — Markdown's rule
 that consecutive lines join into one paragraph does not apply. The exception is
