@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { describeLive, gdrive, gdriveAs, LIVE_TIMEOUT, useSandbox } from "./helpers/sandbox.ts";
 
@@ -141,4 +141,103 @@ describeLive("Docs against a real account", () => {
     },
     LIVE_TIMEOUT,
   );
+
+  /**
+   * Decision 0045 §4. Docs decides what an insert inherits, so a fake can only
+   * confirm that the requests undoing it were sent. Whether they work is here.
+   *
+   * Every write below lands somewhere that used to change how it looked: after
+   * a heading, in front of a bulleted item, at the head of a heading, and
+   * immediately after a bold run. Font, size and colour are invisible to `read`
+   * and stay a manual check.
+   */
+  describe("what a write leaves behind is the document's default style", () => {
+    const STYLED = [
+      "- first item",
+      "- second item",
+      "",
+      "**strong**",
+      "",
+      "# Trailing heading",
+      "",
+    ].join("\n");
+    let styled = "";
+    let after = "";
+
+    beforeAll(async () => {
+      styled = (
+        await gdriveAs(
+          createdSchema,
+          "docs",
+          "create",
+          "Style drag",
+          "--content",
+          STYLED,
+          "--parent",
+          sandbox.id,
+        )
+      ).id;
+
+      // Each of these lands on a style that used to spread into it.
+      await gdrive("docs", "append", styled, "appended body");
+      await gdrive("docs", "insert", styled, "inserted line", "--before", "second item");
+      await gdrive("docs", "insert", styled, "tail", "--after", "strong");
+      await gdrive(
+        "docs",
+        "insert",
+        styled,
+        "literal insert\n",
+        "--before",
+        "Trailing heading",
+        "--as",
+        "text",
+      );
+      await gdrive("docs", "insert", styled, "joined", "--after", "first item", "--as", "text");
+      after = (await gdriveAs(bodySchema, "docs", "read", styled)).content;
+    }, LIVE_TIMEOUT);
+
+    it(
+      "appends body text after a heading, rather than another heading",
+      () => {
+        expect(after).toMatch(/^appended body$/m);
+      },
+      LIVE_TIMEOUT,
+    );
+
+    it(
+      "inserts an ordinary paragraph in front of a bulleted item",
+      () => {
+        expect(after).toMatch(/^inserted line$/m);
+        expect(after).toMatch(/^- second item$/m);
+      },
+      LIVE_TIMEOUT,
+    );
+
+    it(
+      "writes plain characters straight after bold ones",
+      () => {
+        expect(after).toMatch(/\*\*strong\*\*tail/);
+      },
+      LIVE_TIMEOUT,
+    );
+
+    it(
+      "gives --as text the same default style, not the heading it landed on",
+      () => {
+        expect(after).toMatch(/^literal insert$/m);
+        expect(after).toMatch(/^# Trailing heading$/m);
+      },
+      LIVE_TIMEOUT,
+    );
+
+    it(
+      "leaves the style of a paragraph it only joined — 0045 §2's one exception",
+      () => {
+        // "joined" went inside the first bullet, which stays a bullet: a
+        // paragraph cannot be half a list item, and it was not ours to restyle.
+        expect(after).toMatch(/^- first itemjoined$/m);
+      },
+      LIVE_TIMEOUT,
+    );
+  });
 });
