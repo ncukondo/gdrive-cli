@@ -98,6 +98,36 @@ An argument that *looks like* an ID — 20 or more characters of
 (`0A` + 17 characters) — is always treated as an ID, so a file whose name
 happens to match one of those shapes has to be addressed by its real ID.
 
+### A name has to be addressable
+
+Because a path is how you name a file you have not seen, **every command that
+gives a file a name refuses a name that could not then address it**, before it
+writes anything. Three ways a name fails that:
+
+- **Something in the same folder already has it.** A path segment spelling it
+  would match both files, and `INVALID_ARGS` is then the answer for *both* —
+  including the one that was already there and was never touched.
+- **It begins or ends with whitespace.** A path argument is trimmed before it is
+  matched, so the file would not answer to the name it was just given.
+- **It contains `/`.** That is what separates one segment from the next.
+
+`rename`, `mkdir`, `upload`, `cp`, `ln`, `mv` and `docs` / `sheets` / `forms` /
+`slides create` all apply this. The error is `INVALID_ARGS`, it names the file in
+the way or the character at fault, and it names what to pass instead. Nothing is
+created or changed: the check is one query against the destination folder, made
+before the write, so there is never anything to undo.
+
+There is no `--force`, and `--name` is not an exemption — asking for the
+collision deliberately still asks for something this CLI cannot address
+afterwards. `mv` applies only the first of the three, because it carries a name
+rather than giving one: a file whose existing name a path cannot hold is not made
+worse by being moved, and refusing would strand it where it is.
+
+Drive itself permits all three, because it addresses files by ID and shows you a
+list. Nothing here repairs the duplicates an account already has —
+[`rename`](#gdrive-rename-file-name) is the tool for that. See
+[`../decisions/0055`](../decisions/0055-a-name-has-to-be-addressable.md).
+
 ### Shared drives
 
 **Every command that takes a file or folder ID accepts one from a shared
@@ -471,6 +501,11 @@ Uploaded Budget (1S6cRd...)
 
 Quiet: the new file ID.
 
+Uploading the same file into the same folder twice is
+[refused](#a-name-has-to-be-addressable), before any bytes are sent: give the
+second one `--name`. Without `--parent` the folder is My Drive's root, which is
+checked like any other.
+
 ### `gdrive mkdir <name>`
 
 ```console
@@ -483,6 +518,11 @@ Created folder 2027 (1FoLdEr...)
 ```
 
 Quiet: the new folder ID.
+
+A name the parent folder already holds is
+[refused](#a-name-has-to-be-addressable) and nothing is created — `mkdir` is not
+idempotent, and Drive would have made a second folder with the same name rather
+than reusing the first.
 
 ### `gdrive mv <file> <folder>` / `gdrive cp <file> <folder>`
 
@@ -507,12 +547,27 @@ Quiet: the file ID.
 no second argument that could mean a new name.
 [`rename`](#gdrive-rename-file-name) is the verb for that.
 
+**A move into a folder that already holds that name is refused**, and nothing is
+moved. Drive would accept it and leave you two files with one name in one folder,
+which no path can then address — the file already sitting there included. `mv`
+has no `--name`, so the message points at `rename`; renaming either one first
+frees the move. Moving a file into the folder it is already in is a no-op, not a
+collision, and is allowed. See
+[a name has to be addressable](#a-name-has-to-be-addressable).
+
 ### `gdrive rename <file> <name>`
 
 Changes the file's Drive name — the name `ls` prints and paths resolve. Nothing
 moves, and `<file>` is an entry, so renaming a shortcut renames the shortcut and
-leaves its target alone. An empty or whitespace-only `<name>` is `INVALID_ARGS`
-before anything is asked of Drive.
+leaves its target alone.
+
+`<name>` has to be one this CLI can then address the file by, so an empty or
+whitespace-only name, one with a space at either end, and one containing `/` are
+all `INVALID_ARGS` before anything is asked of Drive. A name a *sibling* already
+holds is refused too, which costs `rename` one extra lookup — it is the only one
+of these commands that has to ask Drive which folder its result lands in.
+Renaming a file to the name it already has is a no-op, not a collision. See
+[a name has to be addressable](#a-name-has-to-be-addressable).
 
 ```console
 $ gdrive rename -f text "Reports/Notes" "Notes 2026"
@@ -535,11 +590,17 @@ command at, and nothing else. Drive's own default (`Copy of <name>` for a Doc, t
 original name for a binary file) is never used
 ([`../decisions/0054`](../decisions/0054-a-copy-keeps-its-name.md) §1–§2).
 
-One consequence: **copying a file into the folder it already sits in is refused**
-unless you say `--name`. Drive would allow it and leave you two files with one
-name that no listing tells apart and no path can address, so `cp` asks for the
-name instead — `gdrive cp "Reports/Budget" Reports --name "Budget (backup)"` is
-the snapshot you meant (§3).
+One consequence: **copying a file into the folder it already sits in is
+refused**, because the copy would carry the source's name into a folder that has
+it. Drive would allow it and leave you two files with one name that no listing
+tells apart and no path can address, so `cp` asks for a name instead —
+`gdrive cp "Reports/Budget" Reports --name "Budget (backup)"` is the snapshot you
+meant.
+
+`--name` is not a way round the check, only a way to satisfy it: passing the name
+that is already there is refused just the same, and so is `--name` colliding with
+some *other* file in the destination. See
+[a name has to be addressable](#a-name-has-to-be-addressable).
 
 Without `-r`, a **folder** source fails: Drive has no request that copies one,
 and the error names the folder and `-r`. Nothing is attempted first.
@@ -594,9 +655,11 @@ Four things are worth knowing before you run it on something large:
 
   The exit code and `error.code` are the underlying failure's. Under `-q` the
   same failure prints the new IDs one per line, the top folder first — enough
-  for a shell to delete the half-copy and start again. There is no resume:
-  re-running copies the whole tree a second time, and Drive permits duplicate
-  names, so remove the partial copy first.
+  for a shell to delete the half-copy and start again. There is no resume, and
+  re-running is now refused rather than silently copying the tree a second time:
+  the top-level folder the first run created already holds the name
+  ([above](#a-name-has-to-be-addressable)). Remove the partial copy — or give the
+  retry `--name` — and start again.
 - **Copying a folder into itself is refused** before anything is copied:
   `gdrive cp -r A A/B` is `INVALID_ARGS`, and so is `gdrive cp -r / Archive`
   whatever spelling of the root you use. Permissions, ownership and revision
@@ -641,9 +704,11 @@ Which links a drive will hold is Drive's rule, and it varies with the drives
 involved and their sharing settings. `ln` pre-checks none of it: it issues the
 create and hands back whatever Drive answers, in Drive's own words rather than
 paraphrased here. Retargeting an existing shortcut is not supported:
-`rm` the link and make a new one. Nothing stops two shortcuts sharing a name in
-one folder, and a path segment that then matches both is `INVALID_ARGS` listing
-the candidate IDs — `--name` is the way out.
+`rm` the link and make a new one.
+
+A shortcut is an entry in its folder like any other, so linking the same target
+into one folder twice is [refused](#a-name-has-to-be-addressable) — the second
+link would take the first one's name. `--name` is the way to have both.
 
 ### `gdrive rm <file>`
 
@@ -906,7 +971,10 @@ Discussed the **budget** and [the plan](https://example.com).
 | `--as <format>` | `markdown` (default) \| `text` |
 
 The Docs API always creates in My Drive, so `--parent` is applied as a move
-right after creation.
+right after creation. `--parent` is resolved and `<title>` checked *before* the
+create, though: a title that folder already holds is
+[refused](#a-name-has-to-be-addressable) and no document is made, so there is
+never an empty document to go and delete.
 
 ```console
 $ gdrive docs create -f text "Meeting notes" --content @agenda.md --parent Notes
@@ -1113,7 +1181,9 @@ Quiet: prints nothing.
 ### `gdrive sheets create <title>`
 
 `--parent <folder>` places the spreadsheet in a folder (created in My Drive
-first, then moved).
+first, then moved). The folder is resolved and `<title>` checked before the
+create, so a title it already holds is
+[refused](#a-name-has-to-be-addressable) with nothing left behind.
 
 ```console
 $ gdrive sheets create -f text Budget --parent "Reports/2026"
@@ -1529,6 +1599,11 @@ The Forms API creates a form with a title and nothing else, so this is up to
 three calls: create, then one `batchUpdate` carrying the whole document, then a
 Drive move when `--parent` is given. `docs create` and `sheets create` have the
 same shape for the same reason.
+
+`--parent` is resolved and `<title>` checked *first*, alongside the document
+parse: a title that folder already holds is
+[refused](#a-name-has-to-be-addressable) and no form is made, so a refusal never
+leaves an empty form to go and delete.
 
 The `<title>` argument names the form and **wins over the document's `title`**;
 everything else — the description and the items — comes from the document.
@@ -1948,6 +2023,10 @@ create came with** ([`../decisions/0030`](../decisions/0030-slides-write.md)
 The `<title>` argument names the deck and **wins over the document's `title`**.
 Every slide `id` in the document is ignored, because a new deck has none of
 them — which is what makes reading one deck and creating another a copy.
+
+`--parent` is resolved and `<title>` checked before the create, alongside the
+document parse: a title that folder already holds is
+[refused](#a-name-has-to-be-addressable) and no deck is made.
 
 ```console
 $ gdrive slides create -f text "Q4 review" --file deck.yaml --parent Decks
