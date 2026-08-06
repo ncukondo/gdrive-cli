@@ -77,6 +77,8 @@ export interface FileCreateBody {
   name?: string;
   mimeType?: string;
   parents?: string[];
+  /** What a shortcut points at; only the shortcut MIME accepts it (decision 0026 §6). */
+  shortcutDetails?: { targetId: string };
 }
 
 export interface PermissionRaw {
@@ -615,6 +617,39 @@ export async function copyFile(
   try {
     const res = await client.files.copy({
       fileId,
+      requestBody,
+      fields: FILE_FIELDS,
+      supportsAllDrives: true,
+    });
+    return normalizeFile(res.data);
+  } catch (error) {
+    mapDriveError(error);
+  }
+}
+
+/**
+ * Creates a shortcut in `parentId` pointing at `targetId` (decision 0026).
+ *
+ * The name is required rather than optional: Drive's own default for an unnamed
+ * file is `Untitled`, so the caller decides what the link is called — the
+ * target's name unless `--name` said otherwise (§3). Which placements are legal
+ * is Drive's to say, and the refusal travels through {@link mapDriveError} like
+ * any other (§4).
+ */
+export async function createShortcut(
+  client: DriveClient,
+  targetId: string,
+  parentId: string,
+  name: string,
+): Promise<DriveFile> {
+  const requestBody: FileCreateBody = {
+    name,
+    mimeType: SHORTCUT_MIME,
+    parents: [parentId],
+    shortcutDetails: { targetId },
+  };
+  try {
+    const res = await client.files.create({
       requestBody,
       fields: FILE_FIELDS,
       supportsAllDrives: true,
