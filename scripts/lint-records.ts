@@ -55,15 +55,23 @@ export const STATUS_FORMAT =
   `The new file carries the pointer; the old one gains nothing (0032 §3).`;
 
 /**
- * What to do instead of editing a committed record, stated once so the commit
- * hook and the `PreToolUse` shim cannot drift apart.
+ * What to do instead of editing a committed record, printed by both the commit
+ * hook (`checkDecisionEdits`) and the `PreToolUse` shim, so they cannot drift.
  *
- * They did. The shim used to end by telling an agent to add a row to
+ * They did, twice. The shim used to end by telling an agent to add a row to
  * `decisions/README.md`, and kept saying so after
  * [0049](../decisions/0049-the-directory-is-the-index.md) deleted that file and
  * ended the obligation — in the one message an agent reads at the moment it
  * writes a new record.
  */
+/** Four spaces in front of every line, so a block sits under a finding. */
+function indent(block: string): string {
+  return block
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
+}
+
 export const WRITE_A_NEW_RECORD =
   `Write the new position as a new decision, stating itself in full so it reads\n` +
   `without the one it replaces.\n\n` +
@@ -106,8 +114,7 @@ export function checkDecisionEdits(staged: StagedFile[]): RecordFinding[] {
       path: file.path,
       message:
         `${file.path} is a committed decision and 0032 §3 does not allow it to change.\n` +
-        `    Write the new position as a new number, in full, with a Status line\n` +
-        `    naming the relationship: "accepted — revises [NNNN](NNNN-slug.md)".\n` +
+        `${indent(WRITE_A_NEW_RECORD)}\n` +
         `    A typo or a broken link is the only exception, and it is a person's\n` +
         `    call to make with "git commit --no-verify" (decision 0047 §2).`,
     }));
@@ -136,9 +143,7 @@ function statusDeclaration(source: string): string | null {
  */
 export function checkStatusLine(path: string, source: string): RecordFinding[] {
   const declaration = statusDeclaration(source);
-  const wanted = STATUS_FORMAT.split("\n")
-    .map((line) => `    ${line}`)
-    .join("\n");
+  const wanted = indent(STATUS_FORMAT);
 
   if (declaration === null) {
     return [{ path, message: `${path} has no Status line.\n${wanted}` }];

@@ -7,7 +7,7 @@ const behind = { rebased: false };
 /** No file exists unless a test says so, so a glob stays a glob. */
 const noFiles = (_path: string) => false;
 
-describe("staging the caller did not name (decisions 0001, 0048 §1)", () => {
+describe("staging the caller did not name (decisions 0001, 0050 §1)", () => {
   const blocked = (command: string, exists: (path: string) => boolean = noFiles) =>
     checkBashCommand(command, rebased, exists);
 
@@ -140,8 +140,32 @@ describe("staging the caller did not name (decisions 0001, 0048 §1)", () => {
     }
   });
 
-  it("names the decisions in the message", () => {
-    expect(blocked("git add -A")?.message).toContain("0048");
+  it("names the record that states the rule, which is the newest one", () => {
+    expect(blocked("git add -A")?.message).toContain("0050");
+  });
+
+  it("treats a heredoc body as data, not as a list of commands", () => {
+    // Every line of a `<<EOF … EOF` body used to be normalised as its own
+    // invocation, so writing prose *about* staging — a commit message, a
+    // pull-request body, a record in this repository — was refused.
+    const body = (text: string) => `cat > /tmp/notes.md <<'EOF'\n${text}\nEOF`;
+    expect(blocked(body("The guard refuses git add -A before it runs."))).toBeNull();
+    expect(blocked(body("git add . is the same rule.\ngit rm -r . too."))).toBeNull();
+    expect(
+      blocked(
+        `gh pr create --body-file - <<'EOF'\ngit add -A is never how a commit is staged.\nEOF`,
+      ),
+    ).toBeNull();
+  });
+
+  it("still sees a real command after the heredoc closes", () => {
+    expect(blocked(`cat <<'EOF'\nhi\nEOF\ngit add -A`)).not.toBeNull();
+  });
+
+  it("blocks an interpreter's command whether or not it is quoted", () => {
+    for (const command of ["eval git add -A", "eval git add .", "bash -c git add -A"]) {
+      expect(blocked(command), command).not.toBeNull();
+    }
   });
 });
 
