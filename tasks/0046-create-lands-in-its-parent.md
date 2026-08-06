@@ -104,8 +104,9 @@ part it never ran (`decisions/0043` §4).
   fixed that one and 0045's suite now asserts it round-trips. What does fail is
   an option set that ends up half go-to-enabled: give one option a
   `go_to_action` and leave its neighbour bare, and the API answers *Invalid
-  Options, Either all or no options should be go to enabled*. Then — and confirm the form is **in `--parent`**, that the
-  error names its id, and that `gdrive rm <that id>` removes it. Then check My
-  Drive's root is untouched. Repeat for `slides create --file` with an unknown
+  Options, Either all or no options should be go to enabled*. Confirm the form is
+  **in `--parent`**, that the error names its id, that `ID=$(… -q)` captures that
+  id from stdout while the reason still reaches the terminal, and that
+  `gdrive rm "$ID"` removes it. Then check My Drive's root is untouched. Repeat for `slides create --file` with an unknown
   layout, which is the deck's version of the same failure and is reachable
   without editing any code.
