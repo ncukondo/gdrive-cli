@@ -1,6 +1,6 @@
 {
   "name": "@ncukondo/gdrive-cli",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "CLI for Google Drive, Docs, Sheets, Forms, and Slides with multi-account switching, designed for humans and AI agents",
   "keywords": [
     "google-drive",
