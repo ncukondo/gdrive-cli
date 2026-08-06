@@ -298,6 +298,7 @@ describe("deleting a slide (decision 0028 §3, adopted by 0030 §1)", () => {
     const result = await run(shorter());
     expect(codeOf(result.error)).toBe("PRUNE_REQUIRED");
     const message = result.error instanceof Error ? result.error.message : "";
+    expect(message).toContain("What we do next");
     expect(message).toContain("s2");
     expect(message).toContain("--prune");
     expect(result.batches).toEqual([]);
