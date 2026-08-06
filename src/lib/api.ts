@@ -243,6 +243,29 @@ const RATE_LIMIT_REASONS = [
 ];
 
 /**
+ * Node's names for "the connection failed", as opposed to Drive answering.
+ * gaxios surfaces one as an `Error` whose `code` is a **string**, which is what
+ * puts them outside {@link isGoogleApiError} and its numeric status entirely.
+ *
+ * They are waited out for decision 0031 §5's own reason: nothing was refused,
+ * and in a walk of hundreds of calls a dropped socket is a likelier version of
+ * the situation a 429 describes. `ENOTFOUND` and `ECONNREFUSED` are deliberately
+ * absent — a host that does not resolve or a port that refuses is an address or
+ * a network that is wrong, and four more attempts reach the same answer later.
+ *
+ * The caveat is a 5xx's caveat, not a new one: `files.copy` is not idempotent,
+ * so a connection dropped *after* Drive completed a copy leaves a duplicate when
+ * the retry succeeds.
+ */
+const TRANSIENT_NETWORK_CODES = ["ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "EPIPE", "EAI_AGAIN"];
+
+function isNetworkFailure(error: unknown): error is Error & { code: string } {
+  if (!(error instanceof Error) || !("code" in error)) return false;
+  const { code } = error;
+  return typeof code === "string" && TRANSIENT_NETWORK_CODES.includes(code);
+}
+
+/**
  * True when Drive asked for a pause rather than refused the request
  * (decision 0031 §5). Everything else is terminal, including a 403 that names no
  * reason — retrying a refusal only spends round trips on the same answer.
@@ -260,11 +283,12 @@ function isTransientFailure(error: Error & { code: number }): boolean {
  * Translates a googleapis error into an {@link AppError}; re-throws anything
  * else.
  *
- * It is also the one place that sees an HTTP status, so it is where
- * {@link AppError.transient} is decided. The status does not change the
- * `ErrorCode`: a rate-limit 403 stays `PERMISSION_DENIED` because that is what
- * decision 0017's split says about a 403, and a caller that exhausts its retries
- * gets the same code it always did.
+ * It is also the one place that sees how a call failed at all, so it is where
+ * {@link AppError.transient} is decided — for a status, and for a connection
+ * that never carried one. The status does not change the `ErrorCode`: a
+ * rate-limit 403 stays `PERMISSION_DENIED` because that is what decision 0017's
+ * split says about a 403, and a caller that exhausts its retries gets the same
+ * code it always did.
  */
 export function mapDriveError(error: unknown): never {
   if (isGoogleApiError(error)) {
@@ -280,6 +304,10 @@ export function mapDriveError(error: unknown): never {
     throw new AppError("API_ERROR", error.message, { transient });
   }
   if (error instanceof AppError) throw error;
+  // The request never got an answer. It reads as `API_ERROR` with the original
+  // message, which is what a caller saw before this branch existed; what is new
+  // is that the walk can tell it is worth another try.
+  if (isNetworkFailure(error)) throw new AppError("API_ERROR", error.message, { transient: true });
   throw error;
 }
 

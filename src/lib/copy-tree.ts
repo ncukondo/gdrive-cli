@@ -1,4 +1,4 @@
-import { AppError, type DriveFile } from "../types/index.ts";
+import { AppError, errorToCode, type DriveFile } from "../types/index.ts";
 import {
   copyFile,
   createFolder,
@@ -50,6 +50,24 @@ export interface CopyTreeOptions {
   retry?: RetryOptions;
 }
 
+/**
+ * The one thing the walk did not get through (decision 0031 §4), and which of
+ * two quite different things that is.
+ *
+ * `copying` means nothing was created for it: it appears in neither `folders`
+ * nor `copied`, and it is the one to try again. `listing` means the opposite —
+ * the folder's copy exists, `dst` names it and `folders` holds it too, and what
+ * is missing is what was inside it. Copying `src` again would make a second
+ * folder rather than fill the one that is there.
+ */
+export interface FailedEntry {
+  src: string;
+  name: string;
+  stage: "copying" | "listing";
+  /** The copy that does exist. Only on `listing`; there is none to name otherwise. */
+  dst?: string;
+}
+
 /** What the walk had done when it stopped, and what stopped it (decision 0031 §4). */
 interface Progress {
   folders: CopiedEntry[];
@@ -67,11 +85,16 @@ function count(n: number, noun: string): string {
  * is what a shell needs to undo or resume the run by hand — the top folder,
  * which `folders[0]` always is, being the one id that removes the lot.
  */
-function progressData(progress: Progress, failed: { src: string; name: string }) {
+function progressData(progress: Progress, failed: FailedEntry) {
   const { folders, copied } = progress;
+  const done = line`Copied ${count(folders.length, "folder")} and ${count(copied.length, "file")}`;
+  const stopped =
+    failed.stage === "listing"
+      ? line`; the copy of ${failed.name} (${failed.src}) exists but nothing inside it was listed, so it is empty.`
+      : line` before ${failed.name} (${failed.src}) failed.`;
   return {
     payload: { folders, copied, failed },
-    text: line`Copied ${count(folders.length, "folder")} and ${count(copied.length, "file")} before ${failed.name} (${failed.src}) failed; what was copied is under the new folder and was left there.`,
+    text: `${done}${stopped} What was copied is under the new folder and was left there.`,
     quiet: formatValues([...folders, ...copied].map((entry) => entry.dst)),
   };
 }
@@ -83,13 +106,19 @@ function progressData(progress: Progress, failed: { src: string; name: string })
  *
  * A failure before anything was created is re-thrown untouched: nothing changed,
  * so `success: false` means what it always meant and there is no partial result
- * to describe. The code and the message stay the underlying failure's either
- * way, so the exit code a caller gets is Drive's answer, not this walk's opinion
- * of it.
+ * to describe.
+ *
+ * Once something *has* been created, every failure carries the report, whatever
+ * class it arrived as. A dropped socket is a plain `Error` and a bug in this
+ * program is a `TypeError`; neither is an `AppError`, and requiring one threw
+ * the report away for the failure a long run is likeliest to meet. `errorToCode`
+ * decides the code, so it is the same one `handleError` would have derived from
+ * the original — the exit code stays the underlying failure's, which is what
+ * §3 promises.
  */
 async function attempt<T>(
   progress: Progress,
-  what: { src: string; name: string },
+  what: FailedEntry,
   options: CopyTreeOptions,
   call: () => Promise<T>,
 ): Promise<T> {
@@ -97,8 +126,9 @@ async function attempt<T>(
     return await withRetry(call, options.retry ?? {});
   } catch (error) {
     const changed = progress.folders.length + progress.copied.length > 0;
-    if (!changed || !(error instanceof AppError)) throw error;
-    throw new AppError(error.code, error.message, { data: progressData(progress, what) });
+    if (!changed) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AppError(errorToCode(error), message, { data: progressData(progress, what) });
   }
 }
 
@@ -118,12 +148,17 @@ async function fill(
   dstId: string,
   options: CopyTreeOptions,
 ): Promise<void> {
-  const children = await attempt(progress, { src: src.id, name: src.name }, options, () =>
-    listChildren(client, src.id),
+  // `listing`, not `copying`: `dstId` was created before this call and is in
+  // the report already, so what a failure here loses is the folder's contents.
+  const children = await attempt(
+    progress,
+    { src: src.id, name: src.name, stage: "listing", dst: dstId },
+    options,
+    () => listChildren(client, src.id),
   );
 
   for (const child of children) {
-    const what = { src: child.id, name: child.name };
+    const what: FailedEntry = { src: child.id, name: child.name, stage: "copying" };
     if (child.type === "folder") {
       const folder = await attempt(progress, what, options, () =>
         createFolder(client, child.name, dstId),
@@ -161,7 +196,7 @@ export async function copyTree(
   const progress: Progress = { folders: [], copied: [] };
   const name = options.name ?? source.name;
 
-  const root = await attempt(progress, { src: source.id, name }, options, () =>
+  const root = await attempt(progress, { src: source.id, name, stage: "copying" }, options, () =>
     createFolder(client, name, destId),
   );
   progress.folders.push({ src: source.id, dst: root.id, name: root.name });

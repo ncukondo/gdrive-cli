@@ -1011,6 +1011,50 @@ describe("which Drive failures are worth waiting out", () => {
     expect(transientOf(error)).toBe(false);
   });
 
+  /**
+   * The failure a long walk is likeliest to meet, and the one the numeric-status
+   * branch never saw: gaxios reports a dropped socket as an `Error` whose `code`
+   * is a **string**. Nothing was refused and nothing was answered, which is the
+   * situation a 429 describes, so it is waited out the same way.
+   */
+  it.each(["ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "EPIPE", "EAI_AGAIN"])(
+    "waits out %s, where the connection failed and Drive never answered",
+    (code) => {
+      expect(transientOf(Object.assign(new Error("socket hang up"), { code }))).toBe(true);
+    },
+  );
+
+  it("reports a dropped connection as API_ERROR, with its message intact", () => {
+    const dropped = Object.assign(new Error("socket hang up"), { code: "ECONNRESET" });
+    expect(() => mapDriveError(dropped)).toThrow(
+      expect.objectContaining({ code: "API_ERROR", message: "socket hang up" }),
+    );
+  });
+
+  it.each([
+    // A host that does not resolve is a wrong address or no network at all, and
+    // four more attempts reach the same answer later.
+    ["ENOTFOUND", Object.assign(new Error("getaddrinfo failed"), { code: "ENOTFOUND" })],
+    ["a refused connection", Object.assign(new Error("refused"), { code: "ECONNREFUSED" })],
+  ])("passes %s through untouched, so nothing waits for it", (_label, error) => {
+    let caught: unknown;
+    try {
+      mapDriveError(error);
+    } catch (e) {
+      caught = e;
+    }
+    // The same object, not an AppError wearing its message: only the codes this
+    // module claims to understand are translated.
+    expect(caught).toBe(error);
+    expect(transientOf(error)).not.toBe(true);
+  });
+
+  it("does not dress a bug in this program up as a Drive failure", () => {
+    // No `code` at all: it never reached Drive, and calling it an API error
+    // would send whoever reads it looking in the wrong place.
+    expect(() => mapDriveError(new TypeError("x is not a function"))).toThrow(TypeError);
+  });
+
   it("leaves every error an AppError already, transient or not", () => {
     // Nothing else in the CLI passes `transient`, so the flag every existing
     // throw site produces has to be the one that stops a retry loop.

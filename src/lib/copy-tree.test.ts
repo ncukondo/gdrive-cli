@@ -189,8 +189,61 @@ describe("copyTree", () => {
           { src: "1S", dst: "new3", name: "sub" },
         ],
         copied: [{ src: "1A", dst: "new2", name: "a.pdf" }],
-        failed: { src: "1B", name: "b.txt" },
+        failed: { src: "1B", name: "b.txt", stage: "copying" },
       });
+    });
+
+    /**
+     * A folder created and then not enumerated is not a file that was never
+     * copied, and the report has to say which: that folder is already in
+     * `folders` with an id of its own, so a caller retrying it as `failed` makes
+     * a second one. What is missing is its contents.
+     */
+    it("tells a folder it could not fill apart from a file it could not copy", async () => {
+      const drive = createWritableTreeDrive(twoLevelTree(), {
+        before: (call) => {
+          if (call.method === "list" && call.id === "1S") {
+            throw driveApiError(403, "The user does not have sufficient permissions.");
+          }
+        },
+      });
+      const error = await failureFrom(copyTree(drive.client, source, "DEST", { retry: noWait }));
+
+      expect(payloadOf(error)["failed"]).toEqual({
+        src: "1S",
+        name: "sub",
+        dst: "new3",
+        stage: "listing",
+      });
+      expect(payloadOf(error)["folders"]).toContainEqual({ src: "1S", dst: "new3", name: "sub" });
+      expect(dataOf(error)?.text).toContain("nothing inside it was listed");
+    });
+
+    /**
+     * Decision 0031 §4's completeness cannot depend on the error's class. A
+     * dropped socket arrives as a plain `Error` and a bug in this program as a
+     * `TypeError`; neither is an `AppError`, and both used to throw the report
+     * away — the failure likeliest in a long run reporting nothing at all.
+     */
+    it.each([
+      ["a dropped connection", Object.assign(new Error("socket hang up"), { code: "ECONNRESET" })],
+      ["a bug that never reached Drive", new TypeError("not a function")],
+    ])("keeps the report when the failure is %s", async (_label, thrown) => {
+      const drive = createWritableTreeDrive(twoLevelTree(), {
+        before: (call) => {
+          if (call.method === "copy" && call.id === "1B") throw thrown;
+        },
+      });
+      const error = await failureFrom(
+        copyTree(drive.client, source, "DEST", { retry: { ...noWait, attempts: 2 } }),
+      );
+
+      expect(error).toMatchObject({ code: "API_ERROR", message: thrown.message });
+      expect(payloadOf(error)).toMatchObject({
+        copied: [{ src: "1A", dst: "new2", name: "a.pdf" }],
+        failed: { src: "1B", name: "b.txt", stage: "copying" },
+      });
+      expect(dataOf(error)?.quiet?.split("\n")).toEqual(["new1", "new3", "new2"]);
     });
 
     it("summarises in text and lists the new ids for a retry loop in quiet", async () => {
