@@ -189,3 +189,33 @@ describe("everything else", () => {
     expect(checkBashCommand("echo 'git add -A'", behind)).toBeNull();
   });
 });
+
+describe("removing from the index (decision 0050)", () => {
+  const at = (command: string) => checkBashCommand(command, rebased, () => false);
+
+  it("blocks a git rm that names no path of its own", () => {
+    // Measured: three tracked files, one pathspec, three staged deletions.
+    expect(at("git rm -r .")).not.toBeNull();
+    expect(at("git rm -r --cached .")).not.toBeNull();
+    expect(at("git rm --cached -r :/")).not.toBeNull();
+    expect(at("sudo git rm -r .")).not.toBeNull();
+  });
+
+  it("allows a git rm that names what it removes", () => {
+    expect(at("git rm src/gone.ts")).toBeNull();
+    expect(at("git rm -r src/old/")).toBeNull();
+    expect(at("git rm --cached src/secret.ts")).toBeNull();
+  });
+
+  it("leaves the reverse operation alone, which is how a mistake is undone", () => {
+    for (const command of [
+      "git reset",
+      "git reset .",
+      "git reset --hard HEAD",
+      "git restore --staged .",
+      "git restore --staged --worktree .",
+    ]) {
+      expect(at(command), command).toBeNull();
+    }
+  });
+});
