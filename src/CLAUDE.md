@@ -8,11 +8,12 @@ Neither is repeated below ([`0047`](../decisions/0047-rules-are-executed.md) §3
   with zod, call into `lib/*`, and print through `lib/output.ts`. Never build a
   JSON envelope by hand ([`0013`](../decisions/0013-architecture.md)).
 - **The unit tests beside this source follow
-  [`tests/CLAUDE.md`](../tests/CLAUDE.md).** That file does not load when you open
-  a `*.test.ts` here, and most of this project's tests are here. Read it before
-  writing one.
-- **A handler never calls `process.exit`.** It throws `AppError { code }`;
-  `src/index.ts` maps the code to an exit code and a format
+  [`tests/CLAUDE.md`](../tests/CLAUDE.md)**, which does not load when you open a
+  `*.test.ts` here. Read it before writing one.
+- **A handler returns an exit code; it never chooses one.** `handleXxx` returns a
+  result and throws `AppError { code }` on failure. The registrar around it is
+  what calls `process.exit(result.exitCode)`, and `src/index.ts`'s `handleError`
+  maps a code to an exit code and a format
   ([`0013`](../decisions/0013-architecture.md),
   [`0007`](../decisions/0007-output-and-errors.md)).
 - **`commands/index.ts` is the only shared edit outside your own scope**, and it

@@ -11,6 +11,8 @@ surface.
   for *why*. Read it from the highest number down; `decisions/CLAUDE.md` has the
   conventions and how to navigate it.
 - Read `tasks/README.md` for the current plan; pick a task, follow its TDD plan.
+- Writing a test, wherever it lives: [`tests/CLAUDE.md`](tests/CLAUDE.md). A unit
+  test sits beside its source, so that file does not load for most of them.
 - User-facing behavior lives in `docs/` and `README.md`.
 - **A directory's conventions live in its own `CLAUDE.md`** and load when you
   edit there ([`0047`](decisions/0047-rules-are-executed.md) §3). Look for one
@@ -52,8 +54,8 @@ a commit and a push run.
 `.husky/pre-push` runs `test:e2e` against a real account
 ([`0043`](decisions/0043-e2e-runs-before-push.md)). Set `GDRIVE_CLI_E2E_FOLDER`
 to a Drive folder id and each test file works inside a throwaway subfolder of
-it, kept when that file fails and trashed when it passes; leave it unset and the
-suite skips rather than fails, so a push is never blocked on a machine with no
+it, kept when that file fails and deleted permanently when it passes; leave it
+unset and the suite skips rather than fails, so a push is never blocked on a machine with no
 credentials. What the suite cannot reach — a prompt, a
 browser, how output looks at a real width — stays a manual pass, named
 separately in each task's `Verification` section.
@@ -80,14 +82,11 @@ separately in each task's `Verification` section.
    GitHub's generated commit list is appended below it. A tag whose version has
    no section fails the job before anything is published.
 
-`CHANGELOG.md` is also in `package.json`'s `files`, so it ships in the npm
-tarball. `0014` does not require that — `--notes-file` discharges §2 — but its
+`CHANGELOG.md` ships in the npm tarball. `0014` does not require that — `--notes-file` discharges §2 — but its
 Consequences make this file the compatibility *record*, and
 [`0003`](decisions/0003-distribution.md) sends npm users to their package
 manager rather than to a release page, so npm is the one channel whose users
 never pass the record. Keep the entry; keep the links in it absolute.
-
-Preview what the release will say with `bun run changelog <version>`.
 
 ## Development Rules (see `decisions/0001`, `0032`, `0033`, `0047`)
 
@@ -110,7 +109,7 @@ Preview what the release will say with `bun run changelog <version>`.
 - **Parallel**: parallel-safe tasks use `git worktree`; deps declared per task.
 - Docs updates are part of a task's Definition of Done, in the same PR.
 - **A rule a script can decide is a script, not a sentence**
-  ([`0047`](decisions/0047-rules-are-executed.md) §1), so some of the above are
-  enforced rather than remembered. `.husky/` and `.github/workflows/ci.yml` are
-  what runs on a commit and a push; read them for which. Anything not covered
-  here is in `decisions/`, read from the highest number down.
+  ([`0047`](decisions/0047-rules-are-executed.md) §1). `.husky/` and
+  `.github/workflows/ci.yml` are what runs on a commit and a push; read them to
+  see what is checked rather than remembered. Anything not covered here is in
+  `decisions/`, read from the highest number down.

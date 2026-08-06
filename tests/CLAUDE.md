@@ -29,17 +29,19 @@ any of it.
 - **Nothing under `docs/` or `README.md` is a fixture.** No test may require
   either to contain a particular string. They are downstream and free to be
   reworded ([`0035`](../decisions/0035-docs-are-downstream.md) §2).
-- **Inject rather than reach out.** The filesystem goes through `FsAdapter`;
-  every Google API client is a constructor argument to its `lib/*-api.ts`
-  wrapper; stdin is passed in. Production wires the real thing and a test passes
-  a fake ([`0012`](../decisions/0012-testing-strategy.md)).
+- **Inject rather than reach out.** A Google API client is _passed in_ — never
+  imported or built inside the module that uses it — and so are the filesystem
+  (through `FsAdapter`) and stdin. Production wires the real ones in
+  `lib/google-clients.ts`; a test passes a fake
+  ([`0012`](../decisions/0012-testing-strategy.md)).
 - **A fake is shared from `tests/helpers/`.** The first task needing one creates
   it there and later tasks import it, so parallel worktrees cannot disagree about
   what the API looks like ([`0012`](../decisions/0012-testing-strategy.md)).
 - **Every E2E write goes inside the run's own subfolder, and no test names a path
-  outside it.** The helper creates one under `GDRIVE_CLI_E2E_FOLDER` and trashes
-  it; that containment is the entire safety story for a suite that writes to a
-  real account, and no shared drive is touched at all
+  outside it.** The helper creates one under `GDRIVE_CLI_E2E_FOLDER`, deletes it
+  permanently when the file passes and keeps it when it does not; that
+  containment is the entire safety story for a suite that writes to a real
+  account, and no shared drive is touched at all
   ([`0043`](../decisions/0043-e2e-runs-before-push.md) §2). Nothing checks this
   for you — the helper enforces its own anchor, not what a test file names.
 - **E2E's subject is the boundary with Google** — which requests are accepted,
