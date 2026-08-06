@@ -48,21 +48,34 @@ changes — only what happens when they are broken.
   moved out of `lint-casts.ts` so a second scanner can share it.
 - `scripts/lint-casts.ts` — body wrapped in `import.meta.main`, stripper
   imported rather than defined. No change to what it reports.
-- `scripts/lint-widths.ts` (new) + test — 0036 §3.
+- `scripts/lint-widths.ts` (new) + test — 0036 §3, with a `// width:` marker
+  mirroring `lint-casts.ts`'s `// assertion:`. *Added mid-branch
+  (`decisions/0041` §1): this is the one new guard that also runs in CI, where
+  0047 §2's `--no-verify` does not reach, and it bans `padStart` outright while
+  0036 §3 forbids only a display width. Zero-padding a number would have blocked
+  the build with no way through.*
 - `scripts/lint-records.ts` (new) + test — 0032 §3, §4, §5.
 - `scripts/lint-landing.ts` (new) + test — 0033 §1 and 0047 §5.
 - `scripts/guard-bash.ts` (new) + test — 0001's staging rule and 0044 §1.
 - `.husky/pre-commit`, `.husky/pre-push`.
 - `.claude/settings.json` (new), `.claude/hooks/guard-record-edit.ts` (new),
   `.claude/hooks/guard-bash.ts` (new) — thin shims that read the hook payload on
-  stdin and call the exported functions above. **A shim that cannot read its
-  payload blocks rather than passes**, and neither hand-writes a rule the script
-  it calls already states. *Both added mid-branch (`decisions/0041` §1): the
+  stdin and call the exported functions above. **Reading the payload is a refusal
+  by default** — empty stdin, a non-object, a missing `tool_input`, a field of
+  the wrong type — and the guard call is wrapped, because a hook exits 0 to allow
+  and a failed import would pass the command through in silence. Neither shim
+  hand-writes a rule the script it calls already states. *Both added mid-branch (`decisions/0041` §1): the
   second review fed a shim malformed JSON and got exit 1, which Claude Code
   treats as non-blocking, so the guard silently stopped guarding; and found
   `guard-record-edit.ts` teaching the two-verb `Status` vocabulary the same
   branch had already corrected to three — the copy being made inside the change
-  that exists to remove copies.*
+  that exists to remove copies. The third found the same shim still ending its
+  refusal with "add its row to `decisions/README.md`" after
+  [`0049`](../decisions/0049-the-directory-is-the-index.md) deleted that file: the
+  one message an agent reads while writing a record, instructing the single thing
+  0049 forbids. The whole block moved to `WRITE_A_NEW_RECORD`. And it found that
+  only an unparseable payload was refused — every other unreadable shape exited
+  0.*
 - `package.json` — the new `lint:*` script entries.
 - `.github/workflows/ci.yml` — `lint:widths` only (see below).
 - `vitest.config.ts` — include `.claude/**/*.test.ts` only if a shim turns out
@@ -192,24 +205,39 @@ nothing in the plan would ever have run it against one.*
      path** → blocked, quoting [`0048`](../decisions/0048-staging-refuses-a-class.md)
      §1.
 
-     **One predicate, not two lists.** Normalise the segment first — drop leading
-     shell punctuation and keywords, drop environment assignments, drop a wrapper
-     word (`sudo`, `env`, `command`, `exec`), resolve the binary by basename, look
-     past git's global options, expand a short cluster into single letters, and
-     split the arguments at `--` into flags and pathspecs. Then ask one question:
-     *does any flag stage implicitly, or is any pathspec not a named path?* A flag
-     only counts before `--`; a pathspec counts on both sides, which is what 0048
-     §1's carve-out actually says — a file **named** `-A` commits, not everything
-     that follows the separator.
+     **Tokenize, then split, then one normaliser for both rules.** Produce words
+     and operator tokens in one pass and split the command on the *operator
+     tokens*, never on the raw string — a `;` or `|` inside a quoted commit
+     message is not a separator, and splitting first refuses messages this
+     repository writes constantly. Then normalise: drop leading shell punctuation
+     and keywords, drop environment assignments, drop a wrapper word and any bare
+     duration or count it takes, recurse into the quoted argument of `bash -c` /
+     `sh -c` / `eval`, resolve the binary by basename, look past git's global
+     options, expand a short cluster into single letters, and split the arguments
+     at `--` into flags and pathspecs. **Both the staging rule and the rebase rule
+     go through it** — one parser with two callers, not two parsers.
 
-     Tests carry the sixteen spellings two review rounds found, each of which
-     passed a version of this script: `git add -A/./--all/-u/--update`,
-     `git commit -a/-am`, `git stage -A`, `git -C . add -A`, `git add *`,
-     `git add -- .`, `git add :/`, `git add *.ts`, `git add src/*`,
-     `sudo git add -A`, `env git add -A`, `/usr/bin/git add -A`,
-     `( git add -A )`, `GIT_DIR=.git git add -A` — plus the near-misses that must
-     pass: `git add ./src`, `git add -- -A`, `git add -N`, `git add -p <path>`,
-     `git commit --amend`, `git commit -m "fix the -a flag"`.
+     Then one question: *does any flag stage implicitly, or is any pathspec not a
+     named path?* A flag only counts before `--`; a pathspec counts on both sides,
+     which is what 0048 §1's carve-out actually says — a file **named** `-A`
+     commits, not everything that follows the separator. A long flag matches by
+     unambiguous prefix, because git's own parse-options does and `--al` is
+     `--all`. Anything beginning `:` is pathspec magic and names nothing. A glob
+     is a glob unless a file of that exact name exists, which is 0048 §1's
+     reasoning about `-A` applied to `report [2026].md`.
+
+     Tests carry every spelling three review rounds found — the sixteen above
+     plus `git add --al/--upd/--no-ignore-remov`, `git add :`/`:(top)`/`':!sub'`,
+     `nice`/`timeout 5`/`doas`/`stdbuf`/`setsid`/`xargs` in front of it,
+     `bash -c '…'`, `sh -c '…'`, `eval '…'`, a bare `&` as separator, and the
+     same wrappers in front of `gh pr create`. And the near-misses that must
+     pass: `git add ./src`, `git add -- -A`, `git add -N`, `git add -p` with and
+     without a path, `git commit --amend`, `git commit --no-all`,
+     `git commit -m "refuse git add -A; git add . too"`, and a real file called
+     `docs/report [2026].md`.
+
+     **A false refusal is at least as costly as a hole**, because 0047 §2 leaves
+     an agent no bypass. Every round has produced both; test both directions.
 
      0048 §2 says the matcher is an approximation and a spelling that gets through
      is a defect in the script, so the header says that rather than implying a
