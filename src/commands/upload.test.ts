@@ -1,8 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { guessMimeType, handleUpload, resolveConvertMime, type LocalFile } from "./upload.ts";
+import {
+  guessMimeType,
+  handleUpload,
+  resolveConvertMime,
+  type LocalFile,
+  type UploadDeps,
+} from "./upload.ts";
+import { childrenNamed, ROOT_ID } from "../lib/resolve-path.ts";
 import type { DriveFile } from "../types/index.ts";
 import type { UploadInput } from "../lib/api.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
+import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -40,6 +48,8 @@ const local = (overrides: Partial<LocalFile> = {}): LocalFile => ({
   ...overrides,
 });
 
+const none = async () => [];
+
 describe("guessMimeType", () => {
   it("maps known extensions and defaults to octet-stream", () => {
     expect(guessMimeType("a.csv")).toBe("text/csv");
@@ -63,6 +73,7 @@ describe("handleUpload", () => {
     const uploadMedia = vi.fn(async (_i: UploadInput) => file());
     await handleUpload({
       resolvePath: vi.fn(),
+      findSiblings: none,
       readLocalFile: () => local(),
       uploadMedia,
       local: "./notes.txt",
@@ -79,6 +90,7 @@ describe("handleUpload", () => {
     const uploadMedia = vi.fn(async (_i: UploadInput) => file());
     await handleUpload({
       resolvePath,
+      findSiblings: none,
       readLocalFile: () => local({ name: "data.csv", mimeType: "text/csv" }),
       uploadMedia,
       local: "./data.csv",
@@ -104,6 +116,7 @@ describe("handleUpload", () => {
     const out = collect();
     await handleUpload({
       resolvePath: vi.fn(),
+      findSiblings: none,
       readLocalFile: () => local(),
       uploadMedia: async () => file({ id: "U1", name: "notes.txt" }),
       local: "./notes.txt",
@@ -117,6 +130,7 @@ describe("handleUpload", () => {
     const awkward = collect();
     await handleUpload({
       resolvePath: vi.fn(),
+      findSiblings: none,
       readLocalFile: () => local(),
       uploadMedia: async () => file({ id: "U1", name: "Q1\nreport" }),
       local: "./notes.txt",
@@ -129,6 +143,7 @@ describe("handleUpload", () => {
     const q = collect();
     await handleUpload({
       resolvePath: vi.fn(),
+      findSiblings: none,
       readLocalFile: () => local(),
       uploadMedia: async () => file({ id: "U1" }),
       local: "./notes.txt",
@@ -143,6 +158,7 @@ describe("handleUpload", () => {
     await expect(
       handleUpload({
         resolvePath: vi.fn(),
+        findSiblings: none,
         readLocalFile: () => {
           throw new (class extends Error {
             code = "IO_ERROR";
@@ -155,5 +171,74 @@ describe("handleUpload", () => {
         write: () => {},
       }),
     ).rejects.toMatchObject({ code: "IO_ERROR" });
+  });
+
+  /**
+   * Decision 0055 §1. The name is the local file's unless `--name` says
+   * otherwise, so an upload of the same file twice is the ordinary way to reach
+   * the collision — and Drive would accept both.
+   */
+  describe("a name that would not address the uploaded file", () => {
+    const against = (nodes: DriveNode[], overrides: Partial<UploadDeps> = {}): UploadDeps => {
+      const { client } = createWritableTreeDrive(nodes);
+      return {
+        resolvePath: async () => "PID",
+        readLocalFile: () => local(),
+        uploadMedia: async () => file(),
+        findSiblings: (parentId, name) => childrenNamed(client, parentId, name),
+        local: "./notes.txt",
+        format: "text",
+        quiet: false,
+        write: () => {},
+        ...overrides,
+      };
+    };
+
+    it("refuses the local file's own name when --parent already holds it", async () => {
+      const uploadMedia = vi.fn(async () => file());
+      await expect(
+        handleUpload(
+          against([{ id: "E1", name: "notes.txt", parents: ["PID"] }], {
+            uploadMedia,
+            parent: "Reports",
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("E1") });
+      expect(uploadMedia).not.toHaveBeenCalled();
+    });
+
+    it("refuses --name when the My Drive root already holds it", async () => {
+      const uploadMedia = vi.fn(async () => file());
+      await expect(
+        handleUpload(
+          against([{ id: "E1", name: "Budget", parents: [ROOT_ID] }], {
+            uploadMedia,
+            name: "Budget",
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+      expect(uploadMedia).not.toHaveBeenCalled();
+    });
+
+    it("uploads when nothing there holds the name", async () => {
+      const uploadMedia = vi.fn(async (_i: UploadInput) => file());
+      await handleUpload(
+        against([{ id: "E1", name: "other.txt", parents: [ROOT_ID] }], { uploadMedia }),
+      );
+      expect(uploadMedia).toHaveBeenCalled();
+    });
+
+    it.each([" Budget", "Budget ", "a/b"])(
+      "refuses --name %j without asking Drive anything",
+      async (name) => {
+        const uploadMedia = vi.fn(async () => file());
+        const findSiblings = vi.fn(none);
+        await expect(
+          handleUpload(against([], { uploadMedia, findSiblings, name })),
+        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(uploadMedia).not.toHaveBeenCalled();
+      },
+    );
   });
 });

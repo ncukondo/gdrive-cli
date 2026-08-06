@@ -1,6 +1,8 @@
 import { Command } from "commander";
 import { AppError, type CommandResult, type DriveFile, type OutputFormat } from "../types/index.ts";
 import { formatValues, line, renderSuccess } from "../lib/output.ts";
+import { MY_DRIVE, refuseUnaddressableName, type FindSiblings } from "../lib/names.ts";
+import { ROOT_ID } from "../lib/resolve-path.ts";
 import type { UploadInput } from "../lib/api.ts";
 
 const DOC_MIME = "application/vnd.google-apps.document";
@@ -51,6 +53,8 @@ export interface UploadDeps {
   resolvePath: (arg: string) => Promise<string>;
   readLocalFile: (path: string) => LocalFile;
   uploadMedia: (input: UploadInput) => Promise<DriveFile>;
+  /** What the uploaded file's name would collide with (decision 0055 §1). */
+  findSiblings: FindSiblings;
   local: string;
   parent?: string;
   name?: string;
@@ -66,6 +70,16 @@ export async function handleUpload(deps: UploadDeps): Promise<CommandResult> {
   const localFile = deps.readLocalFile(deps.local);
   const name = deps.name ?? localFile.name;
   const parentId = deps.parent !== undefined ? await deps.resolvePath(deps.parent) : undefined;
+
+  // Decision 0055 §1–§2, before a byte is sent: uploading the same file twice
+  // is the ordinary way to reach the collision, and Drive would take both.
+  await refuseUnaddressableName({
+    name,
+    parentId: parentId ?? ROOT_ID,
+    findSiblings: deps.findSiblings,
+    where: deps.parent ?? MY_DRIVE,
+    flag: "--name",
+  });
 
   const input: UploadInput = { name, mimeType: localFile.mimeType, body: localFile.body };
   if (parentId !== undefined) input.parentId = parentId;

@@ -71,6 +71,7 @@ export function registerDriveWrite(program: Command): void {
         resolvePath: (arg) => resolveTargetId(drive, arg),
         readLocalFile,
         uploadMedia: (input) => uploadMedia(drive, input),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         local,
         format: opts.format,
         quiet: opts.quiet,
