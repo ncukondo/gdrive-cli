@@ -27,15 +27,27 @@ import {
  * | `documentTitle` at creation | Drive otherwise calls the form `Untitled form` |
  * | a copied `go_to_section_id` | it is an item id belonging to another form |
  *
- * The first three ride on one create: before their fixes it did not merely
- * report the wrong thing, it failed, because a `batchUpdate` is all-or-nothing
- * and one refused request took the whole document down with it.
+ * The first three ride on **one** create, and that is a weaker guarantee than
+ * "each case names the defect it stands for" suggests. Before their fixes the
+ * create did not report the wrong thing, it failed — a `batchUpdate` is
+ * all-or-nothing and one refused request took the whole document down with it
+ * — so a regression in any of the three fails all three, with the same throw
+ * out of `beforeAll`. The titles say which encoding each case *describes*;
+ * they do not isolate it. Isolating would mean three creates where there is
+ * one, on the file that is already among the slowest in a suite a `pre-push`
+ * hook runs on every push, and that trade was made deliberately.
  *
- * **Never make `forms create` fail after the form exists.** It creates the
- * form, fills it, and moves it into `--parent` last, so a failure in between
- * leaves an empty form in **My Drive's root** — outside every sandbox, which
- * 0043 §2 does not allow. Measured while writing this file. Every create here
- * is one the API accepts.
+ * **Containment does not hold on the failure path, and this file cannot make
+ * it hold.** `forms create` creates the form, fills it, and moves it into
+ * `--parent` last, so a `batchUpdate` that fails leaves an empty form in **My
+ * Drive's root** — outside every sandbox, which 0043 §2 otherwise forbids —
+ * and the command throws before printing the id, so nothing names it
+ * afterwards. That failure is not hypothetical here: it is the exact signature
+ * of every defect above, so the red path of these cases is the path that
+ * orphans a form. Measured, once, while writing this file.
+ * [#36](https://github.com/ncukondo/gdrive-cli/issues/36) is the fix — move
+ * before filling — and it is a change to all four `create` commands rather
+ * than to this file. `slides create` has the same shape and the same gap.
  */
 
 const optionSchema = z.union([
