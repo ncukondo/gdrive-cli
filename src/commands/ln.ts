@@ -2,6 +2,7 @@ import { Command } from "commander";
 import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
 import type { ResolvedTarget } from "../lib/resolve-path.ts";
 import { formatValues, line, renderSuccess } from "../lib/output.ts";
+import { refuseUnaddressableName, type FindSiblings } from "../lib/names.ts";
 
 export interface LnDeps {
   /** The target, as content: a shortcut links what it points at (decision 0026 §2). */
@@ -10,6 +11,8 @@ export interface LnDeps {
   resolveFolder: (arg: string) => Promise<string>;
   getFile: (id: string) => Promise<DriveFile>;
   createShortcut: (targetId: string, parentId: string, name: string) => Promise<DriveFile>;
+  /** What the shortcut's name would collide with (decision 0055 §1). */
+  findSiblings: FindSiblings;
   target: string;
   dest: string;
   name?: string;
@@ -41,6 +44,18 @@ export async function handleLn(deps: LnDeps): Promise<CommandResult> {
   const { id: targetId, file } = await deps.resolveTarget(deps.target);
   const folderId = await deps.resolveFolder(deps.dest);
   const { name, target } = await nameFor(deps, targetId, file);
+
+  // Decision 0055 §1–§2. The default name is the target's, so linking one file
+  // into one folder twice reaches the collision with no flag involved: two
+  // shortcuts, one name, and neither reachable by path afterwards.
+  await refuseUnaddressableName({
+    name,
+    parentId: folderId,
+    findSiblings: deps.findSiblings,
+    where: deps.dest,
+    flag: "--name",
+  });
+
   const link = await deps.createShortcut(targetId, folderId, name);
 
   // Both ends, because the new id alone does not say the link landed on the
