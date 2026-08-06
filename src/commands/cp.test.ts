@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleCp, type CpDeps } from "./cp.ts";
 import type { CopyTreeReport } from "../lib/copy-tree.ts";
+import { resolvePath as resolveDrivePath } from "../lib/resolve-path.ts";
 import { AppError, type DriveFile } from "../types/index.ts";
+import { createTreeDrive } from "../../tests/helpers/fake-drive.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -337,6 +339,43 @@ describe("handleCp", () => {
       ).rejects.toMatchObject({ code: "INVALID_ARGS" });
       expect(copyTree).not.toHaveBeenCalled();
     });
+
+    /**
+     * The My Drive root is the one source whose *argument* never resolves to an
+     * id: `resolvePath` answers the literal alias `root` for all three
+     * spellings. Comparing that alias against a `parents` list — which carries
+     * the root's real id — matches nothing, so every ancestor check passes and
+     * `cp -r / Archive` copies My Drive into a folder inside My Drive, then
+     * finds the copy it just made and copies that, without bound.
+     *
+     * So the real `resolvePath` runs here rather than a stub: what had to be
+     * asserted is what the alias *is*, and a stub would only repeat the
+     * assumption that produced the defect.
+     */
+    it.each(["", "/", "root"])(
+      "refuses `cp -r %j <a folder inside My Drive>`, whatever the root is spelled as",
+      async (spelling) => {
+        const copyTree = vi.fn(async () => report());
+        const empty = createTreeDrive([]);
+
+        await expect(
+          handleCp(
+            deps({
+              recursive: true,
+              file: spelling,
+              resolvePath: (arg) => resolveDrivePath(empty, arg),
+              resolveFolder: async () => "ARCHIVE",
+              getFile: async (id) =>
+                id === "root"
+                  ? folder({ id: "0AReAlRoOt", name: "My Drive", parents: [] })
+                  : folder({ id, name: "Archive", parents: ["0AReAlRoOt"] }),
+              copyTree,
+            }),
+          ),
+        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(copyTree).not.toHaveBeenCalled();
+      },
+    );
 
     it("does not trip on a destination that merely shares a name with the source", async () => {
       const copyTree = vi.fn(async () => report());
