@@ -54,6 +54,23 @@ export const STATUS_FORMAT =
   `"corrects" fixes a factual claim without changing the position taken.\n` +
   `The new file carries the pointer; the old one gains nothing (0032 §3).`;
 
+/**
+ * What to do instead of editing a committed record, stated once so the commit
+ * hook and the `PreToolUse` shim cannot drift apart.
+ *
+ * They did. The shim used to end by telling an agent to add a row to
+ * `decisions/README.md`, and kept saying so after
+ * [0049](../decisions/0049-the-directory-is-the-index.md) deleted that file and
+ * ended the obligation — in the one message an agent reads at the moment it
+ * writes a new record.
+ */
+export const WRITE_A_NEW_RECORD =
+  `Write the new position as a new decision, stating itself in full so it reads\n` +
+  `without the one it replaces.\n\n` +
+  `${STATUS_FORMAT}\n\n` +
+  `That Status line is the only place the relationship is written. There is no\n` +
+  `index to update: the directory is the index (0049).`;
+
 export interface StagedFile {
   /** The `git diff --cached --name-status` letter: `A`, `M`, `D`, `R`, … */
   status: string;
