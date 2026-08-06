@@ -14,7 +14,6 @@
  */
 import { execFileSync } from "node:child_process";
 import { relative } from "node:path";
-import { WRITE_A_NEW_RECORD, isDecisionRecord } from "../../scripts/lint-records.js";
 import { readToolInput, refuse } from "./payload.js";
 
 function isTracked(path: string): boolean {
@@ -27,6 +26,10 @@ function isTracked(path: string): boolean {
 }
 
 const target = await readToolInput("guard-record-edit", ["file_path", "notebook_path"]);
+
+// Imported here rather than at the top: a static import throws before any `try`
+// can see it, and an unloadable module would exit 1 — which does not block.
+const { WRITE_A_NEW_RECORD, isDecisionRecord } = await import("../../scripts/lint-records.js");
 {
   const repoRelative = relative(process.cwd(), target);
   if (isDecisionRecord(repoRelative) && isTracked(repoRelative)) {

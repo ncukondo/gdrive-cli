@@ -52,15 +52,23 @@ interface Token {
 
 const OPERATORS = ["&&", "||", ";;", ";", "|", "&", "\n"];
 
+/** `<<EOF`, `<<-EOF`, `<<'EOF'` — the quotes are already stripped by the loop. */
+const HEREDOC = /^<<-?(\w+)$/;
+
 function tokenize(command: string): Token[] {
   const tokens: Token[] = [];
+  const pendingHeredocs: string[] = [];
   let current = "";
   let quoted = false;
   let started = false;
   let quote: string | undefined;
 
   const flush = () => {
-    if (current !== "" || started) tokens.push({ kind: "word", value: current, quoted });
+    if (current !== "" || started) {
+      tokens.push({ kind: "word", value: current, quoted });
+      const heredoc = HEREDOC.exec(current);
+      if (heredoc?.[1] !== undefined) pendingHeredocs.push(heredoc[1]);
+    }
     current = "";
     started = false;
     quoted = false;
@@ -96,6 +104,20 @@ function tokenize(command: string): Token[] {
       flush();
       tokens.push({ kind: "operator", value: operator, quoted: false });
       i += operator.length - 1;
+
+      // A heredoc body is data, not a command list. Without this, every line of
+      // a `<<EOF … EOF` body is normalised as its own invocation, so writing
+      // prose *about* `git add .` — a commit message, a pull-request body, a
+      // record in this repository — is refused, and 0047 §2 leaves no way past.
+      while (pendingHeredocs.length > 0) {
+        const delimiter = pendingHeredocs.shift() ?? "";
+        const rest = command.slice(i + 1);
+        const lines = rest.split("\n");
+        const end = lines.findIndex((line) => line.trim() === delimiter);
+        const body = (end === -1 ? lines : lines.slice(0, end)).join("\n");
+        tokens.push({ kind: "word", value: body, quoted: true });
+        i += 1 + (end === -1 ? rest.length : body.length + 1 + delimiter.length) - 1;
+      }
       continue;
     }
     if (/\s/.test(char)) {
@@ -221,9 +243,19 @@ export function parseInvocation(words: Token[]): Invocation | null {
     }
     if (INTERPRETERS.has(head)) {
       // `bash -c '<command>'` and `eval '<command>'`: the argument is a command.
-      for (const word of words.slice(i + 1)) {
-        if (word.quoted || !word.value.startsWith("-")) nested.push(word.value);
-      }
+      // It arrives either as one quoted word or as the rest of the line, and
+      // `eval git add -A` is the second — collecting words separately dropped
+      // the `-A` and recursed on three fragments that each looked harmless.
+      let j = i + 1;
+      while (
+        j < words.length &&
+        (words[j]?.value ?? "").startsWith("-") &&
+        !(words[j]?.quoted ?? false)
+      )
+        j++;
+      const rest = words.slice(j);
+      if (rest.length === 1 && rest[0] !== undefined) nested.push(rest[0].value);
+      else if (rest.length > 1) nested.push(rest.map((w) => w.value).join(" "));
       return { binary: head, sub: "", flags: [], pathspecs: [], nested };
     }
     break;
@@ -327,7 +359,7 @@ function requestsReview(inv: Invocation): boolean {
 }
 
 const STAGE_MESSAGE =
-  "Stage the paths you mean (decisions 0001, 0048 §1).\n" +
+  "Stage the paths you mean (decisions 0001, 0050 §1).\n" +
   "This command adds to the index something you did not name. A commit built\n" +
   "that way is indistinguishable from a correct one afterwards, which is why\n" +
   "it is refused before it runs rather than checked after.\n\n" +

@@ -11,6 +11,26 @@
  * there and is a string (decision 0047 §2 — the bypass belongs to a person, and
  * an unreadable payload is not a bypass, it is a blind guard).
  */
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Anything that escapes a shim exits 1, which the harness treats as a
+ * non-blocking error — the guard stops guarding and says nothing. Registering
+ * these here means the shim only has to get its *first* import right.
+ */
+process.on("uncaughtException", (error: unknown) => {
+  refuse(
+    `hook: ${error instanceof Error ? error.message : String(error)}\nRefusing rather than passing (decision 0047 §2).`,
+  );
+});
+process.on("unhandledRejection", (error: unknown) => {
+  refuse(
+    `hook: ${error instanceof Error ? error.message : String(error)}\nRefusing rather than passing (decision 0047 §2).`,
+  );
+});
+
 export function refuse(reason: string): never {
   process.stderr.write(`${reason}\n`);
   process.exit(2);
@@ -34,20 +54,16 @@ export async function readToolInput(hook: string, fields: string[]): Promise<str
   } catch {
     refuse(`${hook}: the hook payload is not JSON, so it cannot tell what is about to happen.`);
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    refuse(`${hook}: the hook payload is not an object.`);
-  }
+  if (!isObject(parsed)) refuse(`${hook}: the hook payload is not an object.`);
 
-  const input: unknown = (parsed as Record<string, unknown>)["tool_input"];
-  if (typeof input !== "object" || input === null) {
-    refuse(`${hook}: the hook payload carries no tool_input object.`);
-  }
+  const input: unknown = parsed["tool_input"];
+  if (!isObject(input)) refuse(`${hook}: the hook payload carries no tool_input object.`);
 
   for (const field of fields) {
-    const value: unknown = (input as Record<string, unknown>)[field];
+    const value: unknown = input[field];
     if (typeof value === "string" && value !== "") return value;
     if (value !== undefined) {
-      refuse(`${hook}: tool_input.${field} is not a string, so its target is unknown.`);
+      refuse(`${hook}: tool_input.${field} is present but not a usable string.`);
     }
   }
   refuse(`${hook}: tool_input names none of ${fields.join(", ")}, so its target is unknown.`);

@@ -7,16 +7,20 @@
  * the hook payload, ask git whether the branch is rebased, and turn a block into
  * exit code 2.
  *
- * The guard call is wrapped, because a hook exits 0 to allow: an import that
- * fails or a git call that throws would let the command through with no signal.
+ * The guard is imported *inside* the try, and `payload.ts` registers handlers
+ * for anything that escapes anyway, because a hook exits 0 to allow: a module
+ * that fails to load or a git call that throws would otherwise let the command
+ * through with no signal at all.
  */
-import { checkBashCommand, isRebased } from "../../scripts/guard-bash.js";
 import { readToolInput, refuse } from "./payload.js";
 
 const command = await readToolInput("guard-bash", ["command"]);
 
 let blockMessage: string | null = null;
 try {
+  // Imported here, not at the top: a static import throws before any `try` can
+  // see it, and the header used to claim a wrap that could not have run.
+  const { checkBashCommand, isRebased } = await import("../../scripts/guard-bash.js");
   blockMessage = checkBashCommand(command, { rebased: isRebased() })?.message ?? null;
 } catch (error) {
   refuse(
