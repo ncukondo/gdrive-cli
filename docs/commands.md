@@ -76,6 +76,14 @@ So `ID=$(gdrive forms create … -q)` gets the id of the form a failed create le
 behind, and the reason is still on the terminal
 ([`../decisions/0031`](../decisions/0031-recursive-copy.md) §4).
 
+**That capture cannot tell you which happened — the exit code can.** On a
+`create`, `-q` prints the same one line either way: on success it is the id of a
+file that is where you asked for it, and on failure the id of one that exists
+but is unfinished. Check `$?`, or read `success` from `-f json`, before treating
+the value as a file that is ready to use. Where the failed one *is* comes from
+`parent_id`: present means it reached the folder, absent means it is in My
+Drive's root because the move is what failed.
+
 **Most `console` transcripts on this page pass `-f text`**, because a
 transcript is only worth showing when it shows the text. Without it — or without
 `default_format = "text"` in your config — those commands print the envelope
@@ -1037,9 +1045,12 @@ anything after the create fails, the error names the new document in its
 because no success envelope arrived to name it: `gdrive rm <id>` is what removes
 it.
 
-`--parent` is resolved and `<title>` checked *before* the create, though: a
-title that folder already holds is [refused](#a-name-has-to-be-addressable) and
-no document is made, so there is never an empty document to go and delete.
+Three things happen *before* the create, so that each of them fails with nothing
+made: `--content` is read, `--parent` is resolved, and `<title>` is checked. A
+title that folder already holds is [refused](#a-name-has-to-be-addressable), and
+`--content @missing.md` is an `IO_ERROR` — neither leaves an empty document to
+go and delete. `--content -` drains stdin at that point too, as `forms create
+--file -` and `slides create --file -` already do.
 
 ```console
 $ gdrive docs create -f text "Meeting notes" --content @agenda.md --parent Notes

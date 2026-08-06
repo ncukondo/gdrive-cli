@@ -46,10 +46,12 @@ import {
  * goes with the folder when the next run prunes it.
  *
  * It was the other way round until
- * [#36](https://github.com/ncukondo/gdrive-cli/issues/36): the move ran last,
- * so the same failure left an empty form in **My Drive's root** — outside every
- * sandbox 0043 §2 permits — and nothing printed its id. Measured, once, while
- * writing this file. `slides create` has the same shape and the same guarantee.
+ * [#36](https://github.com/ncukondo/gdrive-cli/issues/36), which 0057 §1
+ * records: the move ran last, so the same failure left an empty form in **My
+ * Drive's root** — outside every sandbox 0043 §2 permits — and nothing printed
+ * its id. Measured, once, while writing this file, and 0057's Context has the
+ * one that was found afterwards in a real account. `slides create` has the same
+ * shape and the same guarantee.
  */
 
 const optionSchema = z.union([

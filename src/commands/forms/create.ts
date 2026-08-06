@@ -31,13 +31,10 @@ export interface FormsCreateDeps {
 
 /**
  * Creates, and hands everything after that to {@link afterCreate}: the three
- * calls decision 0028 §7 records, in the order
- * [#36](https://github.com/ncukondo/gdrive-cli/issues/36) put them. The fill is
- * one `batchUpdate`, which is atomic, so a single item the API refuses fails it
- * with the form already made; moving first is what keeps that form inside the
- * folder the caller named. §7's own wording is "creates, then fills, then
- * moves", which is what this did before; the record gives no reason for that
- * half of the order, and the code is the source of truth for what happens.
+ * calls decision 0028 §7 records, in the order decision 0057 §1 corrected them
+ * to. The fill is one `batchUpdate`, which is atomic, so a single item the API
+ * refuses fails it with the form already made; moving first is what keeps that
+ * form inside the folder the caller named.
  *
  * The document is parsed before the form exists, so a document that does not
  * parse leaves no empty form behind to clean up. Decision 0055 §2 puts the name
