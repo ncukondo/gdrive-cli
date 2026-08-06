@@ -94,8 +94,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0041 The rules that can be checked become scripts](archive/0041-rules-are-executed.md) | — | G | done |
 | [0042 The rules a script cannot check move to where they are read](archive/0042-rules-are-read-where-they-apply.md) | — | G | done |
 | [0043 `gdrive rename`](archive/0043-rename.md) | — | — | done |
-| [0044 A name this CLI cannot address is refused](0044-addressable-names.md) | 0033, 0043 | H | todo |
-| [0045 The live suite reaches the write paths](0045-e2e-write-paths.md) | — | H | todo |
+| [0044 A name this CLI cannot address is refused](archive/0044-addressable-names.md) | 0033, 0043 | H | done |
+| [0045 The live suite reaches the write paths](archive/0045-e2e-write-paths.md) | — | H | done |
 | [0046 A `create` that fails leaves nothing in My Drive's root](0046-create-lands-in-its-parent.md) | 0045 | — | todo |
 
 ## Parallelism notes
@@ -282,6 +282,32 @@ rather than at coverage — an encoding the API refuses and a fake accepts — a
 its manual step is to break one of the six fixes locally and watch the matching
 case go red, because a live suite nobody has seen fail is one nobody knows is
 wired up.
+
+0044 and 0045 merged together, and between them they closed the loop this
+stretch had been running open: 0045 gave the live suite the write paths, and
+0044 was then the first branch whose behaviour change could be checked *by* that
+suite rather than by a person remembering to. It passed, 43 cases, which is the
+first time an answer to "did this break the live behaviour" came from a command
+rather than from a pass somebody might skip.
+
+0044 is also the clearest case yet of a review overturning a decision rather
+than a line of code. Its first implementation refused any name the resolver
+would not read as a single path segment — which is a false refusal for
+`Meeting_notes_2026_08` and any other ordinary name of twenty-odd word
+characters, in every folder that is not a drive root, with no `--force` to
+escape by. The justification in the code was wrong too: the distinction that
+matters is only whether the parent *is* a drive root, and that is decidable from
+its id. 0056 §2 had already said so; the code had drifted from the record it was
+built against, and the review is what noticed.
+
+The last turn of that screw is worth keeping. Told to narrow the rule, the
+implementing agent found the instruction self-contradictory — it claimed all
+five readings are harmless at a shared drive's root while prescribing a test that
+refuses there — and took the test, because **My Drive's own root id has the same
+`0A` + 17 shape a shared drive root has** (`0AIhndZ7Jnt6JUk9PVA`). The two cannot
+be told apart from an id, so the choice is a false accept at My Drive's root,
+where files are lost, or a false refusal at a shared drive's root, narrow and
+visible. Measuring beat the instruction.
 
 0046 came out of 0045's review rather than from the survey. Writing live tests
 for the write paths exposed that all four `create` commands are create-fill-move,
