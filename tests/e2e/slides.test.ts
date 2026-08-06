@@ -26,10 +26,11 @@ import {
  * **Two things cannot be asserted from here and are not approximated.**
  *
  * - *Formatting.* `slides read` emits no styling at all, so "the bold in the
- *   body survived a title-only edit" has no observable. What is asserted
- *   instead is the property that makes it true — an unchanged placeholder
- *   produces no request, which the plan's `fields` reports. The bold itself
- *   stays a manual check (0043 §4).
+ *   body survived a title-only edit" has no observable here, and nothing below
+ *   stands in for it. What the read-back does say is that the body's *text*
+ *   came through the edit unchanged; that the CLI planned no request for it is
+ *   a property of the planner and is asserted beside it. The bold itself stays
+ *   a manual check (0043 §4).
  * - *A real `elements` entry.* One needs a shape this CLI cannot make: a
  *   second `BODY` carrying text, or a box placed by hand in the Slides UI.
  *   `slides create` cannot produce one and `slides write` cannot write into
@@ -165,13 +166,13 @@ describeLive("Slides against a real account", () => {
         documentPath("retitled", edited),
       );
 
-      // One entry, and `fields` naming `title` alone. `body` in that list would
-      // mean the body was deleted and re-inserted, which is where its inline
-      // formatting goes (0030 §2) — the cost this narrowness is what pays for.
+      // That the write reached the deck at all, and touched one slide. What
+      // the entry *says* — its `fields`, and that `body` is not among them —
+      // is the planner's own output and is asserted beside it in
+      // `plan.test.ts`; repeating it here would be checking this CLI's
+      // plumbing against itself. The live half is the read-back below.
       expect(written.applied).toBe(true);
       expect(written.plan).toHaveLength(1);
-      expect(written.plan[0]?.action).toBe("update");
-      expect(written.plan[0]?.fields).toEqual(["title"]);
 
       const after = (await gdriveAs(readSchema, "slides", "read", created.id)).presentation;
       expect(after.slides[0]?.title).toBe("what the quarter said, restated");
@@ -200,7 +201,10 @@ describeLive("Slides against a real account", () => {
       };
 
       // 0030 §3: no request writes an element, so reporting success for an edit
-      // to one would be reporting a change that did not happen.
+      // to one would be reporting a change that did not happen. The refusal is
+      // `checkElements`, which reaches no Google call and is asserted beside
+      // its source; what this case adds is the half only Google can answer —
+      // that the batch travelling with it never arrived.
       const code = await gdriveError(
         "slides",
         "write",

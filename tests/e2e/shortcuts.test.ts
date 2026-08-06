@@ -139,6 +139,13 @@ describeLive("Shortcuts against a real account", () => {
     LIVE_TIMEOUT,
   );
 
+  /**
+   * **Last on purpose, and it must stay last.** This trashes `documentLink`,
+   * which the four cases above read. Vitest runs a file's cases in declaration
+   * order, so that holds today; a case appended below this one would go red
+   * over a shortcut this case deleted, which is not a regression in anything.
+   * Add new cases above, or give them a link of their own.
+   */
   it(
     "trashes the link and leaves the target alone",
     async () => {
