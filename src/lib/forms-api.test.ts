@@ -3,6 +3,8 @@ import { createFakeForms } from "../../tests/helpers/fake-forms.ts";
 import { AppError } from "../types/index.ts";
 import { toFormDocument, type FormRaw } from "./form-document.ts";
 import {
+  batchUpdateForm,
+  createForm,
   getForm,
   listResponses,
   responseGrid,
@@ -92,6 +94,73 @@ describe("listResponses", () => {
     const fake = createFakeForms({ pages: [[]] });
     expect(await listResponses(fake.client, "1FoRm")).toEqual([]);
     expect(fake.calls).toEqual(["forms.responses.list"]);
+  });
+});
+
+describe("createForm", () => {
+  it("sends the title and returns the new form's id and title", async () => {
+    const fake = createFakeForms({ createdId: "1NeW" });
+    expect(await createForm(fake.client, "New survey")).toEqual({
+      id: "1NeW",
+      title: "New survey",
+    });
+    expect(fake.created).toEqual(["New survey"]);
+  });
+
+  it("maps a refusal the same way every other call does", async () => {
+    const denied = createFakeForms({ error: googleError(403) });
+    expect(await codeOf(() => createForm(denied.client, "T"))).toBe("PERMISSION_DENIED");
+  });
+});
+
+describe("batchUpdateForm", () => {
+  const requests = [{ deleteItem: { location: { index: 0 } } }];
+
+  it("sends the requests against the form", async () => {
+    const fake = createFakeForms({});
+    await batchUpdateForm(fake.client, "1FoRm", requests);
+    expect(fake.batches).toEqual([{ formId: "1FoRm", requestBody: { requests } }]);
+  });
+
+  /** Decision 0028 §5: the revision the document was read at, or nothing. */
+  it("carries a revision as writeControl when one is given", async () => {
+    const fake = createFakeForms({});
+    await batchUpdateForm(fake.client, "1FoRm", requests, "00000007");
+    expect(fake.batches[0]?.requestBody.writeControl).toEqual({ requiredRevisionId: "00000007" });
+  });
+
+  it("omits writeControl entirely when the document carried no revision", async () => {
+    const fake = createFakeForms({});
+    await batchUpdateForm(fake.client, "1FoRm", requests);
+    expect(fake.batches[0]?.requestBody).not.toHaveProperty("writeControl");
+  });
+
+  /**
+   * A form edited in the browser between `read` and `write` has to fail in a way
+   * that says *what* to do about it. Google's own message names the revision and
+   * nothing else, so the next action is added to it rather than replacing it.
+   */
+  it("explains a revision conflict instead of passing the API's message through", async () => {
+    const conflict = Object.assign(new Error("The provided revision ID does not match"), {
+      code: 400,
+    });
+    const fake = createFakeForms({ batchError: conflict });
+    let message = "";
+    try {
+      await batchUpdateForm(fake.client, "1FoRm", requests, "00000007");
+    } catch (error) {
+      message = error instanceof Error ? error.message : "";
+    }
+    expect(message).toContain("00000007");
+    expect(message).toContain("The provided revision ID does not match");
+    expect(message).toMatch(/read .*again/i);
+  });
+
+  it("leaves an unrelated failure to the usual mapping", async () => {
+    const fake = createFakeForms({ batchError: googleError(403) });
+    expect(await codeOf(() => batchUpdateForm(fake.client, "1FoRm", requests, "7"))).toBe(
+      "PERMISSION_DENIED",
+    );
   });
 });
 
