@@ -39,11 +39,16 @@ export interface DocsCreateDeps {
 }
 
 /**
- * Creates, and hands everything after that to {@link afterCreate}: the move
- * into `--parent` goes ahead of the content, so an insert that fails leaves the
+ * Creates, and hands everything after that to {@link afterCreate}: the move into
+ * `--parent` goes ahead of the content, so an insert that fails leaves the
  * document inside the folder the caller named rather than in My Drive's root,
- * and the failure names its id
- * ([#36](https://github.com/ncukondo/gdrive-cli/issues/36)).
+ * and the failure names its id (decision 0057).
+ *
+ * `--content` is **read before the create**, as `forms create` and
+ * `slides create` parse their document before theirs: a local read is the one
+ * failure on this path that costs no Drive call to prevent, so `@missing.md`
+ * leaves no document behind at all rather than one to go and delete. `-` drains
+ * stdin at that point, which is where those two already drain it.
  *
  * Decision 0055 §2 is what puts `--parent` ahead of the create: the title is the
  * Drive name, and a refusal after `documents.create` would leave a document the
@@ -52,6 +57,7 @@ export interface DocsCreateDeps {
  */
 export async function handleDocsCreate(deps: DocsCreateDeps): Promise<CommandResult> {
   const as = parseDocsFormat(deps.as);
+  const content = deps.content === undefined ? undefined : await deps.readInput(deps.content);
 
   const parentId = deps.parent !== undefined ? await deps.resolvePath(deps.parent) : undefined;
   await refuseUnaddressableName({
@@ -67,14 +73,12 @@ export async function handleDocsCreate(deps: DocsCreateDeps): Promise<CommandRes
     // Only a Markdown insert has anything to report; the other three paths
     // write nothing this document could not carry.
     const none: UnsupportedNote[] = [];
-    if (deps.content === undefined) return none;
-    const text = await deps.readInput(deps.content);
-    if (text === "") return none;
+    if (content === undefined || content === "") return none;
     // The document was created a moment ago, so index 1 is both edges of the
     // one empty paragraph it has (decision 0045 §2).
     const boundary = { atParagraphStart: true, atParagraphEnd: true };
-    if (as === "markdown") return deps.insertMarkdown(created.id, 1, text, { boundary });
-    await deps.insertText(created.id, 1, text, boundary);
+    if (as === "markdown") return deps.insertMarkdown(created.id, 1, content, { boundary });
+    await deps.insertText(created.id, 1, content, boundary);
     return none;
   });
 

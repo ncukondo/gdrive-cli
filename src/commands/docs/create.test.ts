@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleDocsCreate } from "./create.ts";
+import { AppError } from "../../types/index.ts";
 import type { ParagraphBoundary } from "../../lib/docs-api.ts";
 import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
@@ -85,6 +86,31 @@ describe("handleDocsCreate", () => {
     await handleDocsCreate({ ...d, content: "@notes.md", as: "text" });
     expect(d.insertText).toHaveBeenCalledWith("NEW", 1, "<@notes.md>", EMPTY);
     expect(d.insertMarkdown).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `forms create` and `slides create` parse their document before the file
+   * exists, so one that does not parse leaves nothing behind. `--content` is
+   * the same argument in a different shape, and a local read is the one failure
+   * on this path that needs no Drive call at all to prevent — so it happens
+   * first, and `@missing.md` costs no create and no move.
+   */
+  it("reads --content before it creates anything, so a missing file makes no document", async () => {
+    const calls: string[] = [];
+    const d = baseDeps(calls);
+    await expect(
+      handleDocsCreate({
+        ...d,
+        parent: "Reports",
+        content: "@missing.md",
+        readInput: async () => {
+          throw new AppError("IO_ERROR", "File not found: missing.md");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "IO_ERROR" });
+    expect(calls).toEqual([]);
+    expect(d.createDocument).not.toHaveBeenCalled();
+    expect(d.moveFile).not.toHaveBeenCalled();
   });
 
   it("skips the insert when the content is empty", async () => {
