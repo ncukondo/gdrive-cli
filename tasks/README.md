@@ -17,9 +17,13 @@ Rules (see [`decisions/0001`](../decisions/0001-development-process.md),
   disjoint file scopes and can run in separate `git worktree`s.
 - Don't restate decisions — link to `decisions/NNNN-*.md`. If work needs a
   decision change, record a **new** decision first; never edit a committed one.
-- Implementation (`src/`, `tests/`, `docs/`, `package.json`) lands on a
-  `task/00NN-slug` branch through a pull request, reviewed by an agent holding no
-  implementation context. `decisions/` and `tasks/` commit straight to main.
+- Implementation lands on a `task/00NN-slug` branch through a pull request,
+  reviewed by an agent holding no implementation context; `decisions/` and
+  `tasks/` commit straight to main. What counts as implementation is
+  [`0033`](../decisions/0033-implementation-lands-through-review.md) §1 as
+  widened by [`0047`](../decisions/0047-rules-are-executed.md) §5 — read it
+  there. A directory's `CLAUDE.md` is on the reviewed side even though it sits
+  in a records directory.
 - Docs (`docs/`, `README.md`) updates implied by a task are part of its DoD.
 - **A task stays current while it is being reviewed**
   ([`0041`](../decisions/0041-the-task-is-current-during-review.md)): a decision

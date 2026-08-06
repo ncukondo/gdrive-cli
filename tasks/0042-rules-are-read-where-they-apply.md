@@ -67,12 +67,15 @@ the renderer and E2E's subject is the boundary with Google; `docs/` is never a
 fixture; when E2E fails, fix the implementation — do not mock around it, do not
 adjust the expectation, do not skip it.
 
-**`decisions/CLAUDE.md`** — append only, and read from the highest number down;
-a committed file is never edited, so a change is a new number whose `Status`
-names `revises` or `extends`; a new record needs its row in `README.md`; do not
-write a `what` — a command table or an output shape belongs to `docs/` and the
-code; every `Out of scope` entry names an issue or says the work will not be
-done.
+**`decisions/CLAUDE.md`** — how to survey the directory, since
+[`0049`](../decisions/0049-the-directory-is-the-index.md) deleted the index that
+used to; append only, so a change is a new number whose `Status` names the
+relationship; the verbs and what each means; do not write a `what` — a command
+table or an output shape belongs to `docs/` and the code; every `Out of scope`
+entry names an issue or says the work will not be done. *Corrected mid-branch
+(`decisions/0041` §1): this asked for "a new record needs its row in
+`README.md`", which 0049 removed along with the file, and named two `Status`
+verbs where the records use three.*
 
 ## Out of scope
 
@@ -174,8 +177,12 @@ line before it is written:
       outcome, not a leftover. *Corrected mid-branch (`decisions/0041` §1): this
       first read "names no script or dependency", which is stricter than the
       decision it was meant to check.*
-- [ ] The `pre-push` / `GDRIVE_CLI_E2E_FOLDER` paragraph survives intact — it is
-      not a copy of anything and 0047 §4's test is what keeps it
+- [ ] The `pre-push` / `GDRIVE_CLI_E2E_FOLDER` paragraph survives — it is not a
+      copy of anything and 0047 §4's test is what keeps it. *Corrected mid-branch
+      (`decisions/0041` §1): this said "intact", and "intact" shielded a false
+      claim. The paragraph said the E2E helper trashes its subfolder;
+      `sandbox.ts` deletes it permanently and says why. A paragraph is kept
+      because it is not a copy, never because it is already there.*
 - [ ] `bun run test` and `bun run typecheck` pass — no code changes, so this is a
       regression check on nothing, and a fast one
 - [ ] `docs/` and the root `README.md` need no change, confirmed rather than
