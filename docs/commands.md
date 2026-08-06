@@ -1281,12 +1281,22 @@ slides:
     layout: SECTION_HEADER
     title: What we do next
 
+  - id: g4b5c6d
+    layout: TITLE_AND_TWO_COLUMNS
+    title: Two ways to read it
+    body: The left column
+    elements:
+      - id: g8j9k0l
+        kind: shape
+        placeholder: BODY      # a layout placeholder with no field left
+        text: The right column
+
   - id: g7h8i9j
     layout: BLANK
     skipped: true
     elements:
       - id: g1k2l3m
-        kind: shape
+        kind: shape            # no `placeholder`: outside every layout
         text: A heading someone placed by hand
       - id: g4n5o6p
         kind: image
@@ -1310,7 +1320,7 @@ Per slide:
 | `skipped` | Present only when the slide is skipped in presentation mode |
 | `title`, `subtitle`, `body` | The text of the matching placeholder, when it has any |
 | `notes` | The speaker notes — the `BODY` placeholder of the slide's notes page, promoted to a field of its own so nobody has to know that |
-| `elements` | Everything that is not one of those placeholders. Read-only (below) |
+| `elements` | Everything the document has no field for — a shape outside the layout, an image, and also a placeholder whose field is already taken. Read-only (below) |
 
 **No geometry appears, in either direction.** A slide in the API is a canvas of
 positioned boxes: every element carries a transform and a size in EMU, and the
@@ -1320,6 +1330,12 @@ document. What a deck *says* is here; what it looks like stays in the template
 
 A placeholder with no text is left out entirely rather than written as `""`, so
 a template's empty boxes do not fill the document with blanks.
+
+Where a layout offers two placeholders of one type — `TITLE_AND_TWO_COLUMNS`
+has two `BODY`s — the named field goes to the one with the **lowest placeholder
+index**, which is the API's own numbering and does not move. Re-ordering the
+boxes on the slide, "bring to front" included, cannot change which column is
+`body`; the other one is listed under `elements`.
 
 ### Layouts
 
@@ -1338,29 +1354,44 @@ Which placeholders a layout offers is the layout's business: `TITLE` gives you
 `title` and `subtitle`, `TITLE_AND_BODY` gives `title` and `body`, `BLANK`
 gives neither.
 
-### `elements` is read-only, and that matters
+### `elements`: what the document has no field for
 
-Anything on a slide that is not one of the placeholders above — a text box
-someone dragged on, an image, a table, a chart — is listed with its ID, its
-`kind`, and its `text` where it has any:
+**`elements` is not "what is not a placeholder"** — it is what this document
+cannot name
+([`../decisions/0051`](../decisions/0051-elements-holds-placeholders-too.md)
+§1). A text box someone dragged on, an image, a table, a chart, and equally the
+second `BODY` of a two-column slide: each is listed with its ID, its `kind`, its
+`placeholder` where it is one, and its `text` where it has any.
 
 | `kind` | |
 |--------|---|
-| `shape` | Any shape, with its text. Also where a *second* placeholder of a type already taken lands — the right-hand column of `TITLE_AND_TWO_COLUMNS`, say — so its text is never silently dropped |
+| `shape` | Any shape, with its text — including a placeholder whose field is already taken |
 | `image` | |
 | `table` | Listed with no text: a table's cells are not modelled ([`../decisions/0029`](../decisions/0029-slides-document.md)) |
 | `chart` | A chart linked from Sheets |
-| `video`, `line`, `group`, `word_art`, `speaker_spotlight` | |
+| `video`, `line`, `word_art`, `speaker_spotlight` | Listed with an ID and a kind; none of them carries text |
+| `group` | A group is listed **as its members**, flattened, however deeply nested — grouping two text boxes is ordinary, and reporting the group alone would lose every word in it. Only a group holding nothing is listed as itself |
 | `unknown` | An element kind newer than this CLI. Listed rather than dropped, so the slide's contents are never under-reported |
 
+`placeholder` carries the API's placeholder type — `BODY`, `SLIDE_NUMBER`, … —
+and is **absent on anything that is not a placeholder**. That one field is the
+difference between two entries that otherwise look identical, and the difference
+matters: a displaced `BODY` is a box the Slides API would rewrite as readily as
+the `body` above it, while a hand-placed text box is outside every layout and
+nothing can put it back under one.
+
 **Editing an `elements` entry will not change the deck, and `slides write` will
-refuse the document rather than accept an edit it cannot make**
-([`../decisions/0030`](../decisions/0030-slides-write.md) §3). The asymmetry is
-deliberate: text outside a placeholder is how a large share of real decks are
-built, so hiding it would make the common deck read as empty — the one outcome
-worse than reading it partially. Showing it and refusing to write it is the
-honest half of that trade, and this paragraph is where you find out before the
-error does.
+refuse the document rather than report success for an edit that did not
+happen**
+([`../decisions/0030`](../decisions/0030-slides-write.md) §3). Both sorts of
+entry are refused, for different reasons: for a shape outside the layout there
+is no way to honour the change, and for a displaced placeholder this CLI has
+simply not implemented the write yet
+([`../decisions/0051`](../decisions/0051-elements-holds-placeholders-too.md) §3;
+[issue #28](https://github.com/ncukondo/gdrive-cli/issues/28)). Listing them and
+refusing to write them is the honest half of the trade — text outside a named
+field is how a large share of real decks are built, and hiding it would make the
+common deck read as empty, the one outcome worse than reading it partially.
 
 So a deck built without a template reads as `BLANK` slides full of `elements`.
 That is accurate, and it is also the signal that very little of it will be
