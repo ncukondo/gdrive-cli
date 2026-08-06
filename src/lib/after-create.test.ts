@@ -66,7 +66,8 @@ describe("afterCreate", () => {
    * still where its create put it, which is My Drive's root. A caller that
    * reads it as "where to look" is then right in both cases.
    */
-  it("omits parent_id when the move itself is what failed", async () => {
+  it("omits parent_id when the move itself is what failed, and fills nothing", async () => {
+    const fill = vi.fn(async () => {});
     const error = await failing(
       afterCreate(
         NEW,
@@ -76,11 +77,47 @@ describe("afterCreate", () => {
             throw new AppError("PERMISSION_DENIED", "Drive said no");
           },
         },
-        async () => {},
+        fill,
       ),
     );
     expect(dataOf(error)?.payload).toEqual({ id: "1NeW", title: "Q4 review" });
     expect(dataOf(error)?.text).toContain("My Drive");
+    // Writing into a file the caller was never told about compounds the
+    // failure; the move failing stops the run where it stands.
+    expect(fill).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `mapDriveError` sets `transient` for a 429 or a 5xx — Drive asking for a
+   * pause rather than refusing — and only the move can produce one here, since
+   * it is the only Drive call. Nothing above a `create` retries today, so this
+   * changes no behaviour; what it prevents is a retry added later reading a
+   * rate limit as a refusal because the re-wrap flattened it.
+   *
+   * `copy-tree.ts` drops the flag at its own wrap, which is correct there for a
+   * reason that does not hold here: that wrap sits *outside* `withRetry`, so by
+   * the time it runs the flag has already been acted on.
+   */
+  it("carries transient through the re-wrap, because nothing here has consumed it", async () => {
+    const error = await failing(
+      afterCreate(
+        NEW,
+        {
+          parentId: "1FoLdEr",
+          moveFile: async () => {
+            throw new AppError("API_ERROR", "Rate limit exceeded", { transient: true });
+          },
+        },
+        async () => {},
+      ),
+    );
+    expect(error).toMatchObject({ transient: true });
+    expect(dataOf(error)?.payload).toEqual({ id: "1NeW", title: "Q4 review" });
+  });
+
+  it("does not invent transient for an ordinary failure", async () => {
+    const error = await failing(afterCreate(NEW, { parentId: undefined, moveFile: vi.fn() }, boom));
+    expect(error).toMatchObject({ transient: false });
   });
 
   it("names the file a fill failed on when no parent was asked for", async () => {
