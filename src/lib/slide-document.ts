@@ -438,6 +438,10 @@ export function slideTextTargets(slide: PageRaw): SlideTextTargets {
   for (const element of slide.pageElements ?? []) {
     const { objectId, shape } = element;
     const type = shape?.placeholder?.type;
+    // The one way the two sides can disagree: a placeholder with no `objectId`
+    // is projected by `fieldWinners` and has no address to write to, so it is
+    // skipped here and a lower-indexed one could win the field instead. The API
+    // gives every page element an id, so nothing reaches it today.
     if (!objectId || !type) continue;
     const field = FIELD_BY_PLACEHOLDER[type];
     if (field === undefined) continue;

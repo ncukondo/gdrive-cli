@@ -1636,7 +1636,8 @@ common deck read as empty, the one outcome worse than reading it partially.
 
 Leaving the key out entirely is not an edit: a document that never mentions a
 slide's `elements` is accepted, and only a key that is *there* is compared with
-what `read` emitted.
+what `read` emitted. That is **not** how the text fields read an absent key —
+see [what an absent field means](#what-an-absent-field-means).
 
 So a deck built without a template reads as `BLANK` slides full of `elements`.
 That is accurate, and it is also the signal that very little of it will be
@@ -1681,6 +1682,43 @@ An `id` the deck does not have is an `INVALID_ARGS` error, not a create: it
 means the document was written against a different deck. Drop the `id` to add
 the slide as new.
 
+#### What an absent field means
+
+A slide's fields do not all read the same way when they are missing, and the
+difference matters most to whoever is writing a document **by hand** rather
+than round-tripping one.
+
+| Left out of a slide | What `write` does |
+|---|---|
+| `title`, `subtitle`, `body`, `notes` | **Empties it.** The document is the desired state, and `read` omits a placeholder that has no text — so leaving the key out is the only way the document can say "no text here" |
+| `skipped` | Un-skips the slide, for the same reason: `read` emits `skipped` only when it is true |
+| `layout`, `elements` | **Nothing.** The document does not say, and it could not say otherwise: no request re-applies a layout or writes an element, so an omission cannot mean "remove this" |
+| `id` | Creates the slide |
+
+The split is not arbitrary — a field is desired-state exactly when `write` can
+reach both of its states. It is the rule
+[`forms write`](#gdrive-forms-write-form---file-path---prune---dry-run) applies
+to a form's `description`, which
+[`../decisions/0028`](../decisions/0028-forms-write.md) decided and
+[`../decisions/0030`](../decisions/0030-slides-write.md) §1 adopts, so the two
+document types stay in step.
+
+**So a partial slide deletes what it omits.** Sending
+`{id: s1, title: New title}` at a slide that has a body and speaker notes
+rewrites the title *and* clears both:
+
+```console
+$ gdrive slides write -f text "Decks/Q3" --file partial.yaml --dry-run
+action	position	id	title	fields
+update	0	s1	New title	skipped,title,body,notes
+Planned 1 change to 1PrEs...; --dry-run wrote nothing
+```
+
+The `fields` column names every field the entry writes, the emptied ones
+included, so `--dry-run` shows this before it happens. The way not to meet it
+at all is to start from `gdrive slides read`, edit, and write the whole
+document back.
+
 `--file` names a path; `@path` and `-` (stdin) work as they do everywhere else,
 and with no `--file` at all the document is read from stdin — so
 `gdrive slides read D | gdrive slides write D` is a round trip that changes
@@ -1700,10 +1738,14 @@ $ gdrive slides read "Decks/Q3" > deck.yaml
 $ $EDITOR deck.yaml
 $ gdrive slides write -f text "Decks/Q3" --file deck.yaml
 action	position	id	title	fields
-update	0	g2a1b3c	The quarter in a sentence	title
 create	3	gdrive_slide_1	One more thing	title,body
+update	0	g2a1b3c	The quarter in a sentence	title
 Applied 2 changes to 1PrEs...
 ```
+
+The rows are in the order the requests run — `delete`, `move`, `create`,
+`update` — not the order you edited in and not the order the deck ends up in.
+That grouping is what keeps each `index` below valid as the batch runs.
 
 #### Rewriting a placeholder loses its formatting
 
@@ -1777,9 +1819,9 @@ Reported through the `unsupported` channel — one line on stderr in text mode, 
 
 | What | Why |
 |---|---|
-| `title`, `subtitle` or `body` on a slide whose layout has no such placeholder | The layout decides what a slide has, and this CLI adds no shapes |
+| `title`, `subtitle` or `body` where neither the slide nor its layout has that placeholder | The layout decides what a slide has, and this CLI adds no shapes |
 | `layout` changed on an existing slide | No request re-applies a layout; create a new slide instead |
-| `notes` on a **new** slide | A slide's notes page has no ID until the slide exists |
+| `notes` where there is no notes shape to write through | On a **new** slide always — a notes page has no ID until the slide exists — and on an existing one whose notes page the API did not report |
 | `elements` on a **new** slide | `elements` is read-only, and a create cannot reproduce one |
 | the deck's own `title`, changed | A deck's title is its Drive name, and no `batchUpdate` request changes it. [`gdrive rename`](#gdrive-rename-file-name) does, in one call — for a deck the Drive name *is* the title ([`../decisions/0052`](../decisions/0052-rename.md)) |
 
@@ -1789,6 +1831,11 @@ an **existing** slide is the one thing that fails the write instead:
 An `elements` key the document does not carry at all is not an edit — a
 hand-authored slide that never mentions the deck's text boxes is accepted — but
 a key that is there must match what `read` emitted, entry for entry.
+
+The comparison is positional rather than a diff, so it cannot tell an edit from
+an insertion that shifted everything after it. A document with a different
+*number* of entries is therefore refused as that: "the document lists 3
+elements where the slide has 2", naming the first entry that did not match.
 
 ```console
 $ gdrive slides write "Decks/Q3" --file deck.yaml

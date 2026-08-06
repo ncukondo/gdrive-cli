@@ -419,6 +419,41 @@ describe("planSlideWrite: elements (0030 §3, 0051 §3)", () => {
     expect(messageOf(() => plan(removed))).toContain("x3");
   });
 
+  /**
+   * The comparison is positional, so the entry at index 0 no longer matches
+   * when one is put in front of it. Saying its text changed would send the
+   * reader to look at an entry nobody touched; the count is what actually
+   * differs, and it is what the refusal reports.
+   */
+  it("does not call an inserted element a changed one", () => {
+    const prepended = edited(2, {
+      elements: [
+        { id: "x0", kind: "shape" as const, text: "Pasted in front" },
+        { id: "x3", kind: "shape" as const, text: "A heading someone placed by hand" },
+      ],
+    });
+    const message = messageOf(() => plan(prepended));
+    expect(message).toContain("the document lists 2 elements where the slide has 1");
+    expect(message).not.toContain("the text of an element changed");
+  });
+
+  it("still says the text changed when the counts match", () => {
+    const changed = edited(2, {
+      elements: [{ id: "x3", kind: "shape" as const, text: "A heading someone retyped" }],
+    });
+    expect(messageOf(() => plan(changed))).toContain("the text of an element changed");
+  });
+
+  it("names an entry with no id in words, since it cannot name it by id", () => {
+    const anonymous = edited(2, {
+      elements: [
+        { id: "x3", kind: "shape" as const, text: "A heading someone placed by hand" },
+        { kind: "shape" as const, text: "Hand-written, with no id" },
+      ],
+    });
+    expect(messageOf(() => plan(anonymous))).toContain("an entry with no id is a shape");
+  });
+
   it("leaves a new slide's elements out and says so, rather than failing the write", () => {
     const added = {
       ...document,
