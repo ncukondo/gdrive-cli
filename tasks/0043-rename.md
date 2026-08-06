@@ -1,4 +1,4 @@
-# Task 0034: `gdrive rename <file> <name>`
+# Task 0043: `gdrive rename <file> <name>`
 
 Status: todo (move to `tasks/archive/` when done)
 Depends on: — (0027's `resolveTarget` and the `shortcut` type are already on main)
@@ -6,6 +6,13 @@ Parallel: yes (worktree-safe) — a new `commands/rename.ts` and one method in
 `lib/api.ts`. 0032 owns `commands/slides/` and 0033 owns `commands/cp.ts` and
 `lib/output.ts`, so the three touch no file in common except the append-only
 registration in `commands/drive-write.ts` and the shared docs.
+Numbering: [`0052`](../decisions/0052-rename.md) and
+[`0053`](../decisions/0053-a-form-rename-reaches-everything.md) call this task
+0034, which was the number it was filed under for an afternoon before anyone
+noticed `archive/0034-live-verification-fixes.md` already held it. The records
+are append-only ([`0032`](../decisions/0032-decisions-are-append-only.md) §3) and
+a stale cross-reference is not worth a record of its own, so they keep the old
+number and this line is where the two meet.
 
 ## Goal
 

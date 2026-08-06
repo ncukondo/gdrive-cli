@@ -84,7 +84,6 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0031 `slides read`](archive/0031-slides-read.md) | 0029 | E | done |
 | [0032 `slides write` / `slides create`](0032-slides-write.md) | 0031, 0030 | E | todo |
 | [0033 `cp -r` copies a folder tree](0033-recursive-copy.md) | 0027 | — | todo |
-| [0034 `gdrive rename`](0034-rename.md) | — | — | todo |
 | [0034 What the live verification found](archive/0034-live-verification-fixes.md) | 0027, 0029 | — | done |
 | [0035 The release notes carry the breaking changes](archive/0035-release-notes.md) | — | F | done |
 | [0036 The table stays a table](archive/0036-renderer-properties.md) | 0034 | F | closed unmerged |
@@ -94,6 +93,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0040 An insert stops inheriting the formatting next to it](archive/0040-inserted-content-is-default-styled.md) | — | — | done |
 | [0041 The rules that can be checked become scripts](archive/0041-rules-are-executed.md) | — | G | done |
 | [0042 The rules a script cannot check move to where they are read](archive/0042-rules-are-read-where-they-apply.md) | — | G | done |
+| [0043 `gdrive rename`](0043-rename.md) | — | — | todo |
 
 ## Parallelism notes
 
@@ -227,7 +227,7 @@ half was cheaper but the same kind: a real deck showed the second `BODY` of
 `TITLE_AND_TWO_COLUMNS` landing among the elements, which is what
 [`decisions/0051`](../decisions/0051-elements-holds-placeholders-too.md) answers.
 
-0034 came out of that same stretch, and out of a claim that turned out to be too
+0043 came out of that same stretch, and out of a claim that turned out to be too
 strong. The `Untitled form` defect was called unrepairable, which is why it was
 fixed before the merge rather than after — and the reason given was that nothing
 here renames a file. That much was true; the conclusion was not. Measuring
