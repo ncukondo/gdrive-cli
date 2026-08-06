@@ -285,7 +285,44 @@ describe("planFormWrite", () => {
       edited((items) => [...items, { type: "unsupported", title: "A video", raw: {} }]),
     );
     expect(result.requests).toEqual([]);
-    expect(result.skipped).toEqual([{ index: 3, title: "A video" }]);
+    expect(result.skipped).toEqual([{ index: 3, title: "A video", kind: "unsupported" }]);
+  });
+
+  /**
+   * "The API currently does not support creating file upload questions", says
+   * the generated type this repo ships. A `batchUpdate` is atomic, so letting
+   * one into a request takes every other edit down with it.
+   */
+  it("skips a file upload question the document asked to add, and keeps the rest", () => {
+    const result = plan(
+      edited((items) => {
+        const [first, ...rest] = items;
+        if (first === undefined) throw new Error("fixture");
+        return [
+          first,
+          { type: "file_upload", title: "Attach your slides", folder_id: "1F" },
+          { type: "text", title: "Your name" },
+          ...rest,
+        ];
+      }),
+    );
+    expect(result.skipped).toEqual([
+      { index: 1, title: "Attach your slides", kind: "fileUploadQuestion" },
+    ]);
+    // The item that cannot be made holds no position, so the one after it lands
+    // where the rest of the document does.
+    expect(result.entries).toEqual([{ action: "create", title: "Your name", index: 1 }]);
+    expect(result.requests).toEqual([
+      {
+        createItem: {
+          item: {
+            title: "Your name",
+            questionItem: { question: { required: false, textQuestion: { paragraph: false } } },
+          },
+          location: { index: 1 },
+        },
+      },
+    ]);
   });
 });
 
@@ -315,10 +352,90 @@ describe("planFormCreate", () => {
   });
 
   it("reports the unmodelled items it could not carry over", () => {
-    expect(planFormCreate(document, "Copy").skipped).toEqual([{ index: 1, title: "Watch this" }]);
+    expect(planFormCreate(document, "Copy").skipped).toEqual([
+      { index: 1, title: "Watch this", kind: "unsupported" },
+    ]);
   });
 
   it("plans only the title for a document with nothing but one", () => {
     expect(planFormCreate({ title: "Empty", items: [] }, "Empty").requests).toEqual([]);
+  });
+
+  /**
+   * `go_to_section_id` is an item id — "Item ID of section header to go to",
+   * says the generated type — and it names an item of the form the document was
+   * *read* from. A new form has none of those ids, so copying one over sends
+   * navigation that points at nothing, which is exactly what 0028 §1 refuses to
+   * do with `id` itself. `go_to_action` is not an id and travels fine.
+   */
+  it("drops section navigation, whose target belongs to the form it was read from", () => {
+    const branching: FormRaw = {
+      info: { title: "Branching" },
+      items: [
+        {
+          itemId: "i-branch",
+          title: "Which team are you on?",
+          questionItem: {
+            question: {
+              questionId: "q-branch",
+              choiceQuestion: {
+                type: "RADIO",
+                options: [
+                  { value: "Sales", goToSectionId: "i-page" },
+                  { value: "Engineering", goToAction: "NEXT_SECTION" },
+                ],
+              },
+            },
+          },
+        },
+        { itemId: "i-page", title: "Sales", pageBreakItem: {} },
+      ],
+    };
+    const source = toFormDocument(branching).document;
+    const result = planFormCreate(source, "Copy");
+
+    const [created] = result.requests.filter((request) => "createItem" in request);
+    const options =
+      created !== undefined && "createItem" in created
+        ? created.createItem.item.questionItem?.question.choiceQuestion?.options
+        : [];
+    expect(options).toEqual([
+      { value: "Sales" },
+      { value: "Engineering", goToAction: "NEXT_SECTION" },
+    ]);
+    expect(result.skipped).toEqual([
+      { index: 0, title: "Which team are you on?", kind: "option.goToSectionId" },
+    ]);
+  });
+
+  /** A write is a different matter: those ids name items the form really has. */
+  it("keeps section navigation on a write, where the target is in the same form", () => {
+    const branching: FormRaw = {
+      info: { title: "Branching" },
+      items: [{ itemId: "i-page", title: "Sales", pageBreakItem: {} }],
+    };
+    const added = parseFormDocument(
+      [
+        "title: Branching",
+        "items:",
+        "  - type: choice",
+        "    choice_type: radio",
+        "    title: Which team?",
+        "    options:",
+        "      - value: Sales",
+        "        go_to_section_id: i-page",
+        "  - id: i-page",
+        "    type: page_break",
+        "    title: Sales",
+      ].join("\n"),
+    );
+    const result = planFormWrite(branching, added, { prune: false });
+    const [created] = result.requests.filter((request) => "createItem" in request);
+    const options =
+      created !== undefined && "createItem" in created
+        ? created.createItem.item.questionItem?.question.choiceQuestion?.options
+        : [];
+    expect(options).toEqual([{ value: "Sales", goToSectionId: "i-page" }]);
+    expect(result.skipped).toEqual([]);
   });
 });

@@ -33,9 +33,18 @@ export function reportUnsupportedItems(
 }
 
 /**
- * The items a write left alone because 0028 §2 forbids a request for them —
- * an `unsupported` node the document asked to *add*, which carries the API's
- * resource rather than anything a `createItem` could send. The same channel
+ * Why a request could not carry what the document asked for. Each is a fact
+ * about the Forms API rather than about this CLI, so each says what the API
+ * refuses; the `kind` beside it is the same vocabulary `read` reports in.
+ */
+const SKIPPED_REASON: Record<string, string> = {
+  unsupported: "not modelled, and `raw` is the API's shape rather than a request's",
+  fileUploadQuestion: "the API cannot create a file upload question",
+  "option.goToSectionId": "section navigation points at the form it was read from",
+};
+
+/**
+ * What a write left out, because no request could carry it. The same channel
  * `read` uses, because the answer to "why is this not in my form" belongs
  * beside the answer to "why is this node opaque".
  */
@@ -48,10 +57,11 @@ export function reportSkippedItems(
     format,
     warn,
     prefix: "Not written",
-    describe: (item) =>
-      item.title === ""
-        ? `document item ${item.index}`
-        : `${item.title} (document item ${item.index})`,
+    describe: (item) => {
+      const name = item.title === "" ? `document item ${item.index}` : item.title;
+      const why = SKIPPED_REASON[item.kind] ?? item.kind;
+      return `${name} (document item ${item.index}): ${why}`;
+    },
   });
 }
 
@@ -71,17 +81,17 @@ export function renderPlan(
   formId: string,
   state: { applied: boolean; dryRun: boolean },
 ): string {
-  const count = String(entries.length);
   if (entries.length === 0) return line`No changes to ${formId}`;
+  const count = entries.length === 1 ? "1 change" : `${entries.length} changes`;
 
   const table = formatTable(
     ["action", "position", "id", "title"],
     entries.map((entry) => [entry.action, position(entry), entry.id ?? "", entry.title]),
   );
   const summary = state.applied
-    ? line`Applied ${count} changes to ${formId}`
+    ? line`Applied ${count} to ${formId}`
     : state.dryRun
-      ? line`Planned ${count} changes to ${formId}; --dry-run wrote nothing`
-      : line`Planned ${count} changes to ${formId}`;
+      ? line`Planned ${count} to ${formId}; --dry-run wrote nothing`
+      : line`Planned ${count} to ${formId}`;
   return `${table}\n${summary}`;
 }

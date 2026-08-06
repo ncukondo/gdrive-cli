@@ -196,7 +196,16 @@ describe("the plan handleFormsWrite reports (decision 0028 §4)", () => {
     const [header, row, summary] = result.output.split("\n");
     expect(header?.split("\t")).toEqual(["action", "position", "id", "title"]);
     expect(row?.split("\t")).toEqual(["update", "0", "i1", "Which team do you work in?"]);
-    expect(summary).toBe("Applied 1 changes to 1FoRm");
+    expect(summary).toBe("Applied 1 change to 1FoRm");
+  });
+
+  it("counts one change as a change and two as changes", async () => {
+    const doc = renamed();
+    const result = await run(
+      { ...doc, items: [...doc.items, { type: "text", title: "Your name" }] },
+      { format: "text" },
+    );
+    expect(result.output.split("\n").at(-1)).toBe("Applied 2 changes to 1FoRm");
   });
 
   it("prints the number of changes in quiet mode", async () => {
@@ -216,7 +225,7 @@ describe("the plan handleFormsWrite reports (decision 0028 §4)", () => {
   it("says a dry run wrote nothing in text mode", async () => {
     const result = await run(renamed(), { format: "text", dryRun: true });
     expect(result.output.split("\n").at(-1)).toBe(
-      "Planned 1 changes to 1FoRm; --dry-run wrote nothing",
+      "Planned 1 change to 1FoRm; --dry-run wrote nothing",
     );
   });
 
@@ -226,9 +235,32 @@ describe("the plan handleFormsWrite reports (decision 0028 §4)", () => {
       items: [...document.items, { type: "unsupported", title: "A video", raw: {} }],
     };
     const json = await run(withOpaque);
-    expect(JSON.parse(json.output).data.unsupported).toEqual([{ index: 2, title: "A video" }]);
+    expect(JSON.parse(json.output).data.unsupported).toEqual([
+      { index: 2, title: "A video", kind: "unsupported" },
+    ]);
     const text = await run(withOpaque, { format: "text" });
-    expect(text.warnings).toEqual(["Not written: A video (document item 2)"]);
+    expect(text.warnings).toEqual([
+      "Not written: A video (document item 2): not modelled, and `raw` is the API's shape rather than a request's",
+    ]);
+  });
+
+  /**
+   * The Forms API cannot create a file upload question, so a write that asked
+   * for one has to say the item is not there rather than report a success.
+   */
+  it("reports a file upload question it was asked to add, and writes the rest", async () => {
+    const withUpload: FormDocument = {
+      ...document,
+      items: [
+        ...document.items,
+        { type: "file_upload", title: "Attach your slides", folder_id: "1F" },
+      ],
+    };
+    const result = await run(withUpload);
+    expect(JSON.parse(result.output).data.unsupported).toEqual([
+      { index: 2, title: "Attach your slides", kind: "fileUploadQuestion" },
+    ]);
+    expect(result.batches).toEqual([]);
   });
 });
 
