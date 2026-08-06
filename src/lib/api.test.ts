@@ -447,9 +447,12 @@ describe("metadata & mutations", () => {
 
   it("renameFile lets a Drive refusal travel as PERMISSION_DENIED, in Drive's words", async () => {
     const update = vi.fn(async (_params: UpdateParam) => {
-      throw Object.assign(new Error("The user does not have sufficient permissions for this file"), {
-        code: 403,
-      });
+      throw Object.assign(
+        new Error("The user does not have sufficient permissions for this file"),
+        {
+          code: 403,
+        },
+      );
     });
     await expect(renameFile(mockDrive({ update }), "r", "Notes 2026")).rejects.toMatchObject({
       code: "PERMISSION_DENIED",

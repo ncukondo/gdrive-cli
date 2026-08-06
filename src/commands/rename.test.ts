@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleRename } from "./rename.ts";
-import type { DriveFile } from "../types/index.ts";
+import { FILE_TYPES, type DriveFile } from "../types/index.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -44,7 +44,6 @@ describe("handleRename", () => {
         format: "text",
         quiet: false,
         write: () => {},
-        warn: () => {},
       });
       expect(resolvePath).toHaveBeenCalledWith(arg);
       expect(renameFile).toHaveBeenCalledWith("R1", "Notes 2026");
@@ -57,7 +56,6 @@ describe("handleRename", () => {
       renameFile: async () => file(),
       file: "Reports/Notes",
       name: "Notes 2026",
-      warn: () => {},
     };
 
     const text = collect();
@@ -89,12 +87,52 @@ describe("handleRename", () => {
           format: "text",
           quiet: false,
           write: () => {},
-          warn: () => {},
         }),
       ).rejects.toMatchObject({ code: "INVALID_ARGS" });
       // Resolving a path is itself a Drive call, so nothing may run first.
       expect(resolvePath).not.toHaveBeenCalled();
       expect(renameFile).not.toHaveBeenCalled();
+    }
+  });
+
+  it("does the same thing to every type of file, at the same cost", async () => {
+    // Drive carries the new name into the in-document title of a Doc, a Sheet,
+    // a deck and a form alike (decision 0053), so there is nothing for a type to
+    // change: not the calls made, not the output, not a note beside it. An
+    // earlier version asked what type it had renamed and said something extra
+    // for one of them; a per-type branch coming back fails here.
+    for (const type of FILE_TYPES) {
+      const calls: string[] = [];
+      const deps = {
+        resolvePath: async () => {
+          calls.push("resolvePath");
+          return "R1";
+        },
+        renameFile: async () => {
+          calls.push("renameFile");
+          return file({ type });
+        },
+        file: "Reports/Notes",
+        name: "Notes 2026",
+        quiet: false,
+      };
+
+      const text = collect();
+      const result = await handleRename({ ...deps, format: "text", write: text.write });
+      expect(result.exitCode).toBe(0);
+      expect(text.output).toBe("Renamed to Notes 2026 (R1)");
+      // Two calls whatever the type: the walk, then the rename. A type that
+      // needed asking about would show up here as a third.
+      expect(calls).toEqual(["resolvePath", "renameFile"]);
+
+      const json = collect();
+      await handleRename({ ...deps, format: "json", write: json.write });
+      // `toEqual` rather than `toMatchObject`: the envelope carries the renamed
+      // file and nothing beside it, which is the half a matcher would miss.
+      expect(JSON.parse(json.output)).toEqual({
+        success: true,
+        data: { file: file({ type }) },
+      });
     }
   });
 });
