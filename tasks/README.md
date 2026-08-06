@@ -96,6 +96,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0043 `gdrive rename`](archive/0043-rename.md) | — | — | done |
 | [0044 A name this CLI cannot address is refused](0044-addressable-names.md) | 0033, 0043 | H | todo |
 | [0045 The live suite reaches the write paths](0045-e2e-write-paths.md) | — | H | todo |
+| [0046 A `create` that fails leaves nothing in My Drive's root](0046-create-lands-in-its-parent.md) | 0045 | — | todo |
 
 ## Parallelism notes
 
@@ -281,6 +282,16 @@ rather than at coverage — an encoding the API refuses and a fake accepts — a
 its manual step is to break one of the six fixes locally and watch the matching
 case go red, because a live suite nobody has seen fail is one nobody knows is
 wired up.
+
+0046 came out of 0045's review rather than from the survey. Writing live tests
+for the write paths exposed that all four `create` commands are create-fill-move,
+so a fill that fails leaves the file in My Drive's root — outside every sandbox,
+with its id lost, on the one path the tests exist for. `tests/e2e/forms.test.ts`
+answered it with a rule ("never make a create here fail after the form exists"),
+and the reviewer's objection is the useful part: a rule that holds exactly when
+the tests are green and fails exactly when they are red is not containment. The
+fix is a reordering, and it is worth the task because `.husky/pre-push` runs that
+suite on every push.
 
 0044 is the class 0054 §3 turned out to be one member of. Reviewing the `cp -r`
 and `rename` branches found that `rename` can give a file a name a sibling
