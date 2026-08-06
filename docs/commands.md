@@ -1066,6 +1066,10 @@ so `gdrive forms read "Onboarding feedback"` is `NOT_FOUND` for the very form
 `search` just returned. Take the ID from `search`, or the name in its `Name`
 column.
 
+`gdrive forms create` sets both names to its `<title>`, so a form made here is
+reachable by path from the start. It is the only chance to: the Drive name of a
+form can be set when the form is created and never again through this API.
+
 ### The document
 
 ```yaml
@@ -1115,7 +1119,7 @@ only. `title` and `description` are optional on every item, and `required`
 | `text` | `paragraph` — `true` is the multi-line answer box |
 | `date` | `include_time`, `include_year` |
 | `time` | `duration` — `true` is an elapsed time rather than a time of day |
-| `file_upload` | `folder_id`, `max_files`, `max_file_size`, `types` |
+| `file_upload` | `folder_id`, `max_files`, `max_file_size`, `types`. **Read only** — the Forms API cannot create a file upload question, so `write` never sends one ([below](#what-a-write-leaves-out)) |
 | `page_break` | — (a section; its `title`/`description` head the new page) |
 | `text_item` | — (a title and description block, asks nothing) |
 | `unsupported` | `raw` (see below) |
@@ -1129,6 +1133,11 @@ the write-in choice and the API refuses to be sent one, so `write` drops it the
 way it drops a `question_id`; `{other: true}` on its own is a complete option,
 and that is how `read` prints one Google gave no label. Editing the `value`
 beside `other: true` changes nothing in the form.
+
+`go_to_section_id` is **an item id** — the `id` of the `page_break` to jump to
+— so it only means anything within one form. `write` sends it as given;
+[`create`](#gdrive-forms-create-title---file-path---parent-folder) drops it,
+because a new form has none of the ids the document was read with.
 
 ### What is not modelled
 
@@ -1289,8 +1298,8 @@ $ gdrive forms read "Surveys/2026" > form.yaml
 $ $EDITOR form.yaml
 $ gdrive forms write -f text "Surveys/2026" --file form.yaml
 action	position	id	title
-update	0	1a2b3c4d	Which team do you work in?
 create	3		Anything else?
+update	0	1a2b3c4d	Which team do you work in?
 Applied 2 changes to 1FoRm...
 ```
 
@@ -1324,15 +1333,28 @@ create, update, move and delete, each naming the item.
 
 ```json
 { "id": "1FoRm...", "applied": true,
-  "plan": [ { "action": "update", "id": "1a2b3c4d", "title": "Which team do you work in?", "index": 0 },
-            { "action": "move", "id": "2b3c4d5e", "title": "How satisfied are you?", "from": 3, "index": 1 },
-            { "action": "create", "title": "Anything else?", "index": 3 } ] }
+  "plan": [ { "action": "move", "id": "2b3c4d5e", "title": "How satisfied are you?", "from": 3, "index": 1 },
+            { "action": "create", "title": "Anything else?", "index": 3 },
+            { "action": "update", "id": "1a2b3c4d", "title": "Which team do you work in?", "index": 0 } ] }
 ```
 
 - `action` is `form_info`, `create`, `update`, `move` or `delete`. `form_info`
   is the form's own `title` and `description`; it names no item.
 - `id` is absent on a create — the API assigns one — and on `form_info`.
-- `index` is where the item ends up; `from` is where a moved item was.
+- **The entries are 1:1 with the requests that were sent**, grouped in the order
+  those requests run: `form_info`, then `delete`, then `move`, then `create`,
+  then `update`. That grouping is what keeps each index below valid as the batch
+  runs, so it is neither the order you edited in nor the order the form ends up
+  in. (Within the deletions the plan lists items in form order while the
+  requests run last-first, since deleting an earlier item would shift a later
+  one's position.)
+- **`index` is a position at the moment that request runs, not one coordinate
+  system throughout.** A `delete`'s `index` is where the item sat in the form as
+  it was read. A `move`'s `from` and `index` count the list *after* the
+  deletions and *before* the creations. A `create`'s and an `update`'s `index`
+  is the position in the document, which is where the item ends up. Read the
+  plan as a report of what was sent, not as coordinates to look items up by
+  afterwards — `id` and `title` are what identify an item across the whole plan.
 - `applied` is `false` for a `--dry-run` and for an empty plan, and `dry_run`
   is `true` on a dry run.
 - In text mode the plan is a table: `action`, `position`, `id`, `title`, with
@@ -1347,12 +1369,26 @@ whose plan holds a `delete` entry **applied** it, a `PRUNE_REQUIRED` error
 **refused** it, and a successful write with no `delete` entry was **never
 asked** to (the item was already gone).
 
-An item that reads as `type: unsupported` produces no request at all — not an
-update, not a delete — so it stays exactly as it is while the questions around
-it change; only a `move` can name it. Adding a *new* `unsupported` item is the
-one thing `write` cannot do, since `raw` holds the API's shape rather than the
-document's; those are reported through the `unsupported` channel, one line on
-stderr in text mode, and left out of the form.
+#### What a write leaves out
+
+Two kinds of item produce **no request at all** — not an update, not a delete —
+so each stays exactly as it is while the questions around it change, and only a
+`move` can name one:
+
+| Item | Why |
+|---|---|
+| `type: unsupported` | `raw` holds the API's own shape, not a request's, so re-sending it invites a mismatch |
+| `type: file_upload` | "The API currently does not support creating file upload questions" — Google's words. A `batchUpdate` is atomic, so one in a request would take every other edit down with it |
+
+Asking for one anyway — adding it, or editing one that is already there — is
+reported through the `unsupported` channel rather than silently succeeding: one
+line on stderr in text mode, a `data.unsupported` array in JSON, each entry
+naming the document position, the title and the `kind` that could not be sent.
+Nothing is in `data.plan` for them, because nothing was planned.
+
+So a file upload question survives an edit to the form around it, and a form
+containing one can be read, but this CLI cannot create one or change it. Use
+the Forms UI for that question and `write` for the rest.
 
 Nothing about form **settings** is ever sent. The document carries none, so an
 update derived from it would say `isQuiz: false` — which, per Google's own
@@ -1385,10 +1421,20 @@ Drive move when `--parent` is given. `docs create` and `sheets create` have the
 same shape for the same reason.
 
 The `<title>` argument names the form and **wins over the document's `title`**;
-everything else — the description and the items — comes from the document. Every
-`id` and `question_id` in it is ignored, because a new form has no items of its
-own to match: that is what makes reading one form and creating another a copy
-rather than an error about unknown IDs.
+everything else — the description and the items — comes from the document.
+
+`<title>` becomes **both** of a form's [two names](#finding-a-form): the title
+responders see and the Drive name that `ls`, `search` and `info` report and that
+a path resolves by. That is only possible here — no `batchUpdate` can change the
+Drive name, and this CLI has no rename — so a form created any other way stays
+`Untitled form` in Drive and cannot be addressed by path afterwards.
+
+Every **id** in the document is ignored, because a new form has none of them:
+`id`, `question_id`, and the `go_to_section_id` of an option, which names a
+`page_break` of the form the document was read from. Ignoring them is what makes
+reading one form and creating another a copy rather than an error about unknown
+IDs — at the cost of the branching, which is reported and left out rather than
+pointed at nothing. Set it again in the new form if you need it.
 
 ```console
 $ gdrive forms create -f text "2027 Engagement survey" --file form.yaml --parent Surveys
@@ -1403,10 +1449,13 @@ Created 2027 Engagement survey (1NeWfOrM...)
 
 Quiet: the new form ID.
 
-A copy is a copy of the *questions*, not of the form: the responses stay with
-the original, and an `unsupported` item — a video, an image, a grid — cannot be
-recreated and is reported rather than carried. A form that is a quiz copies as
-a form that is not one.
+A copy is a copy of the *questions*, not of the form. The responses stay with
+the original; a form that is a quiz copies as a form that is not one; and what
+[a write leaves out](#what-a-write-leaves-out) a create leaves out too — an
+`unsupported` item (a video, an image, a grid) and a `file_upload` question
+cannot be made at all, so each is reported in `data.unsupported` rather than
+carried. Everything left out is named, so the diff between the two forms is
+never a surprise.
 
 ---
 
