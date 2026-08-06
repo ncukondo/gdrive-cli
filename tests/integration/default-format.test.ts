@@ -128,6 +128,10 @@ const slidesClient: SlidesClient = {
         slides: [{ objectId: "s1", slideProperties: { layoutObjectId: "L_SH" } }],
       },
     }),
+    create: async ({ requestBody }) => ({
+      data: { presentationId: "1NeWdEcK", title: requestBody.title },
+    }),
+    batchUpdate: async ({ presentationId }) => ({ data: { presentationId } }),
   },
 };
 

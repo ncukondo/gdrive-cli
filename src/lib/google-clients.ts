@@ -4,7 +4,7 @@ import type { DriveClient } from "./api.ts";
 import type { DocsClient, DocsRequest } from "./docs-api.ts";
 import type { FormsClient, FormsRequest } from "./forms-api.ts";
 import type { SheetsClient } from "./sheets-api.ts";
-import type { SlidesClient } from "./slides-api.ts";
+import type { SlidesClient, SlidesRequest } from "./slides-api.ts";
 
 type OAuth2Client = InstanceType<(typeof google.auth)["OAuth2"]>;
 
@@ -121,6 +121,18 @@ export type GeneratedParamChecks = [
     UnknownParams<SlidesClient["presentations"]["get"], slides_v1.Params$Resource$Presentations$Get>
   >,
   AssertNoUnknownParams<
+    UnknownParams<
+      SlidesClient["presentations"]["create"],
+      slides_v1.Params$Resource$Presentations$Create
+    >
+  >,
+  AssertNoUnknownParams<
+    UnknownParams<
+      SlidesClient["presentations"]["batchUpdate"],
+      slides_v1.Params$Resource$Presentations$Batchupdate
+    >
+  >,
+  AssertNoUnknownParams<
     UnknownParams<SheetsClient["spreadsheets"]["get"], sheets_v4.Params$Resource$Spreadsheets$Get>
   >,
   AssertNoUnknownParams<
@@ -176,4 +188,14 @@ export type DocsRequestChecks = [
 export type FormsRequestChecks = [
   AssertNoUnknownParams<UnknownRequestKeys<FormsRequest, forms_v1.Schema$Request>>,
   FormsRequest extends forms_v1.Schema$Request ? true : never,
+];
+
+/**
+ * The same guard for Slides (decision 0030). A deck is edited by object id, so
+ * a field name the API ignores is how a `deleteText` silently clears nothing
+ * and the `insertText` after it doubles the text instead of replacing it.
+ */
+export type SlidesRequestChecks = [
+  AssertNoUnknownParams<UnknownRequestKeys<SlidesRequest, slides_v1.Schema$Request>>,
+  SlidesRequest extends slides_v1.Schema$Request ? true : never,
 ];

@@ -262,13 +262,21 @@ function createFormsSpies(): FormsSpies {
 interface SlidesSpies {
   client: SlidesClient;
   get: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  batchUpdate: ReturnType<typeof vi.fn>;
 }
 
 function createSlidesSpies(): SlidesSpies {
   const get = vi.fn(async ({ presentationId }: { presentationId: string }) => ({
     data: { presentationId, title: "Q3 review", slides: [] },
   }));
-  return { client: { presentations: { get } }, get };
+  const create = vi.fn(async ({ requestBody }: { requestBody: { title: string } }) => ({
+    data: { presentationId: "prsNew", title: requestBody.title },
+  }));
+  const batchUpdate = vi.fn(async ({ presentationId }: { presentationId: string }) => ({
+    data: { presentationId },
+  }));
+  return { client: { presentations: { get, create, batchUpdate } }, get, create, batchUpdate };
 }
 
 const workDir = mkdtempSync(join(tmpdir(), "gdrive-shortcut-"));
