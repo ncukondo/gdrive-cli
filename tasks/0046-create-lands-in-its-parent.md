@@ -35,10 +35,13 @@ in My Drive's root, whatever fails.
   optional `data`, on the general ground that `success: false` must stop implying
   nothing happened. This is the second command family to need it.
 
-**No new decision is needed.** The move-first ordering is an implementation
-choice inside what 0028 already describes, and the envelope is already general.
-If the work turns out to need a position nobody has taken, stop and say so
-rather than deciding it here.
+**No new decision was needed for the ordering itself**, but it left two records
+describing a sequence the code no longer runs — 0028 §7 and 0030 §4 both say
+create, then fill, then move.
+[`0057`](../decisions/0057-a-create-moves-before-it-fills.md) corrects them, and
+carries the one observation of the defect in the wild: a form orphaned in My
+Drive's root on 2026-08-06 by the first `forms create` of that day, unnoticed
+for a day.
 
 ## Scope
 
@@ -96,9 +99,12 @@ part it never ran (`decisions/0043` §4).
 - Automated: `bun run test src/commands` — the four commands. `bun run test:e2e`
   — the existing suite must stay green; this task adds no e2e file, but it is the
   suite whose containment the change exists to restore.
-- Manual, against a real account: make a `forms create --file` fail on its fill —
-  a document with an `other: true` option and a `value` beside it will do, or any
-  item the API refuses — and confirm the form is **in `--parent`**, that the
+- Manual, against a real account: make a `forms create --file` fail on its fill.
+  **Not** with an `other: true` option beside a `value` — task 0030's branch
+  fixed that one and 0045's suite now asserts it round-trips. What does fail is
+  an option set that ends up half go-to-enabled: give one option a
+  `go_to_action` and leave its neighbour bare, and the API answers *Invalid
+  Options, Either all or no options should be go to enabled*. Then — and confirm the form is **in `--parent`**, that the
   error names its id, and that `gdrive rm <that id>` removes it. Then check My
   Drive's root is untouched. Repeat for `slides create --file` with an unknown
   layout, which is the deck's version of the same failure and is reachable
