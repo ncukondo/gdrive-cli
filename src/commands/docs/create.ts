@@ -64,16 +64,18 @@ export async function handleDocsCreate(deps: DocsCreateDeps): Promise<CommandRes
   const created = await deps.createDocument(deps.title);
 
   const notes = await afterCreate(created, { parentId, moveFile: deps.moveFile }, async () => {
-    const written: UnsupportedNote[] = [];
-    if (deps.content === undefined) return written;
+    // Only a Markdown insert has anything to report; the other three paths
+    // write nothing this document could not carry.
+    const none: UnsupportedNote[] = [];
+    if (deps.content === undefined) return none;
     const text = await deps.readInput(deps.content);
-    if (text === "") return written;
+    if (text === "") return none;
     // The document was created a moment ago, so index 1 is both edges of the
     // one empty paragraph it has (decision 0045 §2).
     const boundary = { atParagraphStart: true, atParagraphEnd: true };
     if (as === "markdown") return deps.insertMarkdown(created.id, 1, text, { boundary });
     await deps.insertText(created.id, 1, text, boundary);
-    return written;
+    return none;
   });
 
   deps.write(
