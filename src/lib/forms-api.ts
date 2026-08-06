@@ -90,8 +90,10 @@ export interface BatchUpdateParams {
 export interface FormsClient {
   forms: {
     get: (params: { formId: string }) => Promise<{ data: FormRaw }>;
-    /** The API takes a title and nothing else — see `createForm` (0028 §7). */
-    create: (params: { requestBody: { info: { title: string } } }) => Promise<{ data: FormRaw }>;
+    /** The API takes the two titles and nothing else — see `createForm` (0028 §7). */
+    create: (params: {
+      requestBody: { info: { title: string; documentTitle: string } };
+    }) => Promise<{ data: FormRaw }>;
     batchUpdate: (params: BatchUpdateParams) => Promise<{ data: { form?: FormRaw } }>;
     responses: {
       list: (params: ListResponsesParams) => Promise<{ data: ListResponsesRaw }>;
@@ -111,16 +113,25 @@ export async function getForm(client: FormsClient, formId: string): Promise<Form
 }
 
 /**
- * Creates an empty form. `forms.create` accepts a title and nothing else — no
- * description, no items, no parent folder — so a filled form in a folder costs
- * two more calls, which is what `forms create` spends (decision 0028 §7).
+ * Creates an empty form. `forms.create` accepts the titles and nothing else —
+ * no description, no items, no parent folder — so a filled form in a folder
+ * costs two more calls, which is what `forms create` spends (decision 0028 §7).
+ *
+ * Both titles are sent, to the same string. A form has two names: `title` is
+ * what responders see, and `documentTitle` is the Drive name that `ls`,
+ * `search` and `info` report and that a path resolves by. `documentTitle` is
+ * settable **only here** — no `batchUpdate` request can change it, and this CLI
+ * has no rename — so a form created without one is called `Untitled form` in
+ * Drive permanently, and cannot be addressed by path afterwards.
  */
 export async function createForm(
   client: FormsClient,
   title: string,
 ): Promise<{ id: string; title: string }> {
   try {
-    const res = await client.forms.create({ requestBody: { info: { title } } });
+    const res = await client.forms.create({
+      requestBody: { info: { title, documentTitle: title } },
+    });
     return { id: res.data.formId ?? "", title: res.data.info?.title ?? title };
   } catch (error) {
     mapApiError(error);
