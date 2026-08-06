@@ -19,7 +19,7 @@ import {
   type DriveClient,
 } from "../lib/api.ts";
 import { copyTree } from "../lib/copy-tree.ts";
-import { resolvePath, resolveTarget, resolveTargetId } from "../lib/resolve-path.ts";
+import { childrenNamed, resolvePath, resolveTarget, resolveTargetId } from "../lib/resolve-path.ts";
 import { resolveGlobalOptions, handleError, type GlobalOptions } from "../index.ts";
 import { createUploadCommand, guessMimeType, handleUpload, type LocalFile } from "./upload.ts";
 import { createMkdirCommand, handleMkdir } from "./mkdir.ts";
@@ -147,6 +147,7 @@ export function registerDriveWrite(program: Command): void {
         resolveFolder: (arg) => resolveTargetId(drive, arg),
         copyFile: (id, parentId, name) => copyFile(drive, id, parentId, name),
         getFile: (id) => getFile(drive, id),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         copyTree: (source, destId, name) =>
           copyTree(drive, source, destId, name === undefined ? {} : { name }),
         file,
