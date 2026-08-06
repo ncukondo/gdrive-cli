@@ -12,16 +12,17 @@ AI-agent use.
 - **Multiple accounts** — authenticate several Google accounts, switch with
   `gdrive account use` or per-command `-a work@example.com` / `-a work`.
 - **Drive** — `ls`, `search`, `info`, `download`, `upload`, `mkdir`, `mv`,
-  `cp`, `ln`, `rm` (trash by default). Files addressed by ID or `Folder/name`
-  path.
+  `cp`, `ln`, `rename`, `rm` (trash by default). Files addressed by ID or
+  `Folder/name` path. `mv` only moves and `rename` only renames, so neither has
+  to guess which the second argument meant.
 - **Shared drives** — any shared-drive ID works in any command that takes one,
   with no flag, and `drive:<name>/<path>` addresses one by path; `gdrive drives`
   lists the drives and their IDs. Only `search` stays on My Drive by default,
   widened with `--all-drives` / `--drive <name>`.
 - **Shortcuts** — paths walk through a folder shortcut and reading one reads
-  what it points at, while `rm`, `mv`, `cp`, `share`, and `info` keep acting on
-  the shortcut itself — the rule POSIX applies to symlinks. `info` reports
-  `type: shortcut` with `target_id` / `target_type`, and `ln` makes one.
+  what it points at, while `rm`, `mv`, `cp`, `rename`, `share`, and `info` keep
+  acting on the shortcut itself — the rule POSIX applies to symlinks. `info`
+  reports `type: shortcut` with `target_id` / `target_type`, and `ln` makes one.
 - **Docs** — Markdown in both directions: `read` renders it, and `create`,
   `append`, `insert`, and `replace` write it back as real headings, tables,
   lists, and links. `--as text` writes the exact bytes instead.
@@ -98,6 +99,8 @@ gdrive ls "drive:Finance/2026"       # …or by name and path
 gdrive ls "Reports/link-to-2026"     # a folder shortcut: lists the target
 gdrive rm "Reports/link-to-2026"     # …but this trashes the shortcut
 gdrive ln "Reports/2026" Shared      # make one, named after its target
+
+gdrive rename "Reports/Notes" "Notes 2026"   # a new name, same folder
 
 gdrive docs read "Notes/Meeting"     # Markdown to stdout
 gdrive docs append "Notes/Meeting" @draft.md   # …and Markdown back in
