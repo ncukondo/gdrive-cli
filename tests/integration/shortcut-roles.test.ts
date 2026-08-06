@@ -87,9 +87,11 @@ const tree: DriveNode[] = [
   { id: "lnkGone", name: "link-to-gone", parents: ["rep1"], target: "1GoneDoc" },
   { id: "other", name: "Other", mimeType: FOLDER, parents: ["root"] },
   { id: "plain", name: "plain.txt", parents: ["root"] },
-  // The ids the Docs/Sheets fakes hand back, so the follow-up Drive move finds them.
+  // The ids the Docs/Sheets/Forms fakes hand back, so the follow-up Drive move
+  // finds them.
   { id: "newDoc", name: "Draft", mimeType: DOC, parents: [] },
   { id: "newSheet", name: "Draft", mimeType: SHEET, parents: [] },
+  { id: "frmNew", name: "Draft", mimeType: FORM, parents: [] },
 ];
 
 interface DriveSpies {
@@ -392,6 +394,11 @@ describe("container arguments follow a shortcut (decision 0025 §1)", () => {
   it("`sheets create --parent <link>` moves the new sheet into the target", async () => {
     await run(["sheets", "create", "Draft", "--parent", "Reports/link-to-2026"]);
     expect(firstArg(drive.update)).toMatchObject({ fileId: "newSheet", addParents: "y2026" });
+  });
+
+  it("`forms create --parent <link>` moves the new form into the target", async () => {
+    await run(["forms", "create", "Draft", "--parent", "Reports/link-to-2026"]);
+    expect(firstArg(drive.update)).toMatchObject({ fileId: "frmNew", addParents: "y2026" });
   });
 
   it("`mv <file> <link-to-folder>` lands in the target", async () => {

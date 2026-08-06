@@ -3,9 +3,10 @@ import { buildDriveClient, buildFormsClient } from "../../lib/google-clients.ts"
 import { nodeFs } from "../../lib/fs.ts";
 import { loadConfig } from "../../lib/config.ts";
 import { getAccountClient } from "../../lib/account.ts";
-import type { DriveClient } from "../../lib/api.ts";
+import { moveFile, type DriveClient } from "../../lib/api.ts";
 import {
   batchUpdateForm,
+  createForm,
   getForm,
   listResponses,
   type FormsClient,
@@ -23,6 +24,7 @@ import {
 import { createFormsReadCommand, handleFormsRead } from "./read.ts";
 import { createFormsResponsesCommand, handleFormsResponses } from "./responses.ts";
 import { createFormsWriteCommand, handleFormsWrite } from "./write.ts";
+import { createFormsCreateCommand, handleFormsCreate } from "./create.ts";
 
 async function buildClients(
   opts: GlobalOptions,
@@ -128,4 +130,31 @@ export function registerForms(program: Command): void {
     }
   });
   forms.addCommand(write);
+
+  const create = createFormsCreateCommand();
+  create.action(async (title: string) => {
+    const opts = resolveGlobalOptions(program);
+    const o = create.opts<{ file?: string; parent?: string }>();
+    try {
+      const { drive, forms: formsClient } = await buildClients(opts);
+      const result = await handleFormsCreate({
+        resolvePath: (arg) => resolveTargetId(drive, arg),
+        createForm: (t) => createForm(formsClient, t),
+        batchUpdate: (id, requests: FormsRequest[]) => batchUpdateForm(formsClient, id, requests),
+        moveFile: (id, parentId) => moveFile(drive, id, parentId),
+        readInput: input,
+        title,
+        format: opts.format,
+        quiet: opts.quiet,
+        write: stdout,
+        warn: stderr,
+        ...(o.file !== undefined ? { source: o.file } : {}),
+        ...(o.parent !== undefined ? { parent: o.parent } : {}),
+      });
+      process.exit(result.exitCode);
+    } catch (error) {
+      handleError(error, opts.format);
+    }
+  });
+  forms.addCommand(create);
 }
