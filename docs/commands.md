@@ -61,9 +61,10 @@ transcript is only worth showing when it shows the text. Without it — or witho
 instead.
 
 The exception is a command whose output **is** a document: `gdrive docs read`
-prints Markdown and `gdrive forms read` prints YAML with no flag at all, because
-those already are the machine representation and there is nothing for the JSON
-default to improve. `-f json` wraps one in the envelope when you want it there.
+prints Markdown, and `gdrive forms read` and `gdrive slides read` print YAML,
+with no flag at all, because those already are the machine representation and
+there is nothing for the JSON default to improve. `-f json` wraps one in the
+envelope when you want it there.
 See [`../decisions/0036`](../decisions/0036-machine-format-by-default.md) §1.
 
 Text is lossy on purpose. A tab or a newline in a file name — Drive accepts
@@ -159,7 +160,7 @@ same reason: `cat link` should read the target, `rm link` should not delete it.
 | Role | Follows | Arguments |
 |------|---------|-----------|
 | **Container** — "look inside this" | always | every intermediate path segment; `ls [folder]`; `--parent` on `mkdir`, `upload`, `docs create`, `sheets create`; the destination of `mv`, `cp` and `ln` |
-| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear`; `forms read/responses`; `ln <target>` |
+| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear`; `forms read/responses`; `slides read`; `ln <target>` |
 | **Entry** — "this file, as an entry in a folder" | never | `rm`; `mv <file>`; `cp <file>`; `share list/add/remove/link`; `info` |
 
 The two arguments of `mv link Other` play different roles in one command: the
@@ -1242,6 +1243,150 @@ Quiet: CSV to stdout.
 The respondent's email address and the response ID are not columns; response
 filtering, fetching one response by ID, and quiz grades are not implemented,
 and neither is writing a form (`forms write` / `forms create`).
+
+---
+
+## Slides (`gdrive slides`)
+
+A presentation is **one YAML document** (see
+[`../decisions/0029`](../decisions/0029-slides-document.md)), as a form is. A
+slide is its **layout, its placeholders and its speaker notes** — everything
+else on the slide is listed, read-only, under `elements`.
+
+The Slides API must be enabled on your Google Cloud project
+([`authentication.md`](authentication.md)); no new OAuth scope is needed, so an
+existing login keeps working.
+
+`<presentation>` is a *content* argument, so it follows a
+[shortcut](#shortcuts) to the deck it points at. A presentation reports
+[`type: slides`](#the-file-object), so `gdrive ls --type slides` lists the files
+this command takes.
+
+### The document
+
+```yaml
+id: 1PrEs...
+title: Q3 review
+revision_id: abc123
+slides:
+  - id: g2a1b3c
+    layout: TITLE_AND_BODY
+    title: The quarter in one slide
+    body: |-
+      Revenue up 12%
+      Churn flat
+    notes: Take questions here
+
+  - id: g5d6e7f
+    layout: SECTION_HEADER
+    title: What we do next
+
+  - id: g7h8i9j
+    layout: BLANK
+    skipped: true
+    elements:
+      - id: g1k2l3m
+        kind: shape
+        text: A heading someone placed by hand
+      - id: g4n5o6p
+        kind: image
+```
+
+Top level:
+
+| Field | Description |
+|-------|-------------|
+| `id` | The presentation ID. Output only |
+| `title` | The deck's title |
+| `revision_id` | The revision `read` saw. Output only here; a later `slides write` will send it back so a concurrent browser edit fails instead of being clobbered |
+| `slides` | The slides, in deck order |
+
+Per slide:
+
+| Field | Description |
+|-------|-------------|
+| `id` | The slide's object ID, and the key a write matches on. Output only |
+| `layout` | The layout the slide is built on (below) |
+| `skipped` | Present only when the slide is skipped in presentation mode |
+| `title`, `subtitle`, `body` | The text of the matching placeholder, when it has any |
+| `notes` | The speaker notes — the `BODY` placeholder of the slide's notes page, promoted to a field of its own so nobody has to know that |
+| `elements` | Everything that is not one of those placeholders. Read-only (below) |
+
+**No geometry appears, in either direction.** A slide in the API is a canvas of
+positioned boxes: every element carries a transform and a size in EMU, and the
+element order is z-order rather than reading order. None of it is in this
+document. What a deck *says* is here; what it looks like stays in the template
+([`../decisions/0029`](../decisions/0029-slides-document.md) §2).
+
+A placeholder with no text is left out entirely rather than written as `""`, so
+a template's empty boxes do not fill the document with blanks.
+
+### Layouts
+
+`layout` is the name the slide's layout carries. A deck built on one of Slides'
+own themes reports one of the eleven predefined layouts:
+
+`BLANK`, `CAPTION_ONLY`, `TITLE`, `TITLE_AND_BODY`, `TITLE_AND_TWO_COLUMNS`,
+`TITLE_ONLY`, `SECTION_HEADER`, `SECTION_TITLE_AND_DESCRIPTION`,
+`ONE_COLUMN_TEXT`, `MAIN_POINT`, `BIG_NUMBER`.
+
+A slide built on a layout that has no such name — an imported theme, a layout
+edited in the Slides UI — reports the **layout's object ID** instead. It is
+still a stable identifier for that layout; it is just not a name.
+
+Which placeholders a layout offers is the layout's business: `TITLE` gives you
+`title` and `subtitle`, `TITLE_AND_BODY` gives `title` and `body`, `BLANK`
+gives neither.
+
+### `elements` is read-only, and that matters
+
+Anything on a slide that is not one of the placeholders above — a text box
+someone dragged on, an image, a table, a chart — is listed with its ID, its
+`kind`, and its `text` where it has any:
+
+| `kind` | |
+|--------|---|
+| `shape` | Any shape, with its text. Also where a *second* placeholder of a type already taken lands — the right-hand column of `TITLE_AND_TWO_COLUMNS`, say — so its text is never silently dropped |
+| `image` | |
+| `table` | Listed with no text: a table's cells are not modelled ([`../decisions/0029`](../decisions/0029-slides-document.md)) |
+| `chart` | A chart linked from Sheets |
+| `video`, `line`, `group`, `word_art`, `speaker_spotlight` | |
+| `unknown` | An element kind newer than this CLI. Listed rather than dropped, so the slide's contents are never under-reported |
+
+**Editing an `elements` entry will not change the deck, and `slides write` will
+refuse the document rather than accept an edit it cannot make**
+([`../decisions/0030`](../decisions/0030-slides-write.md) §3). The asymmetry is
+deliberate: text outside a placeholder is how a large share of real decks are
+built, so hiding it would make the common deck read as empty — the one outcome
+worse than reading it partially. Showing it and refusing to write it is the
+honest half of that trade, and this paragraph is where you find out before the
+error does.
+
+So a deck built without a template reads as `BLANK` slides full of `elements`.
+That is accurate, and it is also the signal that very little of it will be
+editable from here.
+
+### `gdrive slides read <presentation>`
+
+Text output **is** the document, ready to redirect to a file with no flag, on
+the same terms as [`forms read`](#gdrive-forms-read-form): the YAML is already
+the machine representation
+([`../decisions/0036`](../decisions/0036-machine-format-by-default.md) §1).
+`-f json` carries the same structure — not a YAML string — in
+`data.presentation`.
+
+```console
+$ gdrive slides read "Decks/Q3" > deck.yaml
+```
+
+```json
+{ "id": "1PrEs...", "presentation": { "title": "Q3 review", "slides": [ ... ] } }
+```
+
+Quiet: the presentation ID.
+
+Not implemented: writing a deck (`slides write` / `slides create`), a Markdown
+rendering, thumbnails, and a table's contents.
 
 ---
 
