@@ -17,6 +17,12 @@ AI-agent use.
   to guess which the second argument meant. `cp -r` copies a whole folder tree —
   Drive has no request that does — and a run that cannot finish reports every
   file it already copied.
+- **A name you can address afterwards** — every command that gives a file a name
+  refuses one the destination folder already holds, one with a space at either
+  end, and one containing `/`, before it writes anything. Drive allows all three
+  and leaves you a file no path can reach; this says so at the moment it happens,
+  and names what to pass instead
+  ([details](docs/commands.md#a-name-has-to-be-addressable)).
 - **Shared drives** — any shared-drive ID works in any command that takes one,
   with no flag, and `drive:<name>/<path>` addresses one by path; `gdrive drives`
   lists the drives and their IDs. Only `search` stays on My Drive by default,
