@@ -291,13 +291,20 @@ export function isNamedPath(spec: string, exists: (path: string) => boolean): bo
 }
 
 /**
- * Whether an invocation adds to the index something the caller did not name
- * ([0048](../decisions/0048-staging-refuses-a-class.md) §1).
+ * Whether an invocation puts into the index a change the caller did not name
+ * ([0050](../decisions/0050-the-index-is-what-is-guarded.md) §1, restating
+ * [0048](../decisions/0048-staging-refuses-a-class.md) §1 without the word
+ * "add", which had become the rule).
  */
 function stagesUnnamed(git: Invocation, exists: (path: string) => boolean): boolean {
   if (git.binary !== "git") return false;
 
-  if (git.sub === "add" || git.sub === "stage") {
+  // `rm` puts a deletion into the index, which 0050 §1 makes the same rule:
+  // `git rm -r --cached .` stages a deletion of every tracked file from a
+  // command naming one pathspec. `git reset` and `git restore --staged` take a
+  // change back *out* and are deliberately untouched (0050 §2) — the reverse
+  // operation is how a mistake is undone, and an agent has no bypass.
+  if (git.sub === "add" || git.sub === "stage" || git.sub === "rm") {
     if (git.flags.some((f) => IMPLICIT_SHORT_ADD.has(f) || stagesByLongFlag(f))) return true;
     if (git.pathspecs.some((spec) => !isNamedPath(spec, exists))) return true;
     // No path and no interactive flag: the set comes from somewhere this cannot
@@ -328,7 +335,11 @@ const STAGE_MESSAGE =
   "  git add src/index.ts tests/index.test.ts\n\n" +
   "`git commit -a` and `-am` are the same rule: they stage every tracked change\n" +
   "without naming one. Stage, then commit. A flag like `-A` is refused even\n" +
-  "beside a path — drop the flag, the path is enough.";
+  "beside a path — drop the flag, the path is enough.\n" +
+  "`git rm -r .` is the same rule pointing the other way: it stages a deletion\n" +
+  "of everything below the pathspec. Name what you are removing. Taking a\n" +
+  "change back out of the index — `git reset`, `git restore --staged` — is not\n" +
+  "this rule and is not refused.";
 
 const REBASE_MESSAGE =
   "Rebase before requesting review (decision 0044 §1).\n" +
