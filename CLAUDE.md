@@ -1,20 +1,22 @@
 # gdrive-cli
 
-CLI for Google Drive, Docs, and Sheets — read and simple edits — with
-multi-account switching. Sibling of `gcal-cli`, designed for AI-agent use.
+CLI for Google Workspace files — read and simple edits — with multi-account
+switching. Sibling of `gcal-cli`, designed for AI-agent use. `package.json`'s
+`description` and `README.md` say which file types, and `docs/commands.md` the
+surface.
 
 ## Getting Started
 
 - `decisions/` holds the design, one record per topic, and is the source of truth
-  for *why*. Read it from the highest number down; `head -1 decisions/*.md` is
-  the table of contents and `decisions/CLAUDE.md` the conventions.
+  for *why*. Read it from the highest number down; `decisions/CLAUDE.md` has the
+  conventions and how to navigate it.
 - Read `tasks/README.md` for the current plan; pick a task, follow its TDD plan.
 - User-facing behavior lives in `docs/` and `README.md`.
-- The conventions that govern a directory sit in its own `CLAUDE.md` —
-  `src/`, `tests/`, `decisions/` — and are loaded when you edit there
-  ([`0047`](decisions/0047-rules-are-executed.md) §3). `decisions/0013` still
-  holds the architecture map and `decisions/0012` the testing rationale; the
-  directory files carry the part you need at the moment you type.
+- **A directory's conventions live in its own `CLAUDE.md`** and load when you
+  edit there ([`0047`](decisions/0047-rules-are-executed.md) §3). Look for one
+  before you start. `decisions/0013` still holds the architecture map and
+  `decisions/0012` the testing rationale; the directory files carry the part you
+  need at the moment you type.
 
 ## Reference implementations
 
@@ -98,18 +100,17 @@ Preview what the release will say with `bun run changelog <version>`.
   diverged; after that it is history.
 - **TDD**: failing test first, minimal code to pass, refactor green.
 - **Commits**: small, in English, staging the paths you name.
-- **Implementation lands through a pull request** (`0033` §1, widened by `0047`
-  §5): the code, its tests, its docs, the manifest, the installers, `.github/`,
-  `.husky/`, `.claude/` and a directory `CLAUDE.md` go on a `task/00NN-slug`
-  branch, reviewed by a fresh agent that holds no implementation context, then
-  rebase-merged. `decisions/` and `tasks/` commit straight to main; a task's
-  status and archive update follow the merge. Rebase before requesting review
-  (`0044` §1).
+- **Implementation lands through a pull request**, reviewed by a fresh agent that
+  holds no implementation context, then rebase-merged; `decisions/` and `tasks/`
+  commit straight to main and a task's status and archive update follow the
+  merge. What counts as implementation is [`0033`](decisions/0033-implementation-lands-through-review.md)
+  §1 as widened by [`0047`](decisions/0047-rules-are-executed.md) §5 — read it
+  there rather than from a copy here. Rebase before requesting review
+  ([`0044`](decisions/0044-the-reviewer-gets-the-current-plan.md) §1).
 - **Parallel**: parallel-safe tasks use `git worktree`; deps declared per task.
 - Docs updates are part of a task's Definition of Done, in the same PR.
-- **A rule a script can decide is a script, not a sentence** (`0047` §1). The
-  ones above that are checkable are checked by `.husky/pre-commit` and by
-  `.claude/`; the conventions that govern a directory live in its own
-  `CLAUDE.md`. Read `decisions/` from the highest number down for anything not
-  covered here — including the append-only rule, which `decisions/CLAUDE.md`
-  states where it applies.
+- **A rule a script can decide is a script, not a sentence**
+  ([`0047`](decisions/0047-rules-are-executed.md) §1), so some of the above are
+  enforced rather than remembered. `.husky/` and `.github/workflows/ci.yml` are
+  what runs on a commit and a push; read them for which. Anything not covered
+  here is in `decisions/`, read from the highest number down.

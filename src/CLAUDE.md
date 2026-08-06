@@ -8,9 +8,9 @@ Neither is repeated below ([`0047`](../decisions/0047-rules-are-executed.md) §3
   with zod, call into `lib/*`, and print through `lib/output.ts`. Never build a
   JSON envelope by hand ([`0013`](../decisions/0013-architecture.md)).
 - **The unit tests beside this source follow
-  [`tests/CLAUDE.md`](../tests/CLAUDE.md).** That file does not load when you
-  open a `*.test.ts` here, and 49 of this project's 54 test files are here. Read
-  it before writing one.
+  [`tests/CLAUDE.md`](../tests/CLAUDE.md).** That file does not load when you open
+  a `*.test.ts` here, and most of this project's tests are here. Read it before
+  writing one.
 - **A handler never calls `process.exit`.** It throws `AppError { code }`;
   `src/index.ts` maps the code to an exit code and a format
   ([`0013`](../decisions/0013-architecture.md),
