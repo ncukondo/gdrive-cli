@@ -97,6 +97,7 @@ export function registerDriveWrite(program: Command): void {
         // container (--parent)
         resolvePath: (arg) => resolveTargetId(drive, arg),
         createFolder: (n, parentId) => createFolder(drive, n, parentId),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         name,
         format: opts.format,
         quiet: opts.quiet,
