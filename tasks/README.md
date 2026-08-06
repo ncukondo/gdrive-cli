@@ -94,7 +94,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0041 The rules that can be checked become scripts](archive/0041-rules-are-executed.md) | — | G | done |
 | [0042 The rules a script cannot check move to where they are read](archive/0042-rules-are-read-where-they-apply.md) | — | G | done |
 | [0043 `gdrive rename`](archive/0043-rename.md) | — | — | done |
-| [0044 A name this CLI cannot address is refused](0044-addressable-names.md) | 0033, 0043 | — | todo |
+| [0044 A name this CLI cannot address is refused](0044-addressable-names.md) | 0033, 0043 | H | todo |
+| [0045 The live suite reaches the write paths](0045-e2e-write-paths.md) | — | H | todo |
 
 ## Parallelism notes
 
@@ -116,6 +117,12 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 - **Group F** (0035 / 0036): disjoint scopes — `.github/workflows/release.yml`
   plus a new root `CHANGELOG.md`, against `commands/file-format.ts` and its
   tests. Neither reads the other's files.
+- **Group H** (0044 / 0045): disjoint — 0044 owns `src/commands/` and a new
+  naming helper, 0045 owns `tests/e2e/` and nothing else. They meet at one point
+  and it is worth knowing: once 0044 lands, a fixture that creates two
+  same-named siblings is refused, so an e2e file written against today's
+  behaviour can go red for a reason that is not a regression. 0045's fixtures
+  should give every object a distinct name from the start.
 - **Group G** (0041 / 0042): the two halves of decision 0047, and they share no
   file. 0041 owns `scripts/`, `.husky/`, `.claude/`, `package.json` and
   `ci.yml`; 0042 owns `CLAUDE.md` files and nothing else. Either order of merge
@@ -264,6 +271,16 @@ compared two strings that could never match. The same branch had already resolve
 that alias on the destination side, with a test. A guard is only as good as the
 identifiers it compares, and the half that was written second is the half that
 was wrong.
+
+0045 answers issue #30, which had been open since the batch before this one and
+which every live pass since has made more expensive. Six write-side defects
+reached review this year through a full unit suite and were caught by a person
+running the CLI by hand; `tests/e2e/` covered Drive, Docs and Sheets and none of
+the write paths those defects lived in. The task aims its cases at that class
+rather than at coverage — an encoding the API refuses and a fake accepts — and
+its manual step is to break one of the six fixes locally and watch the matching
+case go red, because a live suite nobody has seen fail is one nobody knows is
+wired up.
 
 0044 is the class 0054 §3 turned out to be one member of. Reviewing the `cp -r`
 and `rename` branches found that `rename` can give a file a name a sibling
