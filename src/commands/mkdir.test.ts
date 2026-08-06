@@ -3,6 +3,7 @@ import { handleMkdir, type MkdirDeps } from "./mkdir.ts";
 import { childrenNamed, ROOT_ID } from "../lib/resolve-path.ts";
 import type { DriveFile } from "../types/index.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
 
 function folder(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -192,17 +193,14 @@ describe("handleMkdir", () => {
       expect(createFolder).toHaveBeenCalledWith("New", undefined);
     });
 
-    it.each([" New", "New ", "Q1/Q2", "  "])(
-      "refuses %j without asking Drive anything",
-      async (name) => {
-        const createFolder = vi.fn(async () => folder());
-        const findSiblings = vi.fn(none);
-        await expect(
-          handleMkdir(against([], { createFolder, findSiblings, name })),
-        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
-        expect(findSiblings).not.toHaveBeenCalled();
-        expect(createFolder).not.toHaveBeenCalled();
-      },
-    );
+    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (name) => {
+      const createFolder = vi.fn(async () => folder());
+      const findSiblings = vi.fn(none);
+      await expect(
+        handleMkdir(against([], { createFolder, findSiblings, name })),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+      expect(findSiblings).not.toHaveBeenCalled();
+      expect(createFolder).not.toHaveBeenCalled();
+    });
   });
 });

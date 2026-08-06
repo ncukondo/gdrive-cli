@@ -11,6 +11,7 @@ import type { SlidesRequest } from "../../lib/slides-api.ts";
 import { handleSlidesCreate, type SlidesCreateDeps } from "./create.ts";
 import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../../tests/helpers/names.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -241,16 +242,13 @@ describe("handleSlidesCreate (decision 0030 §4)", () => {
       expect(createPresentation).not.toHaveBeenCalled();
     });
 
-    it.each([" Q4 review", "Q4 review ", "Q1/Q2"])(
-      "refuses %j without asking Drive anything",
-      async (title) => {
-        const createPresentation = vi.fn(async (t: string) => ({ ...fresh, title: t }));
-        const findSiblings = vi.fn(async () => []);
-        const result = await run({ title, createPresentation, findSiblings });
-        expect(codeOf(result.error)).toBe("INVALID_ARGS");
-        expect(findSiblings).not.toHaveBeenCalled();
-        expect(createPresentation).not.toHaveBeenCalled();
-      },
-    );
+    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (title) => {
+      const createPresentation = vi.fn(async (t: string) => ({ ...fresh, title: t }));
+      const findSiblings = vi.fn(async () => []);
+      const result = await run({ title, createPresentation, findSiblings });
+      expect(codeOf(result.error)).toBe("INVALID_ARGS");
+      expect(findSiblings).not.toHaveBeenCalled();
+      expect(createPresentation).not.toHaveBeenCalled();
+    });
   });
 });

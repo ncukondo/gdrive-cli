@@ -11,6 +11,7 @@ import type { DriveFile } from "../types/index.ts";
 import type { UploadInput } from "../lib/api.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -228,17 +229,14 @@ describe("handleUpload", () => {
       expect(uploadMedia).toHaveBeenCalled();
     });
 
-    it.each([" Budget", "Budget ", "a/b"])(
-      "refuses --name %j without asking Drive anything",
-      async (name) => {
-        const uploadMedia = vi.fn(async () => file());
-        const findSiblings = vi.fn(none);
-        await expect(
-          handleUpload(against([], { uploadMedia, findSiblings, name })),
-        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
-        expect(findSiblings).not.toHaveBeenCalled();
-        expect(uploadMedia).not.toHaveBeenCalled();
-      },
-    );
+    it.each(UNPATHABLE_NAMES)("refuses --name %j without asking Drive anything", async (name) => {
+      const uploadMedia = vi.fn(async () => file());
+      const findSiblings = vi.fn(none);
+      await expect(
+        handleUpload(against([], { uploadMedia, findSiblings, name })),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+      expect(findSiblings).not.toHaveBeenCalled();
+      expect(uploadMedia).not.toHaveBeenCalled();
+    });
   });
 });

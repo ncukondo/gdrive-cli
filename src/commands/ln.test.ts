@@ -3,6 +3,7 @@ import { createLnCommand, handleLn } from "./ln.ts";
 import { childrenNamed } from "../lib/resolve-path.ts";
 import { AppError, type DriveFile } from "../types/index.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -209,15 +210,12 @@ describe("handleLn", () => {
       expect(d.createShortcut).toHaveBeenCalledWith("T1", "DEST", "2026 Budget");
     });
 
-    it.each([" Budget", "Budget ", "a/b"])(
-      "refuses --name %j without asking Drive anything",
-      async (name) => {
-        const d = deps({ name });
-        await expect(handleLn(d)).rejects.toMatchObject({ code: "INVALID_ARGS" });
-        expect(d.findSiblings).not.toHaveBeenCalled();
-        expect(d.createShortcut).not.toHaveBeenCalled();
-      },
-    );
+    it.each(UNPATHABLE_NAMES)("refuses --name %j without asking Drive anything", async (name) => {
+      const d = deps({ name });
+      await expect(handleLn(d)).rejects.toMatchObject({ code: "INVALID_ARGS" });
+      expect(d.findSiblings).not.toHaveBeenCalled();
+      expect(d.createShortcut).not.toHaveBeenCalled();
+    });
   });
 });
 

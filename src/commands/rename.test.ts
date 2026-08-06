@@ -3,6 +3,7 @@ import { handleRename, type RenameDeps } from "./rename.ts";
 import { childrenNamed } from "../lib/resolve-path.ts";
 import { FILE_TYPES, type DriveFile, type FileType } from "../types/index.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
 
 const MIME_BY_TYPE: Record<FileType, string> = {
   folder: "application/vnd.google-apps.folder",
@@ -232,17 +233,14 @@ describe("handleRename", () => {
      * The walk is itself a Drive call, so a name that cannot survive a path is
      * decided before it: nothing about the file changes the answer.
      */
-    it.each([" Budget", "Budget ", "Q1/Q2"])(
-      "refuses %j before resolving anything",
-      async (name) => {
-        const resolvePath = vi.fn(async () => "R1");
-        const renameFile = vi.fn(async () => file());
-        await expect(
-          handleRename(against([], { name, resolvePath, renameFile })),
-        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
-        expect(resolvePath).not.toHaveBeenCalled();
-        expect(renameFile).not.toHaveBeenCalled();
-      },
-    );
+    it.each(UNPATHABLE_NAMES)("refuses %j before resolving anything", async (name) => {
+      const resolvePath = vi.fn(async () => "R1");
+      const renameFile = vi.fn(async () => file());
+      await expect(
+        handleRename(against([], { name, resolvePath, renameFile })),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+      expect(resolvePath).not.toHaveBeenCalled();
+      expect(renameFile).not.toHaveBeenCalled();
+    });
   });
 });

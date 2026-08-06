@@ -5,6 +5,7 @@ import type { FormsRequest } from "../../lib/forms-api.ts";
 import { handleFormsCreate, type FormsCreateDeps } from "./create.ts";
 import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../../tests/helpers/names.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -227,15 +228,12 @@ describe("handleFormsCreate", () => {
       expect(result.created).toEqual([]);
     });
 
-    it.each([" New survey", "New survey ", "Q1/Q2"])(
-      "refuses %j without asking Drive anything",
-      async (title) => {
-        const findSiblings = vi.fn(async () => []);
-        const result = await run({ title, findSiblings });
-        expect(codeOf(result.error)).toBe("INVALID_ARGS");
-        expect(findSiblings).not.toHaveBeenCalled();
-        expect(result.created).toEqual([]);
-      },
-    );
+    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (title) => {
+      const findSiblings = vi.fn(async () => []);
+      const result = await run({ title, findSiblings });
+      expect(codeOf(result.error)).toBe("INVALID_ARGS");
+      expect(findSiblings).not.toHaveBeenCalled();
+      expect(result.created).toEqual([]);
+    });
   });
 });

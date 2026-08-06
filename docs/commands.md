@@ -102,31 +102,46 @@ happens to match one of those shapes has to be addressed by its real ID.
 
 Because a path is how you name a file you have not seen, **every command that
 gives a file a name refuses a name that could not then address it**, before it
-writes anything. Three ways a name fails that:
+writes anything. The test is one sentence: *pass the name back as a path and you
+have to get this file*. Two things stop that.
 
-- **Something in the same folder already has it.** A path segment spelling it
-  would match both files, and `INVALID_ARGS` is then the answer for *both* —
-  including the one that was already there and was never touched.
-- **It begins or ends with whitespace.** A path argument is trimmed before it is
-  matched, so the file would not answer to the name it was just given.
-- **It contains `/`.** That is what separates one segment from the next.
+**Something in the same folder already has the name.** A path segment spelling it
+matches both files, and `INVALID_ARGS` is then the answer for *both* — including
+the one that was already there and was never touched.
+
+**The name is one a path never delivers as itself.** Five spellings do that,
+because each means something else to the resolver:
+
+| Name | What a path does with it instead |
+|------|----------------------------------|
+| `Notes ` / ` Notes` | The argument is trimmed before it is matched, so the file does not answer to the name it was just given. |
+| `Q1/Q2` | `/` separates one segment from the next, so this is two segments. |
+| `root`, `/`, empty | These are how a path spells the My Drive root, so the argument stops there. |
+| `1AbCdEfGhIjKlMnOpQrSt` | 20 or more of `A-Za-z0-9_-` with no `/` is [read as an ID](#addressing-files) and handed to Drive as one. |
+| `drive:Finance` | `drive:` [names a shared drive](#shared-drives). |
+
+That table is the five anyone has met, not a closed set: what decides is whether
+the resolver brings the file back, and the check asks the same code a path walk
+asks rather than repeating its rules.
 
 `rename`, `mkdir`, `upload`, `cp`, `ln`, `mv` and `docs` / `sheets` / `forms` /
-`slides create` all apply this. The error is `INVALID_ARGS`, it names the file in
-the way or the character at fault, and it names what to pass instead. Nothing is
-created or changed: the check is one query against the destination folder, made
-before the write, so there is never anything to undo.
+`slides create` all apply this. The error is `INVALID_ARGS`, it says which of the
+two it was and — for the second — which of the spellings, and it names a
+replacement that it has checked would be accepted. Nothing is created or changed:
+the check is one query against the destination folder, made before the write, so
+there is never anything to undo.
 
 There is no `--force`, and `--name` is not an exemption — asking for the
 collision deliberately still asks for something this CLI cannot address
-afterwards. `mv` applies only the first of the three, because it carries a name
-rather than giving one: a file whose existing name a path cannot hold is not made
-worse by being moved, and refusing would strand it where it is.
+afterwards. **`mv` applies only the first**, because it carries a name rather
+than giving one: a file whose existing name a path cannot hold is not made worse
+by being moved, and refusing would strand it where it is.
 
-Drive itself permits all three, because it addresses files by ID and shows you a
-list. Nothing here repairs the duplicates an account already has —
+Drive itself permits every one of these, because it addresses files by ID and
+shows you a list. Nothing here repairs what an account already has —
 [`rename`](#gdrive-rename-file-name) is the tool for that. See
-[`../decisions/0055`](../decisions/0055-a-name-has-to-be-addressable.md).
+[`../decisions/0055`](../decisions/0055-a-name-has-to-be-addressable.md) and
+[`../decisions/0056`](../decisions/0056-the-class-was-wider-than-0055-drew-it.md).
 
 ### Shared drives
 
@@ -561,13 +576,13 @@ Changes the file's Drive name — the name `ls` prints and paths resolve. Nothin
 moves, and `<file>` is an entry, so renaming a shortcut renames the shortcut and
 leaves its target alone.
 
-`<name>` has to be one this CLI can then address the file by, so an empty or
-whitespace-only name, one with a space at either end, and one containing `/` are
-all `INVALID_ARGS` before anything is asked of Drive. A name a *sibling* already
-holds is refused too, which costs `rename` one extra lookup — it is the only one
-of these commands that has to ask Drive which folder its result lands in.
-Renaming a file to the name it already has is a no-op, not a collision. See
-[a name has to be addressable](#a-name-has-to-be-addressable).
+`<name>` has to be one this CLI can then address the file by, so
+[all five spellings a path never delivers](#a-name-has-to-be-addressable) —
+whitespace at either end, a `/`, a root spelling, an ID shape, a `drive:` prefix
+— are `INVALID_ARGS` before anything is asked of Drive. A name a *sibling*
+already holds is refused too, which costs `rename` one extra lookup: it is the
+only one of these commands that has to ask Drive which folder its result lands
+in. Renaming a file to the name it already has is a no-op, not a collision.
 
 ```console
 $ gdrive rename -f text "Reports/Notes" "Notes 2026"
@@ -599,8 +614,14 @@ meant.
 
 `--name` is not a way round the check, only a way to satisfy it: passing the name
 that is already there is refused just the same, and so is `--name` colliding with
-some *other* file in the destination. See
-[a name has to be addressable](#a-name-has-to-be-addressable).
+some *other* file in the destination.
+
+The other side of "a copy keeps its name": if the **source's own** name is one a
+path cannot hold — say it ends in a space — copying it without `--name` would
+hand the copy the same unreachable name, so that is refused too. `--name` is how
+the copy arrives addressable instead of inheriting the problem. (`mv` is the
+opposite case and is allowed, because it carries the name rather than giving it.)
+See [a name has to be addressable](#a-name-has-to-be-addressable).
 
 Without `-r`, a **folder** source fails: Drive has no request that copies one,
 and the error names the folder and `-r`. Nothing is attempted first.
