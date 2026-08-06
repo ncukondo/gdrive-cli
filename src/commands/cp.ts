@@ -83,15 +83,23 @@ async function refuseSibling(deps: CpDeps, source: DriveFile, destId: string): P
  * through any one of them is a source the copy would recurse into. Ids are
  * compared, never names: a destination that merely shares a name with the source
  * is a different folder.
+ *
+ * `sourceId` must be the id Drive answered with, never the argument the caller
+ * typed. `resolvePath` returns the literal alias `root` for `""`, `"/"` and
+ * `"root"`, and a `parents` list carries My Drive's *real* id — so the alias
+ * matches no ancestor, every check passes, and `cp -r / Archive` copies My Drive
+ * into a folder inside My Drive and then keeps finding the copy it just made.
+ * The same alias is resolved on the destination side in {@link refuseSibling},
+ * for the same reason.
  */
-async function refuseCycle(deps: CpDeps, fileId: string, destId: string): Promise<void> {
+async function refuseCycle(deps: CpDeps, sourceId: string, destId: string): Promise<void> {
   const seen = new Set<string>();
   let frontier = [destId];
 
   while (frontier.length > 0) {
     const next: string[] = [];
     for (const id of frontier) {
-      if (id === fileId) {
+      if (id === sourceId) {
         throw new AppError(
           "INVALID_ARGS",
           `Cannot copy "${deps.file}" into itself: "${deps.dest}" is the folder or lives inside it.`,
@@ -123,7 +131,8 @@ export async function handleCp(deps: CpDeps): Promise<CommandResult> {
   await refuseSibling(deps, source, destId);
 
   if (source.type === "folder") {
-    await refuseCycle(deps, fileId, destId);
+    // `source.id`, not `fileId`: the argument may still be the `root` alias.
+    await refuseCycle(deps, source.id, destId);
     const report = await deps.copyTree(source, destId, name);
     const { root } = report;
     deps.write(
