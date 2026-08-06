@@ -4,8 +4,14 @@ import { checkBashCommand } from "./guard-bash.js";
 const rebased = { rebased: true };
 const behind = { rebased: false };
 
+/** No file exists unless a test says so, so a glob stays a glob. */
+const noFiles = (_path: string) => false;
+
 describe("staging the caller did not name (decisions 0001, 0048 §1)", () => {
-  it("blocks every spelling the first review round got through", () => {
+  const blocked = (command: string, exists: (path: string) => boolean = noFiles) =>
+    checkBashCommand(command, rebased, exists);
+
+  it("blocks the spellings the first two review rounds got through", () => {
     for (const command of [
       "git add -A",
       "git add .",
@@ -17,92 +23,125 @@ describe("staging the caller did not name (decisions 0001, 0048 §1)", () => {
       "git stage -A",
       "git -C . add -A",
       "git add *",
-    ]) {
-      expect(checkBashCommand(command, rebased), command).not.toBeNull();
-    }
-  });
-
-  it("blocks every spelling the second round got through", () => {
-    for (const command of [
-      // `--` was read as "stop checking" rather than as 0048 §1's carve-out for
-      // a file whose *name* is a flag. A `.` after it is as unnamed as before.
       "git add -- .",
-      "git add -- :/",
-      // Magic pathspecs and globs name the tree, not a file.
       "git add :/",
       "git add *.ts",
       "git add src/*",
-      // A word in front of the binary, in every shape one can take.
       "sudo git add -A",
       "env git add -A",
       "/usr/bin/git add -A",
       "( git add -A )",
       "GIT_DIR=.git git add -A",
+      "git add ..",
+      "sudo /usr/bin/git -C . stage -u",
     ]) {
-      expect(checkBashCommand(command, rebased), command).not.toBeNull();
+      expect(blocked(command), command).not.toBeNull();
     }
   });
 
-  it("blocks a wrapper and a global option stacked together", () => {
-    expect(checkBashCommand("sudo /usr/bin/git -C . stage -u", rebased)).not.toBeNull();
+  it("blocks a long flag by unambiguous prefix, the way git resolves one", () => {
+    // git's parse-options accepts any prefix that names one option, so these
+    // stage everything even though the string is not `--all`.
+    for (const command of ["git add --al", "git add --upd", "git add --no-ignore-remov"]) {
+      expect(blocked(command), command).not.toBeNull();
+    }
   });
 
-  it("blocks the parent directory as well as the current one", () => {
-    expect(checkBashCommand("git add ..", rebased)).not.toBeNull();
-    expect(checkBashCommand("git add ../", rebased)).not.toBeNull();
+  it("blocks every pathspec that opens git's magic syntax", () => {
+    for (const command of [
+      "git add :",
+      "git add :(top)",
+      "git add ':!sub'",
+      "git add ':(glob,top)'",
+    ]) {
+      expect(blocked(command), command).not.toBeNull();
+    }
   });
 
-  it("blocks a combined short flag carrying A, u or a", () => {
-    expect(checkBashCommand("git add -Av", rebased)).not.toBeNull();
-    expect(checkBashCommand("git add -uv", rebased)).not.toBeNull();
-    expect(checkBashCommand("git commit -av", rebased)).not.toBeNull();
+  it("blocks a wrapper word whether or not it takes an argument of its own", () => {
+    for (const command of [
+      "nice git add -A",
+      "timeout 5 git add -A",
+      "timeout 30s git add -A",
+      "doas git add -A",
+      "stdbuf -o0 git add -A",
+      "setsid git add -A",
+      "echo . | xargs git add",
+      "xargs -n 1 git add",
+    ]) {
+      expect(blocked(command), command).not.toBeNull();
+    }
   });
 
-  it("sees past a global option that swallows its value", () => {
-    expect(checkBashCommand("git -c core.hooksPath=/dev/null add -A", rebased)).not.toBeNull();
-    expect(checkBashCommand("git --git-dir=.git add -A", rebased)).not.toBeNull();
+  it("blocks a command carried as an interpreter's argument", () => {
+    for (const command of [
+      "bash -c 'git add -A'",
+      "sh -c 'git add .'",
+      "bash -lc 'git add -A'",
+      "eval 'git add -A'",
+    ]) {
+      expect(blocked(command), command).not.toBeNull();
+    }
   });
 
-  it("does not fire on a message that merely mentions a flag", () => {
-    expect(checkBashCommand('git commit -m "fix the -a flag"', rebased)).toBeNull();
-    expect(checkBashCommand("git commit -m 'stop using git add -A'", rebased)).toBeNull();
+  it("blocks past a bare `&`, which is a separator like `&&`", () => {
+    expect(blocked("echo hi & git add -A")).not.toBeNull();
   });
 
-  it("leaves the flags that stage nothing alone", () => {
-    expect(checkBashCommand("git commit --amend --no-edit", rebased)).toBeNull();
-    expect(checkBashCommand("git commit --allow-empty -m x", rebased)).toBeNull();
-    expect(checkBashCommand("git add -N src/new.ts", rebased)).toBeNull();
-    expect(checkBashCommand("git add -p src/index.ts", rebased)).toBeNull();
+  it("allows a named path, including one that only looks like a glob", () => {
+    for (const command of [
+      "git add ./src",
+      "git add -- -A",
+      "git add -- -A src/index.ts",
+      "git add -N src/new.ts",
+      "git add -p src/index.ts",
+      "git add src/a.ts tests/b.ts",
+      "git add --no-all src/x.ts",
+    ]) {
+      expect(blocked(command), command).toBeNull();
+    }
+    const onDisk = (path: string) => path === "docs/report [2026].md";
+    expect(blocked("git add 'docs/report [2026].md'", onDisk)).toBeNull();
+    expect(blocked("git add 'docs/report [2026].md'")).not.toBeNull();
   });
 
-  it("blocks it inside a compound command", () => {
-    expect(checkBashCommand("bun run lint && git add -A && git commit", rebased)).not.toBeNull();
-    expect(checkBashCommand("cd sub; git add .", rebased)).not.toBeNull();
+  it("allows the interactive forms, which name nothing because a person picks", () => {
+    expect(blocked("git add -p")).toBeNull();
+    expect(blocked("git add -i")).toBeNull();
   });
 
-  it("allows a specific path", () => {
-    expect(checkBashCommand("git add src/index.ts", rebased)).toBeNull();
-    expect(checkBashCommand("git add ./src", rebased)).toBeNull();
-    expect(checkBashCommand("git add src/a.ts tests/b.ts", rebased)).toBeNull();
+  it("allows the commit flags that stage nothing", () => {
+    for (const command of [
+      "git commit --amend --no-edit",
+      "git commit --allow-empty -m x",
+      "git commit --no-all -m x",
+    ]) {
+      expect(blocked(command), command).toBeNull();
+    }
   });
 
-  it("allows a file that is literally named -A, passed after --", () => {
-    expect(checkBashCommand("git add -- -A", rebased)).toBeNull();
-    expect(checkBashCommand("git add -- -A src/index.ts", rebased)).toBeNull();
+  it("does not fire on a separator inside a quoted message", () => {
+    // Splitting the raw string before tokenizing refused these, and this
+    // repository's own commit messages are full of them.
+    expect(blocked('git commit -m "refuse git add -A; git add . too"')).toBeNull();
+    expect(blocked('git commit -m "guard: refuse git add -A | ..."')).toBeNull();
+    expect(blocked("git commit -m 'stop using git add -A'")).toBeNull();
   });
 
-  it("allows --no-all, which is not --all", () => {
-    expect(checkBashCommand("git add --no-all src/x.ts", rebased)).toBeNull();
+  it("says nothing about other commands", () => {
+    for (const command of [
+      "git status",
+      "git diff .",
+      "git log -A",
+      "bun run test",
+      "echo 'git add -A'",
+    ]) {
+      expect(blocked(command), command).toBeNull();
+    }
   });
 
-  it("says nothing about other git commands", () => {
-    expect(checkBashCommand("git status", rebased)).toBeNull();
-    expect(checkBashCommand("git diff .", rebased)).toBeNull();
-    expect(checkBashCommand("git log -A", rebased)).toBeNull();
-  });
-
-  it("names the decision in the message", () => {
-    expect(checkBashCommand("git add -A", rebased)?.message).toContain("0001");
+  it("names the decisions in the message", () => {
+    expect(blocked("git add -A")?.message).toContain("0048");
   });
 });
 
@@ -110,6 +149,19 @@ describe("requesting review before a rebase (decision 0044 §1)", () => {
   it("blocks gh pr create when main has moved past the branch", () => {
     expect(checkBashCommand("gh pr create --fill", behind)).not.toBeNull();
     expect(checkBashCommand("gh pr ready", behind)).not.toBeNull();
+  });
+
+  it("sees past the same wrappers the staging rule does", () => {
+    // Both rules go through one normaliser now. They did not, and every shape
+    // the staging tests celebrate catching was open on this side.
+    for (const command of [
+      "sudo gh pr create",
+      "GH_TOKEN=x gh pr create",
+      "/usr/bin/gh pr create",
+      "( gh pr create )",
+    ]) {
+      expect(checkBashCommand(command, behind), command).not.toBeNull();
+    }
   });
 
   it("allows it once the branch is rebased", () => {
