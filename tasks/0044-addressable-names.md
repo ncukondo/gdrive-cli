@@ -83,6 +83,12 @@ by path, before it writes anything.
 - [ ] `mv` refuses a move into a folder that already holds the name, and does
       **not** refuse an existing name a path cannot hold
 - [ ] `cp --name` is not an exemption
+- [ ] `cp` without `--name` refuses when the **source's own** name is unpathable,
+      because the copy would inherit it. This follows from
+      [`0056`](../decisions/0056-the-class-was-wider-than-0055-drew-it.md) §1 but
+      is not stated there, so it is recorded here: `mv` creates no new file and
+      is carved out, `cp` creates one and is not. `--name` is how the copy
+      arrives addressable instead of inheriting the problem.
 - [ ] The `/` root alias is still handled, on both sides
 - [ ] One implementation of the check, not nine
 - [ ] `bun run test`, `bun run typecheck`, `bun run lint`, `bun run format:check` pass
