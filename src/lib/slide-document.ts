@@ -39,11 +39,17 @@ export interface ShapeRaw {
   text?: TextContentRaw;
 }
 
+/** Several elements joined into one, which the document reports as its members. */
+export interface GroupRaw {
+  children?: PageElementRaw[] | null;
+}
+
 /**
- * A page element. Every kind but `shape` is declared `unknown`: the document
- * reports a kind and, for a shape, its text, so nothing else is read. The
- * kinds are still named here because the projection reports the *key*, and a
- * key googleapis adds later has to reach `unknown` rather than be missed.
+ * A page element. Every kind but `shape` and `elementGroup` is declared
+ * `unknown`: the document reports a kind and, for a shape, its text, so nothing
+ * else is read. The kinds are still named here because the projection reports
+ * the *key*, and a key googleapis adds later has to reach `unknown` rather than
+ * be missed.
  */
 export interface PageElementRaw {
   objectId?: string | null;
@@ -53,7 +59,7 @@ export interface PageElementRaw {
   sheetsChart?: unknown;
   video?: unknown;
   line?: unknown;
-  elementGroup?: unknown;
+  elementGroup?: GroupRaw;
   wordArt?: unknown;
   speakerSpotlight?: unknown;
   size?: unknown;
@@ -116,13 +122,23 @@ export const ELEMENT_KINDS = [
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 
 /**
- * Read-only (0029 §3): everything a template did not put on the slide, listed
- * so a hand-built deck does not read as empty. 0030 §3 makes editing one an
- * error rather than a silent no-op.
+ * Read-only (0029 §3): everything the document has no field for, listed so a
+ * hand-built deck does not read as empty. 0030 §3 makes editing one an error
+ * rather than a silent no-op.
+ *
+ * `placeholder` is 0051 §2's distinction, carrying the API's own placeholder
+ * type (`BODY`, `SLIDE_NUMBER`, …) for an entry that *is* a layout placeholder
+ * — the second `BODY` of a two-column slide, say — and absent for a shape
+ * outside every layout. The two look identical otherwise and their futures are
+ * not the same: the API would rewrite the first as readily as the `body` above
+ * it, while nothing can put the second back under a layout. Which one an entry
+ * is decides what a refusal to write it means, so the document says it rather
+ * than leaving a caller to infer it from an id.
  */
 const SlideElementSchema = z.object({
   id: z.string().optional(),
   kind: z.enum(ELEMENT_KINDS),
+  placeholder: z.string().optional(),
   text: z.string().optional(),
 });
 
@@ -177,7 +193,9 @@ const ELEMENT_META = new Set(["objectId", "size", "transform", "title", "descrip
  * slide's title and `TITLE` every other layout's, and a caller editing a deck
  * should not have to know which layout it landed on to find the heading.
  */
-const FIELD_BY_PLACEHOLDER: Record<string, "title" | "subtitle" | "body"> = {
+type NamedField = "title" | "subtitle" | "body";
+
+const FIELD_BY_PLACEHOLDER: Record<string, NamedField> = {
   TITLE: "title",
   CENTERED_TITLE: "title",
   SUBTITLE: "subtitle",
@@ -203,13 +221,61 @@ function kindOf(element: PageElementRaw): ElementKind {
 }
 
 function toElement(element: PageElementRaw): SlideElement {
-  const text = textOf(element.shape);
-  const { objectId } = element;
+  const { objectId, shape } = element;
+  const placeholder = shape?.placeholder?.type;
+  const text = textOf(shape);
   return {
     ...(objectId ? { id: objectId } : {}),
     kind: kindOf(element),
+    ...(placeholder ? { placeholder } : {}),
     ...(text === "" ? {} : { text }),
   };
+}
+
+/**
+ * The element as the document lists it — a group as its members rather than as
+ * itself, recursively, because a group is a way of moving shapes together and
+ * carries no text of its own. Reporting the wrapper alone would drop every word
+ * inside it, and grouping two text boxes is an ordinary thing to do.
+ *
+ * A group holding nothing is still listed, so no element ever disappears
+ * without something in the document standing for it.
+ */
+function toElements(element: PageElementRaw): SlideElement[] {
+  const children = element.elementGroup?.children ?? [];
+  if (children.length === 0) return [toElement(element)];
+  return children.flatMap(toElements);
+}
+
+/**
+ * Which page element wins each named field, by position in `pageElements`.
+ *
+ * The winner is the placeholder with the lowest `placeholder.index`, not the
+ * first one the array offers: `pageElements` is z-order (0029 §2), so taking
+ * the first would let "bring to front" in the Slides UI swap which column of a
+ * two-column slide is `body` — with no text edited, and with 0030's write then
+ * rewriting the wrong one. `index` is the API's own answer to which placeholder
+ * of a repeated type this is, and it does not move.
+ *
+ * An empty placeholder never competes: it says nothing, so it is dropped
+ * (neither a field nor an element) whatever its index.
+ */
+function fieldWinners(pageElements: PageElementRaw[]): Map<number, NamedField> {
+  const best = new Map<NamedField, { position: number; index: number }>();
+  pageElements.forEach((element, position) => {
+    const { shape } = element;
+    const type = shape?.placeholder?.type;
+    if (!type || textOf(shape) === "") return;
+    const field = FIELD_BY_PLACEHOLDER[type];
+    if (field === undefined) return;
+    const index = shape?.placeholder?.index ?? 0;
+    const current = best.get(field);
+    if (current === undefined || index < current.index) best.set(field, { position, index });
+  });
+
+  const winners = new Map<number, NamedField>();
+  for (const [field, { position }] of best) winners.set(position, field);
+  return winners;
 }
 
 /**
@@ -231,32 +297,37 @@ function notesOf(slideProperties: SlidePropertiesRaw | undefined): string {
 }
 
 /**
- * A slide's placeholders and, for everything else, its `elements` (0029 §3).
+ * A slide's named fields and, for everything the document has no field for,
+ * its `elements` (0051 §1).
  *
  * A placeholder is projected on its text alone: an empty one is omitted rather
- * than emitted as `""`, and one whose field is already taken — a second `BODY`
- * on a two-column layout, a type this document has no field for — falls
- * through to `elements` rather than losing its text, which is the outcome
- * 0029 §3 exists to prevent.
+ * than emitted as `""`, and one whose field is taken by a lower-indexed
+ * placeholder — the second `BODY` of a two-column layout, a `SLIDE_NUMBER`
+ * with text — falls through to `elements` rather than losing its text, which
+ * is the outcome 0029 §3 exists to prevent. It is marked as a placeholder
+ * there (0051 §2), because that is what says whether a write could ever reach
+ * it.
  */
 function toSlide(slide: PageRaw, layoutName: (id: string) => string): SlideDocumentSlide {
+  const pageElements = slide.pageElements ?? [];
+  const winners = fieldWinners(pageElements);
   const named: { title?: string; subtitle?: string; body?: string } = {};
   const elements: SlideElement[] = [];
 
-  for (const element of slide.pageElements ?? []) {
+  pageElements.forEach((element, position) => {
     const { shape } = element;
     const placeholderType = shape?.placeholder?.type;
     if (placeholderType !== undefined && placeholderType !== null) {
       const text = textOf(shape);
-      if (text === "") continue;
-      const field = FIELD_BY_PLACEHOLDER[placeholderType];
-      if (field !== undefined && named[field] === undefined) {
+      if (text === "") return;
+      const field = winners.get(position);
+      if (field !== undefined) {
         named[field] = text;
-        continue;
+        return;
       }
     }
-    elements.push(toElement(element));
-  }
+    elements.push(...toElements(element));
+  });
 
   const { objectId, slideProperties } = slide;
   const layoutObjectId = slideProperties?.layoutObjectId;

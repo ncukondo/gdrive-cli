@@ -24,11 +24,29 @@ const geometry = {
   transform: { scaleX: 1, scaleY: 1, translateX: 311700, translateY: 445025, unit: "EMU" },
 };
 
-function placeholder(objectId: string, type: string, ...paragraphs: string[]): PageElementRaw {
+function placeholderAt(
+  objectId: string,
+  type: string,
+  index: number,
+  ...paragraphs: string[]
+): PageElementRaw {
   return {
     objectId,
     ...geometry,
-    shape: { shapeType: "TEXT_BOX", placeholder: { type, index: 0 }, text: runs(...paragraphs) },
+    shape: { shapeType: "TEXT_BOX", placeholder: { type, index }, text: runs(...paragraphs) },
+  };
+}
+
+function placeholder(objectId: string, type: string, ...paragraphs: string[]): PageElementRaw {
+  return placeholderAt(objectId, type, 0, ...paragraphs);
+}
+
+/** A shape nobody's layout put there — the text box someone dragged on. */
+function box(objectId: string, ...paragraphs: string[]): PageElementRaw {
+  return {
+    objectId,
+    ...geometry,
+    shape: { shapeType: "TEXT_BOX", text: runs(...paragraphs) },
   };
 }
 
@@ -155,7 +173,7 @@ describe("toSlideDocument", () => {
   });
 });
 
-describe("toSlideDocument, on what is not a placeholder (0029 §3)", () => {
+describe("toSlideDocument, on what the document has no field for (0051 §1)", () => {
   const handmade: PresentationRaw = {
     presentationId: "1PrEs",
     title: "Built by hand",
@@ -194,7 +212,9 @@ describe("toSlideDocument, on what is not a placeholder (0029 §3)", () => {
   it("carries no transform and no size, whatever the element", () => {
     const elements = toSlideDocument(handmade).slides[0]?.elements ?? [];
     for (const element of elements) {
-      expect(Object.keys(element).every((key) => ["id", "kind", "text"].includes(key))).toBe(true);
+      expect(
+        Object.keys(element).every((key) => ["id", "kind", "placeholder", "text"].includes(key)),
+      ).toBe(true);
     }
   });
 
@@ -225,8 +245,8 @@ describe("toSlideDocument, on what is not a placeholder (0029 §3)", () => {
           objectId: "s1",
           slideProperties: { layoutObjectId: "L_2C" },
           pageElements: [
-            placeholder("b1", "BODY", "Left column"),
-            placeholder("b2", "BODY", "Right column"),
+            placeholderAt("b1", "BODY", 0, "Left column"),
+            placeholderAt("b2", "BODY", 1, "Right column"),
           ],
         },
       ],
@@ -235,8 +255,148 @@ describe("toSlideDocument, on what is not a placeholder (0029 §3)", () => {
       id: "s1",
       layout: "TITLE_AND_TWO_COLUMNS",
       body: "Left column",
-      elements: [{ id: "b2", kind: "shape", text: "Right column" }],
+      elements: [{ id: "b2", kind: "shape", placeholder: "BODY", text: "Right column" }],
     });
+  });
+
+  /**
+   * 0051 §2. The two entries are the same `kind: shape` with the same sort of
+   * text, and their futures are not the same: one is a placeholder the API
+   * would rewrite, the other is outside every layout and cannot be put back
+   * under one. A caller has to be able to tell them apart without guessing
+   * from an id.
+   */
+  it("says which entries are placeholders and which are outside the layout", () => {
+    const document = toSlideDocument({
+      title: "Deck",
+      layouts: [{ objectId: "L_2C", layoutProperties: { name: "TITLE_AND_TWO_COLUMNS" } }],
+      slides: [
+        {
+          objectId: "s1",
+          slideProperties: { layoutObjectId: "L_2C" },
+          pageElements: [
+            placeholderAt("b1", "BODY", 0, "Left column"),
+            placeholderAt("b2", "BODY", 1, "Right column"),
+            box("hand_box", "Dragged on by hand"),
+            placeholder("num", "SLIDE_NUMBER", "12"),
+          ],
+        },
+      ],
+    });
+    expect(document.slides[0]?.elements).toEqual([
+      { id: "b2", kind: "shape", placeholder: "BODY", text: "Right column" },
+      { id: "hand_box", kind: "shape", text: "Dragged on by hand" },
+      { id: "num", kind: "shape", placeholder: "SLIDE_NUMBER", text: "12" },
+    ]);
+  });
+
+  /**
+   * `pageElements` is z-order (0029 §2), so taking the first one the array
+   * offers makes "bring to front" in the Slides UI silently swap which column
+   * is `body` — and under 0030 an edit to `body` would then rewrite the other
+   * column. `placeholder.index` is the API's own answer to which is which.
+   */
+  it("gives the field to the lowest placeholder index, whatever the z-order", () => {
+    const document = toSlideDocument({
+      title: "Deck",
+      layouts: [{ objectId: "L_2C", layoutProperties: { name: "TITLE_AND_TWO_COLUMNS" } }],
+      slides: [
+        {
+          objectId: "s1",
+          slideProperties: { layoutObjectId: "L_2C" },
+          // The right column brought to the front: last written, first listed.
+          pageElements: [
+            placeholderAt("b2", "BODY", 1, "Right column"),
+            placeholderAt("b1", "BODY", 0, "Left column"),
+          ],
+        },
+      ],
+    });
+    expect(document.slides[0]).toEqual({
+      id: "s1",
+      layout: "TITLE_AND_TWO_COLUMNS",
+      body: "Left column",
+      elements: [{ id: "b2", kind: "shape", placeholder: "BODY", text: "Right column" }],
+    });
+  });
+
+  /**
+   * Selecting two boxes and grouping them is an ordinary thing to do, and the
+   * API returns one `elementGroup` holding both. Reporting the group alone
+   * loses every word inside it — the deck reading as empty, which is what
+   * 0029 §3 exists to prevent.
+   */
+  it("flattens a group into its members, so grouped text is not lost", () => {
+    const document = toSlideDocument({
+      title: "Deck",
+      layouts,
+      slides: [
+        {
+          objectId: "s1",
+          slideProperties: { layoutObjectId: "L_BLANK" },
+          pageElements: [
+            {
+              objectId: "grp",
+              ...geometry,
+              elementGroup: {
+                children: [
+                  box("c1", "Grouped heading"),
+                  { objectId: "c2", ...geometry, image: { contentUrl: "https://…" } },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(document.slides[0]?.elements).toEqual([
+      { id: "c1", kind: "shape", text: "Grouped heading" },
+      { id: "c2", kind: "image" },
+    ]);
+  });
+
+  it("flattens a group nested inside a group", () => {
+    const document = toSlideDocument({
+      title: "Deck",
+      layouts,
+      slides: [
+        {
+          objectId: "s1",
+          slideProperties: { layoutObjectId: "L_BLANK" },
+          pageElements: [
+            {
+              objectId: "outer",
+              ...geometry,
+              elementGroup: {
+                children: [
+                  box("c1", "Outer"),
+                  { objectId: "inner", elementGroup: { children: [box("c2", "Inner")] } },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(document.slides[0]?.elements).toEqual([
+      { id: "c1", kind: "shape", text: "Outer" },
+      { id: "c2", kind: "shape", text: "Inner" },
+    ]);
+  });
+
+  it("still lists a group that holds nothing, rather than dropping the element", () => {
+    const document = toSlideDocument({
+      title: "Deck",
+      layouts,
+      slides: [
+        {
+          objectId: "s1",
+          slideProperties: { layoutObjectId: "L_BLANK" },
+          pageElements: [{ objectId: "grp", ...geometry, elementGroup: {} }],
+        },
+      ],
+    });
+    expect(document.slides[0]?.elements).toEqual([{ id: "grp", kind: "group" }]);
   });
 
   it("leaves an empty placeholder the document has no field for out of elements", () => {
@@ -270,6 +430,115 @@ describe("slideDocumentToYaml / parseSlideDocument", () => {
   it("rejects YAML that is not a deck document as INVALID_ARGS", () => {
     for (const input of ["slides: [{layout: 3}]\ntitle: Deck", "title: [", "- a\n- b"]) {
       expect(() => parseSlideDocument(input)).toThrowError(AppError);
+    }
+  });
+});
+
+/**
+ * The key order is a contract, not an accident: 0029 §2 writes a slide in this
+ * order — what it *is* before what it says — and the document is meant to be
+ * read and diffed. Both halves of this file owe it, as `form-document.test.ts`
+ * asserts for a form: what `read` emits, and what `parseSlideDocument` hands
+ * the write side back.
+ */
+describe("the order of a slide's keys", () => {
+  const twoColumns: PresentationRaw = {
+    presentationId: "1PrEs",
+    title: "Q3 review",
+    revisionId: "abc123",
+    layouts: [{ objectId: "L_2C", layoutProperties: { name: "TITLE_AND_TWO_COLUMNS" } }],
+    slides: [
+      {
+        objectId: "s1",
+        slideProperties: {
+          layoutObjectId: "L_2C",
+          isSkipped: true,
+          notesPage: notesPage("n_1", "Say this"),
+        },
+        pageElements: [
+          placeholder("t1", "TITLE", "A title"),
+          placeholder("sub", "SUBTITLE", "A subtitle"),
+          placeholderAt("b1", "BODY", 0, "Left column"),
+          placeholderAt("b2", "BODY", 1, "Right column"),
+        ],
+      },
+    ],
+  };
+
+  it("names the slide before it describes it, as 0029 §2 writes it", () => {
+    const document = toSlideDocument(twoColumns);
+    expect(Object.keys(document.slides[0] ?? {})).toEqual([
+      "id",
+      "layout",
+      "skipped",
+      "title",
+      "subtitle",
+      "body",
+      "notes",
+      "elements",
+    ]);
+    expect(Object.keys(document.slides[0]?.elements?.[0] ?? {})).toEqual([
+      "id",
+      "kind",
+      "placeholder",
+      "text",
+    ]);
+  });
+
+  it("gives the deck's own keys the same treatment", () => {
+    expect(Object.keys(toSlideDocument(twoColumns))).toEqual([
+      "id",
+      "title",
+      "revision_id",
+      "slides",
+    ]);
+  });
+
+  /**
+   * The tests above cannot tell "declaration order" from "input order": what
+   * they parse is already in emission order. This one arrives shuffled, so
+   * only the schema's own declaration order can produce the result.
+   */
+  it("returns declaration order however the document arrived", () => {
+    const shuffled = [
+      "slides:",
+      "  - elements:",
+      "      - text: Right column",
+      "        placeholder: BODY",
+      "        kind: shape",
+      "        id: b2",
+      "    body: Left column",
+      "    notes: Say this",
+      "    layout: TITLE_AND_TWO_COLUMNS",
+      "    title: A title",
+      "    id: s1",
+      "revision_id: abc123",
+      "title: Q3 review",
+    ].join("\n");
+    const parsed = parseSlideDocument(shuffled);
+    expect(Object.keys(parsed)).toEqual(["title", "revision_id", "slides"]);
+    expect(Object.keys(parsed.slides[0] ?? {})).toEqual([
+      "id",
+      "layout",
+      "title",
+      "body",
+      "notes",
+      "elements",
+    ]);
+    expect(Object.keys(parsed.slides[0]?.elements?.[0] ?? {})).toEqual([
+      "id",
+      "kind",
+      "placeholder",
+      "text",
+    ]);
+  });
+
+  it("hands the same order back out of parseSlideDocument", () => {
+    const document = toSlideDocument(twoColumns);
+    const parsed = parseSlideDocument(slideDocumentToYaml(document));
+    expect(Object.keys(parsed)).toEqual(Object.keys(document));
+    for (const [index, slide] of parsed.slides.entries()) {
+      expect(Object.keys(slide)).toEqual(Object.keys(document.slides[index] ?? {}));
     }
   });
 });
