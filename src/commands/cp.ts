@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { AppError, type CommandResult, type DriveFile, type OutputFormat } from "../types/index.ts";
 import type { CopyTreeReport } from "../lib/copy-tree.ts";
 import { formatValues, line, renderSuccess } from "../lib/output.ts";
-import { ROOT_ID } from "../lib/resolve-path.ts";
+import { refuseUnaddressableName, type FindSiblings } from "../lib/names.ts";
 
 export interface CpDeps {
   /** The file to copy, as an entry in a folder: a shortcut copies itself. */
@@ -15,6 +15,8 @@ export interface CpDeps {
    * the destination's ancestors (decision 0031 §6).
    */
   getFile: (fileId: string) => Promise<DriveFile>;
+  /** What the copy's name would collide with in the destination (decision 0055 §1). */
+  findSiblings: FindSiblings;
   copyTree: (source: DriveFile, destId: string, name?: string) => Promise<CopyTreeReport>;
   file: string;
   dest: string;
@@ -49,30 +51,6 @@ function folderNeedsRecursive(deps: CpDeps): AppError {
 }
 
 /**
- * Refuses a copy that would land beside its own source under the same name
- * (decision 0054 §3). Drive would not refuse it; it would produce twins that no
- * listing tells apart and no path can address, so the message names the flag
- * that fixes it.
- *
- * `--name` settles the question before it is asked, which is why it is the one
- * case that skips the check rather than passing it.
- *
- * `root` is an alias Drive accepts, not an id: a file in My Drive's root carries
- * the root's *real* id in `parents`, so comparing the two as strings would let
- * the very case §3 exists for — a snapshot taken in place — through. Resolving
- * it costs one `files.get`, and only when the destination was spelled that way.
- */
-async function refuseSibling(deps: CpDeps, source: DriveFile, destId: string): Promise<void> {
-  if (deps.name !== undefined) return;
-  const parentId = destId === ROOT_ID ? (await deps.getFile(destId)).id : destId;
-  if (!source.parents.includes(parentId)) return;
-  throw new AppError(
-    "INVALID_ARGS",
-    `"${deps.file}" is already in "${deps.dest}", so copying it there would leave two files called "${source.name}" that nothing can tell apart. Give the copy a name: --name "${source.name} (copy)".`,
-  );
-}
-
-/**
  * Refuses `cp -r A A` and `cp -r A A/B` before anything is copied
  * (decision 0031 §6), by walking the destination's ancestors — one `files.get`
  * per level, typically two or three, paid once. Detecting the cycle during the
@@ -89,8 +67,9 @@ async function refuseSibling(deps: CpDeps, source: DriveFile, destId: string): P
  * `"root"`, and a `parents` list carries My Drive's *real* id — so the alias
  * matches no ancestor, every check passes, and `cp -r / Archive` copies My Drive
  * into a folder inside My Drive and then keeps finding the copy it just made.
- * The same alias is resolved on the destination side in {@link refuseSibling},
- * for the same reason.
+ * The destination side needs no such care: decision 0055's check asks Drive
+ * what is in the folder rather than comparing ids, and Drive resolves the alias
+ * itself — the same way a path walk starts from it.
  */
 async function refuseCycle(deps: CpDeps, sourceId: string, destId: string): Promise<void> {
   const seen = new Set<string>();
@@ -128,7 +107,19 @@ export async function handleCp(deps: CpDeps): Promise<CommandResult> {
   const name = deps.name ?? source.name;
 
   if (source.type === "folder" && deps.recursive !== true) throw folderNeedsRecursive(deps);
-  await refuseSibling(deps, source, destId);
+
+  // Decision 0055 §1, which subsumes 0054 §3: the copy has to be findable by
+  // the name it is about to be given. `--name` is checked like any other name
+  // rather than skipping the check — 0054 §3 said "without `--name`" only
+  // because `cp`'s default name was the one in view, and `cp X . --name` with
+  // the source's own name produces exactly the pair the rule exists to prevent.
+  await refuseUnaddressableName({
+    name,
+    parentId: destId,
+    findSiblings: deps.findSiblings,
+    where: deps.dest,
+    flag: "--name",
+  });
 
   if (source.type === "folder") {
     // `source.id`, not `fileId`: the argument may still be the `root` alias.

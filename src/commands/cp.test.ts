@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleCp, type CpDeps } from "./cp.ts";
 import type { CopyTreeReport } from "../lib/copy-tree.ts";
-import { resolvePath as resolveDrivePath } from "../lib/resolve-path.ts";
+import { childrenNamed, resolvePath as resolveDrivePath } from "../lib/resolve-path.ts";
 import { AppError, type DriveFile } from "../types/index.ts";
-import { createTreeDrive } from "../../tests/helpers/fake-drive.ts";
+import {
+  createTreeDrive,
+  createWritableTreeDrive,
+  type DriveNode,
+} from "../../tests/helpers/fake-drive.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -45,6 +49,7 @@ function deps(overrides: Partial<CpDeps> = {}): CpDeps {
     resolveFolder: async () => "DEST",
     copyFile: async () => file(),
     getFile: async (id: string) => file({ id, parents: [] }),
+    findSiblings: async () => [],
     copyTree: async () => report(),
     file: "src",
     dest: "Folder",
@@ -154,17 +159,30 @@ describe("handleCp", () => {
   });
 
   /**
-   * Decision 0054 §3. Drive would not refuse this — it would produce two files
-   * with one name that no listing tells apart and no path can address. The
-   * remedy is a name, so the message names the flag that gives one.
+   * Decision 0055 §1, which subsumes 0054 §3. Drive would not refuse this — it
+   * would produce two files with one name that no listing tells apart and no
+   * path can address. The remedy is a name, so the message names the flag that
+   * gives one.
+   *
+   * The real `childrenNamed` runs against a tree here rather than a stub,
+   * because what has to hold is that the folder asked about is the *destination*
+   * and the name asked about is the one the copy would *be given*. A stub
+   * answering on its own terms would assert neither.
    */
-  describe("a copy that would sit beside its own source", () => {
-    const inPlace = (overrides: Partial<CpDeps> = {}) =>
-      deps({
+  describe("a copy whose name is already taken where it would land", () => {
+    const against = (nodes: DriveNode[], overrides: Partial<CpDeps> = {}) => {
+      const { client } = createWritableTreeDrive(nodes);
+      return deps({
         resolveFolder: async () => "HOME",
         getFile: async (id) => file({ id, name: "Budget", parents: ["HOME"] }),
+        findSiblings: (parentId, name) => childrenNamed(client, parentId, name),
         ...overrides,
       });
+    };
+
+    /** The source sits in the folder it would be copied into. */
+    const inPlace = (overrides: Partial<CpDeps> = {}) =>
+      against([{ id: "S1", name: "Budget", parents: ["HOME"] }], overrides);
 
     it("is refused, naming --name, before anything is copied", async () => {
       const copyFile = vi.fn(async () => file());
@@ -175,7 +193,7 @@ describe("handleCp", () => {
       expect(copyFile).not.toHaveBeenCalled();
     });
 
-    it("succeeds once the copy is named", async () => {
+    it("succeeds once the copy is named something else", async () => {
       const copyFile = vi.fn(async () => file({ id: "C1", name: "Budget (backup)" }));
       await handleCp(inPlace({ copyFile, name: "Budget (backup)" }));
       expect(copyFile).toHaveBeenCalledWith("S1", "HOME", "Budget (backup)");
@@ -185,7 +203,7 @@ describe("handleCp", () => {
       const copyTree = vi.fn(async () => report());
       await expect(
         handleCp(
-          inPlace({
+          against([{ id: "S1", name: "2026", parents: ["HOME"] }], {
             recursive: true,
             copyTree,
             getFile: async (id) => folder({ id, name: "2026", parents: ["HOME"] }),
@@ -196,22 +214,63 @@ describe("handleCp", () => {
     });
 
     /**
-     * `root` is an alias Drive accepts, not an id: a file in My Drive's root
-     * lists the root's *real* id in `parents`, so comparing the two as strings
-     * would let the one case §3 exists for — a snapshot taken in place — through.
+     * Decision 0055 §1: `--name` is not an exemption. 0054 §3's wording said
+     * "without `--name`" because `cp`'s default name was the only one in view,
+     * and it let a caller ask for the collision in so many words.
+     */
+    it("is refused when --name is the name the source already has", async () => {
+      const copyFile = vi.fn(async () => file());
+      await expect(handleCp(inPlace({ copyFile, name: "Budget" }))).rejects.toMatchObject({
+        code: "INVALID_ARGS",
+      });
+      expect(copyFile).not.toHaveBeenCalled();
+    });
+
+    it("is refused when --name is some other file's name in that folder", async () => {
+      const copyFile = vi.fn(async () => file());
+      await expect(
+        handleCp(
+          against([{ id: "B1", name: "Budget", parents: ["HOME"] }], {
+            copyFile,
+            name: "Budget",
+            getFile: async (id) => file({ id, name: "Notes", parents: ["ELSEWHERE"] }),
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("B1") });
+      expect(copyFile).not.toHaveBeenCalled();
+    });
+
+    it("is refused when --name could not survive a path, without asking Drive", async () => {
+      const copyFile = vi.fn(async () => file());
+      const findSiblings = vi.fn(async () => []);
+      await expect(handleCp(deps({ copyFile, findSiblings, name: "Q1/Q2" }))).rejects.toMatchObject(
+        { code: "INVALID_ARGS" },
+      );
+      expect(findSiblings).not.toHaveBeenCalled();
+      expect(copyFile).not.toHaveBeenCalled();
+    });
+
+    it("copies when the destination holds nothing by that name", async () => {
+      const copyFile = vi.fn(async () => file());
+      await handleCp(against([{ id: "N1", name: "Notes", parents: ["HOME"] }], { copyFile }));
+      expect(copyFile).toHaveBeenCalledWith("S1", "HOME", "Budget");
+    });
+
+    /**
+     * `root` is an alias Drive accepts, not an id, and `resolveFolder` answers
+     * with it for `""`, `"/"` and `"root"` alike. The lookup carries it into the
+     * `q` unchanged, which is what a path walk does too — so a file in My Drive's
+     * root, whose `parents` carry the root's *real* id, is still found.
      */
     it("is refused when the destination was spelled as the My Drive root", async () => {
       const copyFile = vi.fn(async () => file());
       await expect(
         handleCp(
-          deps({
+          against([{ id: "S1", name: "Budget", parents: ["root"] }], {
             dest: "/",
             resolveFolder: async () => "root",
             copyFile,
-            getFile: async (id) =>
-              id === "root"
-                ? folder({ id: "0AReAlRoOt", name: "My Drive", parents: [] })
-                : file({ id, name: "Budget", parents: ["0AReAlRoOt"] }),
+            getFile: async (id) => file({ id, name: "Budget", parents: ["0AReAlRoOt"] }),
           }),
         ),
       ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("--name") });
@@ -220,7 +279,7 @@ describe("handleCp", () => {
 
     it("says something different from the folder-into-itself refusal", async () => {
       // Different inputs, different reasons: one is a name collision, the other
-      // a copy that would recurse forever (decision 0054 §3 vs 0031 §6).
+      // a copy that would recurse forever (decision 0055 §1 vs 0031 §6).
       const sibling = await handleCp(inPlace()).catch((e: unknown) => e);
       const cycle = await handleCp(
         deps({
