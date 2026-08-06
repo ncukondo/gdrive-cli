@@ -7,10 +7,12 @@ import { registerDriveRead } from "../../src/commands/drive-read.ts";
 import { registerDocs } from "../../src/commands/docs/index.ts";
 import { registerForms } from "../../src/commands/forms/index.ts";
 import { registerSheets } from "../../src/commands/sheets/index.ts";
+import { registerSlides } from "../../src/commands/slides/index.ts";
 import type { DriveClient } from "../../src/lib/api.ts";
 import type { DocsClient } from "../../src/lib/docs-api.ts";
 import type { FormsClient } from "../../src/lib/forms-api.ts";
 import type { SheetsClient } from "../../src/lib/sheets-api.ts";
+import type { SlidesClient } from "../../src/lib/slides-api.ts";
 import { createTreeDrive, type DriveNode } from "../helpers/fake-drive.ts";
 import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
 
@@ -21,7 +23,8 @@ import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
  *
  * - [0036](../../decisions/0036-machine-format-by-default.md) §1 — unasked, a
  *   command emits its machine representation: the envelope for a command that
- *   returns records, the document itself for `docs read` and `forms read`.
+ *   returns records, the document itself for `docs read`, `forms read` and
+ *   `slides read`.
  * - [0038](../../decisions/0038-quiet-asks-for-a-value.md) §1 — `-q` selects the
  *   terse output whatever the default is, and §2 — a named `-f` still wins.
  */
@@ -32,6 +35,7 @@ const clients = vi.hoisted(() => {
     docs?: DocsClient;
     forms?: FormsClient;
     sheets?: SheetsClient;
+    slides?: SlidesClient;
   } = {};
   return state;
 });
@@ -41,6 +45,7 @@ vi.mock("../../src/lib/google-clients.ts", () => ({
   buildDocsClient: () => clients.docs,
   buildFormsClient: () => clients.forms,
   buildSheetsClient: () => clients.sheets,
+  buildSlidesClient: () => clients.slides,
 }));
 
 vi.mock("../../src/lib/account.ts", () => ({
@@ -62,6 +67,12 @@ const tree: DriveNode[] = [
     parents: ["root"],
   },
   { id: "frm1", name: "Survey", mimeType: "application/vnd.google-apps.form", parents: ["root"] },
+  {
+    id: "prs1",
+    name: "Q3",
+    mimeType: "application/vnd.google-apps.presentation",
+    parents: ["root"],
+  },
   {
     id: "sh1",
     name: "Budget",
@@ -100,6 +111,19 @@ const formsClient: FormsClient = {
       data: { formId, info: { title: "2026 Engagement survey" }, items: [] },
     }),
     responses: { list: async () => ({ data: { responses: [] } }) },
+  },
+};
+
+const slidesClient: SlidesClient = {
+  presentations: {
+    get: async ({ presentationId }) => ({
+      data: {
+        presentationId,
+        title: "Q3 review",
+        layouts: [{ objectId: "L_SH", layoutProperties: { name: "SECTION_HEADER" } }],
+        slides: [{ objectId: "s1", slideProperties: { layoutObjectId: "L_SH" } }],
+      },
+    }),
   },
 };
 
@@ -148,6 +172,7 @@ beforeEach(() => {
   clients.docs = docsClient;
   clients.forms = formsClient;
   clients.sheets = sheetsClient;
+  clients.slides = slidesClient;
   stdout = [];
   mockProcessExit();
   vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
@@ -168,6 +193,7 @@ async function run(config: string, args: string[]): Promise<string> {
   registerDocs(program);
   registerForms(program);
   registerSheets(program);
+  registerSlides(program);
   try {
     await program.parseAsync(["node", "gdrive", "--config", config, ...args]);
   } catch (error) {
@@ -187,6 +213,7 @@ describe("a command that returns records (decision 0036 §1)", () => {
       "plain",
       "doc1",
       "frm1",
+      "prs1",
       "sh1",
     ]);
   });
@@ -217,11 +244,13 @@ describe("a command whose output is a document (decision 0036 §1)", () => {
     expect(await run(emptyConfig, ["forms", "read", "Survey"])).toContain(
       "title: 2026 Engagement survey",
     );
+    expect(await run(emptyConfig, ["slides", "read", "Q3"])).toContain("title: Q3 review");
   });
 
   it("keeps printing the document when the config prefers json", async () => {
     expect((await run(jsonConfig, ["docs", "read", "Notes"])).trim()).toBe("# Meeting notes");
     expect(await run(jsonConfig, ["forms", "read", "Survey"])).toContain("title:");
+    expect(await run(jsonConfig, ["slides", "read", "Q3"])).toContain("layout: SECTION_HEADER");
   });
 
   it("wraps it in the envelope when -f json names the format", async () => {
@@ -229,6 +258,8 @@ describe("a command whose output is a document (decision 0036 §1)", () => {
     expect(doc.data.content).toBe("# Meeting notes");
     const form = JSON.parse(await run(emptyConfig, ["-f", "json", "forms", "read", "Survey"]));
     expect(form.data.form.title).toBe("2026 Engagement survey");
+    const deck = JSON.parse(await run(emptyConfig, ["-f", "json", "slides", "read", "Q3"]));
+    expect(deck.data.presentation.title).toBe("Q3 review");
   });
 });
 
@@ -239,22 +270,22 @@ describe("a command whose output is a document (decision 0036 §1)", () => {
  */
 describe("--quiet against the default (decision 0038)", () => {
   it("prints bare ids with no config and no -f", async () => {
-    expect((await ls(emptyConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nsh1");
+    expect((await ls(emptyConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nprs1\nsh1");
   });
 
   it("prints bare ids even when the config prefers json", async () => {
-    expect((await ls(jsonConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nsh1");
+    expect((await ls(jsonConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nprs1\nsh1");
   });
 
   it("still prints bare ids under a text config or an explicit -f text", async () => {
-    expect((await ls(textConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nsh1");
+    expect((await ls(textConfig, ["-q"])).trim()).toBe("rep1\nplain\ndoc1\nfrm1\nprs1\nsh1");
     expect((await ls(emptyConfig, ["-q", "-f", "text"])).trim()).toBe(
-      "rep1\nplain\ndoc1\nfrm1\nsh1",
+      "rep1\nplain\ndoc1\nfrm1\nprs1\nsh1",
     );
   });
 
   it("yields to an explicit -f json, which is 0007's rule (§2)", async () => {
-    expect(JSON.parse(await ls(emptyConfig, ["-q", "-f", "json"])).data.files).toHaveLength(5);
+    expect(JSON.parse(await ls(emptyConfig, ["-q", "-f", "json"])).data.files).toHaveLength(6);
     expect(JSON.parse(await ls(textConfig, ["-f", "json", "-q"])).success).toBe(true);
   });
 });

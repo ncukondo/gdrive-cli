@@ -9,6 +9,7 @@ import { registerDocs } from "./docs/index.ts";
 import { registerSheets } from "./sheets/index.ts";
 import { registerUpgrade } from "./upgrade.ts";
 import { registerForms } from "./forms/index.ts";
+import { registerSlides } from "./slides/index.ts";
 
 /**
  * Attaches every command area to the program. Each command task appends one
@@ -26,4 +27,5 @@ export function registerCommands(program: Command): void {
   registerSheets(program);
   registerUpgrade(program);
   registerForms(program);
+  registerSlides(program);
 }
