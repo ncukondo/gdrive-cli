@@ -574,8 +574,11 @@ function toApiOption(option: z.infer<typeof ChoiceOptionSchema>): OptionWrite {
   return { value: value ?? "", ...navigation };
 }
 
-/** A question item without its kind — everything a `Question` shares. */
-type QuestionKind = Omit<QuestionWrite, "questionId" | "required">;
+/**
+ * A question item without its kind — everything a `Question` shares. `null`
+ * where the API has no way to accept the kind at all.
+ */
+type QuestionKind = Omit<QuestionWrite, "questionId" | "required"> | null;
 
 const QUESTION_TYPES = ["choice", "scale", "text", "date", "time", "file_upload"] as const;
 
@@ -621,23 +624,26 @@ function toApiQuestion(
     case "time":
       return { timeQuestion: { duration: item.duration === true } };
     case "file_upload":
-      return {
-        fileUploadQuestion: {
-          ...(item.folder_id !== undefined ? { folderId: item.folder_id } : {}),
-          ...(item.max_files !== undefined ? { maxFiles: item.max_files } : {}),
-          ...(item.max_file_size !== undefined ? { maxFileSize: item.max_file_size } : {}),
-          ...(item.types !== undefined ? { types: item.types } : {}),
-        },
-      };
+      // Unreachable: {@link toApiItem} answers `null` before it gets here, and
+      // the reason is written down there.
+      return null;
   }
 }
 
 /**
- * The API resource a document item describes, or `null` for one the schema
- * could not model — 0028 §2 emits no request for those at all, so there is
- * nothing to build. The ids are carried through: they are read-only as
- * *instructions* (0028 §6), and the caller that creates an item is the one that
- * has to leave them off.
+ * The API resource a document item describes, or `null` for one no request can
+ * carry. Two kinds answer `null`, for the same practical reason — a
+ * `batchUpdate` is atomic, so a request the API refuses takes every edit beside
+ * it down, and on `create` it does so after the empty form already exists:
+ *
+ * - `unsupported`, whose `raw` is the API's own shape rather than a request's
+ *   (0028 §2);
+ * - `file_upload`, because "the API currently does not support creating file
+ *   upload questions" — Google's words, in the generated type this repo ships.
+ *   So a file upload question reads, holds its position, and is never written.
+ *
+ * The ids are carried through: they are read-only as *instructions* (0028 §6),
+ * and the caller that creates an item is the one that has to leave them off.
  */
 export function toApiItem(item: FormItem): ItemWrite | null {
   if (item.type === "unsupported") return null;
@@ -652,16 +658,24 @@ export function toApiItem(item: FormItem): ItemWrite | null {
   if (item.type === "text_item") return { ...head, textItem: {} };
   if (!isQuestionType(item.type)) return null;
 
+  const kind = toApiQuestion(item);
+  if (kind === null) return null;
+
   return {
     ...head,
     questionItem: {
       question: {
         ...(item.question_id !== undefined ? { questionId: item.question_id } : {}),
         required: item.required === true,
-        ...toApiQuestion(item),
+        ...kind,
       },
     },
   };
+}
+
+/** True for a document item no request can carry — see {@link toApiItem}. */
+export function isWritableItem(item: FormItem): boolean {
+  return toApiItem(item) !== null;
 }
 
 const API_KIND_PATH: Record<Exclude<FormItem["type"], "unsupported">, string> = {

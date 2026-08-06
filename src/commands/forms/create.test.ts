@@ -27,13 +27,22 @@ const source: FormRaw = {
         question: {
           questionId: "q1",
           required: true,
-          choiceQuestion: { type: "RADIO", options: [{ value: "Sales" }] },
+          choiceQuestion: {
+            type: "RADIO",
+            // `goToSectionId` is an item id like any other, and it names an
+            // item of *this* form — the one being copied from.
+            options: [{ value: "Sales", goToSectionId: "i3" }],
+          },
         },
       },
     },
     { itemId: "i2", title: "Watch this", videoItem: { video: { youtubeUri: "https://y" } } },
+    { itemId: "i3", title: "Sales", pageBreakItem: {} },
   ],
 };
+
+/** Every id the source form has, whatever field it appears in. */
+const SOURCE_IDS = ["i1", "i2", "i3", "q1", "1OlD"];
 
 const yaml = formDocumentToYaml(toFormDocument(source).document);
 
@@ -102,17 +111,30 @@ describe("handleFormsCreate", () => {
    * Every id in the document belongs to the form it was read from, so the new
    * form takes none of them (0028 §6) — which is what makes `forms read A` into
    * `forms create B --file` a copy rather than an error about unknown ids.
+   *
+   * Asserted over the whole request body rather than field by field, because a
+   * list of the fields this code calls "an id" is a list this code wrote: it
+   * agreed with itself about `itemId` and `questionId` while sending the source
+   * form's `goToSectionId` straight through.
    */
-  it("creates every item afresh, carrying none of the document's ids", async () => {
+  it("sends no id belonging to the form the document was read from", async () => {
     const result = await run({ source: "form.yaml" });
-    const requests = result.batches[0]?.requests ?? [];
-    const creates = requests.filter((request) => "createItem" in request);
-    expect(creates).toHaveLength(1);
-    for (const request of creates) {
-      if (!("createItem" in request)) continue;
-      expect(request.createItem.item.itemId).toBeUndefined();
-      expect(request.createItem.item.questionItem?.question.questionId).toBeUndefined();
-    }
+    const body = JSON.stringify(result.batches[0]?.requests ?? []);
+    for (const id of SOURCE_IDS) expect(body).not.toContain(id);
+  });
+
+  it("creates the items themselves, keeping what is not an id", async () => {
+    const result = await run({ source: "form.yaml" });
+    const creates = (result.batches[0]?.requests ?? []).filter(
+      (request) => "createItem" in request,
+    );
+    // The choice question and the page break; the video item cannot be made.
+    expect(creates).toHaveLength(2);
+    const [first] = creates;
+    if (first === undefined || !("createItem" in first)) throw new Error("fixture");
+    expect(first.createItem.item.questionItem?.question.choiceQuestion?.options).toEqual([
+      { value: "Sales" },
+    ]);
   });
 
   it("takes the title from the argument and the description from the document", async () => {
@@ -126,11 +148,16 @@ describe("handleFormsCreate", () => {
     });
   });
 
-  it("reports the items it could not carry over", async () => {
+  it("reports what it could not carry over, and why", async () => {
     const json = await run({ source: "form.yaml" });
-    expect(JSON.parse(json.output).data.unsupported).toEqual([{ index: 1, title: "Watch this" }]);
+    expect(JSON.parse(json.output).data.unsupported).toEqual([
+      { index: 0, title: "Which team are you on?", kind: "option.goToSectionId" },
+      { index: 1, title: "Watch this", kind: "unsupported" },
+    ]);
     const text = await run({ source: "form.yaml", format: "text" });
-    expect(text.warnings).toEqual(["Not written: Watch this (document item 1)"]);
+    expect(text.warnings).toEqual([
+      "Not written: Which team are you on? (document item 0): section navigation points at the form it was read from, Watch this (document item 1): not modelled, and `raw` is the API's shape rather than a request's",
+    ]);
   });
 
   it("moves the form into --parent afterwards and reports the folder", async () => {

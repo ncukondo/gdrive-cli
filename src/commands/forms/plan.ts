@@ -1,5 +1,6 @@
 import { AppError } from "../../types/index.ts";
 import {
+  isWritableItem,
   itemUpdateMask,
   toApiItem,
   toDocumentItem,
@@ -8,6 +9,7 @@ import {
   type FormRaw,
   type ItemRaw,
   type ItemWrite,
+  type OptionWrite,
 } from "../../lib/form-document.ts";
 import type { FormsRequest } from "../../lib/forms-api.ts";
 
@@ -33,18 +35,28 @@ export interface PlanEntry {
 }
 
 /**
- * An item the document asked to *add* that 0028 §2 forbids a request for. An
- * `unsupported` node carries the API's own resource under `raw`, not the
- * document's shape, so there is nothing to create from; one that is already in
- * the form keeps its place untouched, and only a new one is a request that
- * cannot be made. Reported through 0021 §3's channel rather than as a plan
- * entry, because nothing was planned.
+ * Something the document asked for that no request can carry. Reported through
+ * 0021 §3's channel rather than as a plan entry, because nothing was planned —
+ * the point is that a caller learns the edit did not happen instead of reading
+ * a success and assuming it did.
  */
 export interface SkippedItem {
   /** Its position in the document, which is the only thing that names it. */
   index: number;
   title: string;
+  /** The API field that could not be sent — the vocabulary `read` reports in. */
+  kind: string;
 }
+
+/**
+ * What names each kind of item {@link isWritableItem} refuses, so the report
+ * says which of the two reasons applies. The guard is `isWritableItem` itself;
+ * this only supplies the label.
+ */
+const UNWRITABLE_KIND: Partial<Record<FormItem["type"], string>> = {
+  unsupported: "unsupported",
+  file_upload: "fileUploadQuestion",
+};
 
 export interface FormPlan {
   entries: PlanEntry[];
@@ -74,6 +86,48 @@ function withoutIds(item: ItemWrite): ItemWrite {
   if (questionItem === undefined) return rest;
   const { questionId: _questionId, ...question } = questionItem.question;
   return { ...rest, questionItem: { question } };
+}
+
+/** The options of a choice question, or nothing for any other item. */
+function optionsOf(item: ItemWrite): OptionWrite[] {
+  return item.questionItem?.question.choiceQuestion?.options ?? [];
+}
+
+/**
+ * `Option.goToSectionId` is an **item id** — "Item ID of section header to go
+ * to", says the generated type — naming an item of whatever form the document
+ * was read from. A new form has none of those ids, so it is dropped on the
+ * create-everything path for the same reason 0028 §1 refuses to create an item
+ * from an `id` the form does not have: the target would point at nothing.
+ * `goToAction` is a constant, not an id, and travels fine.
+ */
+function withoutSectionTargets(item: ItemWrite): ItemWrite {
+  const questionItem = item.questionItem;
+  const choice = questionItem?.question.choiceQuestion;
+  if (questionItem === undefined || choice === undefined) return item;
+  return {
+    ...item,
+    questionItem: {
+      question: {
+        ...questionItem.question,
+        choiceQuestion: {
+          ...choice,
+          options: choice.options.map((option) => {
+            const { goToSectionId: _target, ...rest } = option;
+            return rest;
+          }),
+        },
+      },
+    },
+  };
+}
+
+/** An item's own content, without the ids that name it rather than describe it. */
+function contentOf(item: FormItem): Record<string, unknown> {
+  const bare: Record<string, unknown> = { ...item };
+  delete bare.id;
+  delete bare.question_id;
+  return bare;
 }
 
 function titleOf(item: FormItem | ItemRaw): string {
@@ -130,8 +184,10 @@ function classify(
       placed.push({ item, id });
       continue;
     }
-    if (item.type === "unsupported") {
-      skipped.push({ index, title: titleOf(item) });
+    // Nothing can create it, so it never holds a position either — the items
+    // after it land where the rest of the document puts them.
+    if (!isWritableItem(item)) {
+      skipped.push({ index, title: titleOf(item), kind: UNWRITABLE_KIND[item.type] ?? item.type });
       continue;
     }
     placed.push({ item });
@@ -266,20 +322,43 @@ export function planFormWrite(
 
   for (const [index, entry] of placed.entries()) {
     if (entry.id !== undefined) continue;
-    const item = toApiItem(entry.item);
-    if (item === null) continue;
+    const built = toApiItem(entry.item);
+    // `classify` kept only what a request can carry, so this cannot be null.
+    if (built === null) continue;
+
+    let item = withoutIds(built);
+    // On the create-everything path every section target is an id of the form
+    // the document was read from, and names nothing in this one.
+    if (options.ignoreIds === true && optionsOf(built).some((o) => o.goToSectionId !== undefined)) {
+      skipped.push({ index, title: titleOf(entry.item), kind: "option.goToSectionId" });
+      item = withoutSectionTargets(item);
+    }
     entries.push({ action: "create", title: titleOf(entry.item), index });
-    requests.push({ createItem: { item: withoutIds(item), location: { index } } });
+    requests.push({ createItem: { item, location: { index } } });
   }
 
   // Updates, at the positions the document gives.
   for (const [index, entry] of placed.entries()) {
     const id = entry.id;
     if (id === undefined) continue;
-    // 0028 §2: no request at all for an item the schema could not model.
-    const item = toApiItem(entry.item);
     const existing = byId.get(id);
-    if (item === null || existing === undefined) continue;
+    if (existing === undefined) continue;
+
+    const item = toApiItem(entry.item);
+    // 0028 §2: no request at all for an item no request can carry. It keeps its
+    // place, but an edit to it cannot be applied — so say so, rather than
+    // reporting a success that changed nothing the caller asked for.
+    if (item === null) {
+      if (!deepEqual(contentOf(entry.item), contentOf(toDocumentItem(existing)))) {
+        skipped.push({
+          index,
+          title: titleOf(entry.item),
+          kind: UNWRITABLE_KIND[entry.item.type] ?? entry.item.type,
+        });
+      }
+      continue;
+    }
+
     const projected = toApiItem(toDocumentItem(existing));
     if (projected !== null && deepEqual(withoutIds(item), withoutIds(projected))) continue;
     entries.push({ action: "update", id, title: titleOf(entry.item), index });
@@ -288,6 +367,8 @@ export function planFormWrite(
     });
   }
 
+  // In document order, whichever pass found them.
+  skipped.sort((a, b) => a.index - b.index);
   return { entries, requests, skipped };
 }
 

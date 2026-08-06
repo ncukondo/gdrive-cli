@@ -729,15 +729,32 @@ describe("toApiItem", () => {
       "textQuestion",
       "dateQuestion",
       "timeQuestion",
-      "fileUploadQuestion",
+      // A file upload question reads, and is never written — see below.
+      "none",
       "pageBreakItem",
       "textItem",
     ]);
   });
 
+  /**
+   * The generated types this repo ships say it outright: "A file upload
+   * question. The API currently does not support creating file upload
+   * questions." A `batchUpdate` is atomic, so one such item in a request kills
+   * every other edit beside it — and on `create`, after the empty form already
+   * exists. So no request carries one, on the same terms as an `unsupported`
+   * item (0028 §2): it reads, it holds its position, and it is never sent.
+   */
+  it("builds no request for a file upload question, which the API cannot create", () => {
+    expect(at(7).type).toBe("file_upload");
+    expect(toApiItem(at(7))).toBeNull();
+  });
+
   it("emits nothing at all for an item the schema could not model (0028 §2)", () => {
     expect(toApiItem({ type: "unsupported", raw: { videoItem: {} } })).toBeNull();
   });
+
+  /** The kinds a request can carry at all — the two that cannot are asserted above. */
+  const writable = items.filter((item) => toApiItem(item) !== null);
 
   /**
    * The property that keeps the two directions from drifting: whatever `read`
@@ -749,10 +766,11 @@ describe("toApiItem", () => {
    * than quietly tolerated: an "Other" option's label cannot be sent, so a
    * write cannot preserve it and this property must not claim it does.
    */
-  it("round-trips every modelled item through the API shape unchanged", () => {
-    for (const item of items) {
+  it("round-trips every writable item through the API shape unchanged", () => {
+    expect(writable).toHaveLength(items.length - 1);
+    for (const item of writable) {
       const raw = toApiItem(item);
-      if (raw === null) throw new Error("the fixture is fully modelled");
+      if (raw === null) throw new Error("filtered above");
       expect(toDocumentItem(raw)).toEqual(asWritten(item));
     }
   });
@@ -763,9 +781,9 @@ describe("toApiItem", () => {
    * makes the exception above a normalization rather than a slow drift.
    */
   it("sends the same request again after a read of what it wrote", () => {
-    for (const item of items) {
+    for (const item of writable) {
       const once = toApiItem(item);
-      if (once === null) throw new Error("the fixture is fully modelled");
+      if (once === null) throw new Error("filtered above");
       expect(toApiItem(toDocumentItem(once))).toEqual(once);
     }
   });
