@@ -7,6 +7,12 @@ import type { SkippedField, SlidePlanEntry } from "./plan.ts";
  * about Slides rather than about this CLI — except `elements`, which 0051 §3
  * says is two facts, and the plan's own refusal is where they are told apart.
  * The `kind` beside it is the document field `read` reports in.
+ *
+ * A reason that is only true of *this command* names the one that can do it.
+ * A deck's title is its Drive name — one field, measured
+ * ([0052](../../../decisions/0052-rename.md)) — so `gdrive rename` changes the
+ * title this write cannot, and a report that stopped at "no request changes it"
+ * would send a caller away from a command they already have.
  */
 const SKIPPED_REASON: Record<string, string> = {
   title: "the slide's layout has no placeholder for it",
@@ -15,7 +21,8 @@ const SKIPPED_REASON: Record<string, string> = {
   notes: "a new slide's notes page has no id until the slide exists",
   layout: "no request changes the layout an existing slide is built on",
   elements: "`elements` is read-only, and a new slide cannot be given any",
-  "presentation.title": "a deck's title is its Drive name, which no batchUpdate request changes",
+  "presentation.title":
+    "a deck's title is its Drive name, which no batchUpdate request changes — `gdrive rename` does",
 };
 
 /**

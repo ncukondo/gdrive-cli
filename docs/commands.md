@@ -1548,7 +1548,7 @@ Top level:
 | Field | Description |
 |-------|-------------|
 | `id` | The presentation ID. Output only |
-| `title` | The deck's title |
+| `title` | The deck's title, which is also its Drive name — for a deck the two are one field. `slides write` cannot change it; [`rename`](#gdrive-rename-file-name) can |
 | `revision_id` | The revision `read` saw. Output only here; a later `slides write` will send it back so a concurrent browser edit fails instead of being clobbered |
 | `slides` | The slides, in deck order |
 
@@ -1781,7 +1781,7 @@ Reported through the `unsupported` channel — one line on stderr in text mode, 
 | `layout` changed on an existing slide | No request re-applies a layout; create a new slide instead |
 | `notes` on a **new** slide | A slide's notes page has no ID until the slide exists |
 | `elements` on a **new** slide | `elements` is read-only, and a create cannot reproduce one |
-| the deck's own `title`, changed | A deck's title is its Drive name, which no `batchUpdate` request changes |
+| the deck's own `title`, changed | A deck's title is its Drive name, and no `batchUpdate` request changes it. [`gdrive rename`](#gdrive-rename-file-name) does, in one call — for a deck the Drive name *is* the title ([`../decisions/0052`](../decisions/0052-rename.md)) |
 
 Editing an [`elements`](#elements-what-the-document-has-no-field-for) entry of
 an **existing** slide is the one thing that fails the write instead:
