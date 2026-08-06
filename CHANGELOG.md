@@ -21,6 +21,137 @@ missing version, because nothing else can tell the two apart.
 Releases before 0.8.0 are not backfilled; their notes are whatever GitHub
 generated at the time.
 
+## 0.10.0 — 2026-08-07
+
+**Slides can be read and written, forms can be written, and Drive gains `ln`,
+`rename` and `cp -r`.** Every Workspace file type this CLI names now has a read
+and a write path.
+
+The other half of this release is narrower and will be felt sooner: **this CLI
+no longer lets you give a file a name it could not then find by path.** Five
+refusals are new, and each one names the remedy.
+
+### Breaking changes
+
+Pre-1.0 behaviour changes, permitted by [decision
+0014](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0014-pre-1.0-compatibility.md)
+and listed here because that record makes the release notes the compatibility
+log for 0.x. All five were confirmed against a real Google account.
+
+1. **`gdrive cp <file> <folder>` keeps the source's name.** It used to get
+   Drive's default, which is not one rule: a binary file kept its name and a
+   Google-native document became `Copy of <name>`. A copy now keeps its name at
+   every level of a tree, whatever its type.
+
+   What to do: nothing, if you wanted the file called what it is called. To get
+   the old name back, ask for it — `gdrive cp Budget Archive --name "Copy of
+   Budget"`.
+   [Decision 0054](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0054-a-copy-keeps-its-name.md).
+
+2. **A name another file in the same folder already holds is `INVALID_ARGS`.**
+   This reaches `cp`, `ln`, `mkdir`, `mv`, `rename`, `upload` and every
+   `create`. Drive permits the duplicate; this CLI cannot address the result,
+   and afterwards a path naming either file answers *Ambiguous path segment* —
+   including the file that was already there and was never touched.
+
+   What to do: pass `--name`, or choose a different one. The error names the
+   file it collided with and suggests a name; `mv` has no `--name`, so its
+   message points at `gdrive rename`.
+
+3. **A name a path could not carry back is `INVALID_ARGS`.** Two of these apply
+   everywhere: a name that begins or ends with whitespace, and a name
+   containing `/`. Four more apply only where the name would be the whole path
+   argument — that is, at the top of My Drive or of a shared drive: `root`,
+   `/`, the empty string, a name shaped like a Drive id (20 or more of
+   `A-Za-z0-9_-` with no `/`, or a drive root's `0A` and 17 more), and a name
+   beginning with `drive:`.
+
+   In an ordinary subfolder those four are fine: `gdrive mkdir --parent Reports
+   Meeting_notes_2026_08` creates it, and `Reports/Meeting_notes_2026_08` finds
+   it.
+
+   What to do: the error names what is wrong and offers a repaired name.
+   [Decisions 0055](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0055-a-name-has-to-be-addressable.md)
+   and [0056](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0056-the-class-was-wider-than-0055-drew-it.md).
+
+4. **`--quiet` writes to stdout on a failure that changed something.** A
+   partially completed `cp -r` and a `create` that failed after making the file
+   both print the new ids there, one per line; previously the whole rendered
+   error including those values went to stderr, so nothing could capture them.
+   The reason still goes to stderr.
+
+   What to do: `ID=$(gdrive forms create "…" --file f.yaml --parent X -q)` now
+   captures the id of what was left behind. **Check the exit code** — that same
+   line is a successfully created file's id when the command succeeds, and the
+   capture alone cannot tell you which happened.
+
+5. **A failure can carry `data`.** The error envelope is
+   `{success: false, error: {code, message}}` as before when nothing happened,
+   and gains a `data` key when something did — the ids `cp -r` created before it
+   stopped, or `{id, title, parent_id?}` for a file a failed `create` left. A
+   consumer that asserted the failure envelope has exactly two keys needs to
+   stop.
+   [Decision 0031](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0031-recursive-copy.md)
+   §3–§4.
+
+### Added
+
+- **`gdrive slides read | write | create`** — a deck as one YAML document:
+  each slide's layout, its placeholder text and its speaker notes. Everything
+  else — hand-placed shapes, images, tables — is listed read-only under
+  `elements`, with a `placeholder` field naming the type where the entry is a
+  placeholder the document had no field for. A write rewrites only the
+  placeholders whose text changed, and warns that rewriting one drops its inline
+  formatting. `create` does not carry speaker notes: a new slide's notes page has
+  no id until the slide exists.
+- **`gdrive forms write | create`** — an edited form document applied back,
+  matching items **by id**, so a renamed question keeps every answer already
+  attached to it. Every write reports its plan; `--dry-run` writes nothing;
+  deleting a question needs `--prune`, because deleting one severs its responses
+  for good.
+- **`gdrive ln <target> <folder> [--name]`** — creates a Drive shortcut. The
+  target is followed and the folder is entered, per the role table in
+  [decision 0025](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0025-shortcuts.md).
+- **`gdrive rename <file> <name>`** — changes a file's Drive name. `<file>` is an
+  entry, so renaming a shortcut renames the shortcut. For a Doc, a Sheet and a
+  deck the Drive name *is* the in-document title; for a form the editor's title
+  follows a few seconds later.
+- **`gdrive cp -r <folder> <folder>`** — reproduces a folder tree, which Drive
+  has no single request for. A shortcut inside the tree is copied as a shortcut
+  and its target is not copied. The first non-transient failure stops the run,
+  and the failure reports every folder and file already copied, so a caller can
+  tell how far it got.
+
+### Fixed
+
+- **A form created by `forms create` is named in Drive**, not left as `Untitled
+  form`. `documentTitle` can only be set when a form is created, so every form
+  this CLI made before this release is still called `Untitled form` in Drive and
+  unreachable by path — `gdrive rename` repairs one.
+- **A `create` that fails after making the file no longer leaves it in My Drive's
+  root.** All four now move into `--parent` before writing anything into it, and
+  a failure names the file.
+  [Decision 0057](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0057-a-create-moves-before-it-fills.md).
+- **`gdrive cp -r /` no longer copies My Drive into itself without stopping.**
+  The cycle guard compared the alias `resolvePath` returns for `/` against the
+  real id `parents` carries, so it never matched.
+- **`forms create` no longer copies another form's item ids into a new form.**
+  An option's `go_to_section_id` is an item id and was carried through, so
+  copying a branching form either failed or produced navigation pointing at
+  nothing.
+- **`forms write` no longer sends an option's label beside `isOther`**, which
+  the API refuses, and no longer builds a `file_upload` question the API cannot
+  create — that item is reported as skipped instead of failing the whole batch.
+- **A grouped shape's text is no longer lost** by `slides read`.
+
+### Internal
+
+`tests/e2e/` now covers the write paths — shortcuts, Forms, Slides and `cp -r` —
+so the encodings only Google can refuse are checked by `.husky/pre-push` rather
+than by a manual pass. Six write-side defects reached review through a full unit
+suite during this cycle; every one was an encoding a fake client accepted and the
+API refused.
+
 ## 0.9.0 — 2026-08-05
 
 **Text written into a document arrives in the document's default style.** It
