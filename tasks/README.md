@@ -41,7 +41,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 (fs/client injection + E2E policy). Rows below are grouped by parallel group,
 **not strict task number** — always start from the top row and honor
 `Depends on`. Sibling reference repos live at `../gcal-cli` and
-`../yaml-form-cli` (see `decisions/README.md`).
+`../yaml-form-cli` (see the root `CLAUDE.md`).
 
 ## Current plan
 
