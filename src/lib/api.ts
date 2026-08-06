@@ -229,21 +229,96 @@ function isScopeFailure(error: Error): boolean {
   return error.message.toLowerCase().includes("insufficient authentication scopes");
 }
 
-/** Translates a googleapis error into an {@link AppError}; re-throws anything else. */
+/**
+ * Reasons Drive gives for "you are going too fast", as opposed to "you may
+ * not". They arrive on a **403** as often as on a 429 — the status alone cannot
+ * tell a rate limit from a refusal, which is why the reason is read here.
+ * `dailyLimitExceeded` is deliberately absent: a quota measured in days does not
+ * clear inside a backoff.
+ */
+const RATE_LIMIT_REASONS = [
+  "rateLimitExceeded",
+  "userRateLimitExceeded",
+  "sharingRateLimitExceeded",
+];
+
+/**
+ * True when Drive asked for a pause rather than refused the request
+ * (decision 0031 §5). Everything else is terminal, including a 403 that names no
+ * reason — retrying a refusal only spends round trips on the same answer.
+ */
+function isTransientFailure(error: Error & { code: number }): boolean {
+  if (error.code === 429) return true;
+  if (error.code >= 500 && error.code < 600) return true;
+  if (error.code === 403) {
+    return errorReasons(error).some((reason) => RATE_LIMIT_REASONS.includes(reason));
+  }
+  return false;
+}
+
+/**
+ * Translates a googleapis error into an {@link AppError}; re-throws anything
+ * else.
+ *
+ * It is also the one place that sees an HTTP status, so it is where
+ * {@link AppError.transient} is decided. The status does not change the
+ * `ErrorCode`: a rate-limit 403 stays `PERMISSION_DENIED` because that is what
+ * decision 0017's split says about a 403, and a caller that exhausts its retries
+ * gets the same code it always did.
+ */
 export function mapDriveError(error: unknown): never {
   if (isGoogleApiError(error)) {
+    const transient = isTransientFailure(error);
     if (error.code === 401) throw new AppError("AUTH_EXPIRED", error.message);
     if (error.code === 403) {
       // Signed in but not allowed is not an auth problem: exit 1, not 2 —
       // unless the token itself lacks the scope (decision 0017).
       const code = isScopeFailure(error) ? "AUTH_REQUIRED" : "PERMISSION_DENIED";
-      throw new AppError(code, error.message);
+      throw new AppError(code, error.message, { transient });
     }
     if (error.code === 404) throw new AppError("NOT_FOUND", error.message);
-    throw new AppError("API_ERROR", error.message);
+    throw new AppError("API_ERROR", error.message, { transient });
   }
   if (error instanceof AppError) throw error;
   throw error;
+}
+
+/** How {@link withRetry} waits. Everything is injectable so tests do not sleep. */
+export interface RetryOptions {
+  /** Total attempts, the first one included. */
+  attempts?: number;
+  /** The first wait; doubled after each further failure. */
+  baseDelayMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const DEFAULT_ATTEMPTS = 5;
+const DEFAULT_BASE_DELAY_MS = 500;
+
+/**
+ * Runs a Drive call, waiting out the failures Drive asks to be waited out
+ * (decision 0031 §5) and passing everything else straight up.
+ *
+ * **Nothing else in the CLI retries.** This exists for the one command that
+ * makes hundreds of calls in a single invocation, where treating a rate limit as
+ * terminal would make the command unusable on exactly the trees it is for; every
+ * other command makes a handful of calls and reports what Drive said. Wrapping a
+ * new caller in this is a decision, not a convenience.
+ */
+export async function withRetry<T>(call: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+  const attempts = options.attempts ?? DEFAULT_ATTEMPTS;
+  const baseDelayMs = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
+  const sleep = options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await call();
+    } catch (error) {
+      const transient = error instanceof AppError && error.transient;
+      if (!transient || attempt >= attempts) throw error;
+      await sleep(baseDelayMs * 2 ** (attempt - 1));
+    }
+  }
 }
 
 // --- Normalization ----------------------------------------------------------
