@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { AppError, type CommandResult, type DriveFile, type OutputFormat } from "../types/index.ts";
 import type { CopyTreeReport } from "../lib/copy-tree.ts";
 import { formatValues, line, renderSuccess } from "../lib/output.ts";
+import { ROOT_ID } from "../lib/resolve-path.ts";
 
 export interface CpDeps {
   /** The file to copy, as an entry in a folder: a shortcut copies itself. */
@@ -10,9 +11,8 @@ export interface CpDeps {
   resolveFolder: (arg: string) => Promise<string>;
   copyFile: (fileId: string, parentId: string, name?: string) => Promise<DriveFile>;
   /**
-   * Metadata, for the two things that need it and nothing else: the folder hint
-   * on a failed copy (decision 0031 §1) and the ancestors of the destination
-   * (§6). An ordinary `cp` calls it not at all.
+   * Metadata: the source's name (decision 0054 §1) and its parents (§3), and
+   * the destination's ancestors (decision 0031 §6).
    */
   getFile: (fileId: string) => Promise<DriveFile>;
   copyTree: (source: DriveFile, destId: string, name?: string) => Promise<CopyTreeReport>;
@@ -31,25 +31,44 @@ function count(n: number, noun: string): string {
 }
 
 /**
- * Replaces Drive's refusal with one that says what to do about it
- * (decision 0031 §1).
+ * The message decision 0031 §1 chose, in place of Drive's own refusal, which
+ * mentions neither folders nor `-r`.
  *
- * Run only *after* the copy failed, so an ordinary `cp` pays nothing for a case
- * that ends in an error anyway — the shape decision 0019 §3's shared-drive hint
- * already uses. And like that one, it never replaces the caller's error when its
- * own lookup fails: a hint is a nicety, and losing a real error to one is not.
+ * 0031 §1 produced it only *after* `files.copy` had failed, to keep an ordinary
+ * copy to a single round trip. Decision 0054 spends that round trip on every
+ * copy — §1 has to know the source's name and §3 its parents — so there is
+ * nothing left to save by finding out on the failure path, and the refusal now
+ * happens before anything is attempted. What a caller sees is unchanged: the
+ * same message, the same `INVALID_ARGS`.
  */
-async function folderHintFor(deps: CpDeps, fileId: string, error: unknown): Promise<unknown> {
-  let source: DriveFile;
-  try {
-    source = await deps.getFile(fileId);
-  } catch {
-    return error;
-  }
-  if (source.type !== "folder") return error;
+function folderNeedsRecursive(deps: CpDeps): AppError {
   return new AppError(
     "INVALID_ARGS",
     `"${deps.file}" is a folder, and Drive cannot copy one in a single request. Use \`gdrive cp -r "${deps.file}" "${deps.dest}"\` to copy it and everything in it.`,
+  );
+}
+
+/**
+ * Refuses a copy that would land beside its own source under the same name
+ * (decision 0054 §3). Drive would not refuse it; it would produce twins that no
+ * listing tells apart and no path can address, so the message names the flag
+ * that fixes it.
+ *
+ * `--name` settles the question before it is asked, which is why it is the one
+ * case that skips the check rather than passing it.
+ *
+ * `root` is an alias Drive accepts, not an id: a file in My Drive's root carries
+ * the root's *real* id in `parents`, so comparing the two as strings would let
+ * the very case §3 exists for — a snapshot taken in place — through. Resolving
+ * it costs one `files.get`, and only when the destination was spelled that way.
+ */
+async function refuseSibling(deps: CpDeps, source: DriveFile, destId: string): Promise<void> {
+  if (deps.name !== undefined) return;
+  const parentId = destId === ROOT_ID ? (await deps.getFile(destId)).id : destId;
+  if (!source.parents.includes(parentId)) return;
+  throw new AppError(
+    "INVALID_ARGS",
+    `"${deps.file}" is already in "${deps.dest}", so copying it there would leave two files called "${source.name}" that nothing can tell apart. Give the copy a name: --name "${source.name} (copy)".`,
   );
 }
 
@@ -92,38 +111,37 @@ export async function handleCp(deps: CpDeps): Promise<CommandResult> {
   const fileId = await deps.resolvePath(deps.file);
   const destId = await deps.resolveFolder(deps.dest);
 
-  if (deps.recursive === true) {
-    // `-r` needs the metadata anyway, so nothing here is a hint: a folder is
-    // walked, and anything else is copied as POSIX `cp -r` copies it (§1).
-    const source = await deps.getFile(fileId);
-    if (source.type === "folder") {
-      await refuseCycle(deps, fileId, destId);
-      const report = await deps.copyTree(source, destId, deps.name);
-      const { root } = report;
-      deps.write(
-        renderSuccess(
-          {
-            data: { file: root, folders: report.folders, copied: report.copied },
-            text: line`Copied to ${root.name} (${root.id}): ${count(report.folders.length, "folder")}, ${count(report.copied.length, "file")}`,
-            quiet: formatValues([root.id]),
-          },
-          deps.format,
-          deps.quiet,
-        ),
-      );
-      return { exitCode: 0 };
-    }
+  // One lookup answers everything `cp` has to decide before it copies: what the
+  // copy is called (decision 0054 §1), whether it would land beside its source
+  // (§3), and whether a folder was named without `-r` (decision 0031 §1). It is
+  // unconditional because 0054 §1 is: one rule, no branch on the file's type and
+  // none on how it was reached.
+  const source = await deps.getFile(fileId);
+  const name = deps.name ?? source.name;
+
+  if (source.type === "folder" && deps.recursive !== true) throw folderNeedsRecursive(deps);
+  await refuseSibling(deps, source, destId);
+
+  if (source.type === "folder") {
+    await refuseCycle(deps, fileId, destId);
+    const report = await deps.copyTree(source, destId, name);
+    const { root } = report;
+    deps.write(
+      renderSuccess(
+        {
+          data: { file: root, folders: report.folders, copied: report.copied },
+          text: line`Copied to ${root.name} (${root.id}): ${count(report.folders.length, "folder")}, ${count(report.copied.length, "file")}`,
+          quiet: formatValues([root.id]),
+        },
+        deps.format,
+        deps.quiet,
+      ),
+    );
+    return { exitCode: 0 };
   }
 
-  let copy: DriveFile;
-  try {
-    copy = await deps.copyFile(fileId, destId, deps.name);
-  } catch (error) {
-    // Already known not to be a folder when `-r` was given, so the hint would
-    // only spend a call to say nothing.
-    if (deps.recursive === true) throw error;
-    throw await folderHintFor(deps, fileId, error);
-  }
+  // `-r` on an ordinary file copies it, as POSIX `cp -r` does (decision 0031 §1).
+  const copy = await deps.copyFile(fileId, destId, name);
 
   deps.write(
     renderSuccess(
