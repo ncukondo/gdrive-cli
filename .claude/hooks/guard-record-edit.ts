@@ -14,17 +14,8 @@
  */
 import { execFileSync } from "node:child_process";
 import { relative } from "node:path";
-import { STATUS_FORMAT, isDecisionRecord } from "../../scripts/lint-records.js";
-
-interface HookPayload {
-  tool_input?: { file_path?: unknown; notebook_path?: unknown };
-}
-
-function targetPath(payload: HookPayload): string | null {
-  const input = payload.tool_input ?? {};
-  const candidate = input.file_path ?? input.notebook_path;
-  return typeof candidate === "string" && candidate !== "" ? candidate : null;
-}
+import { WRITE_A_NEW_RECORD, isDecisionRecord } from "../../scripts/lint-records.js";
+import { readToolInput, refuse } from "./payload.js";
 
 function isTracked(path: string): boolean {
   try {
@@ -35,41 +26,17 @@ function isTracked(path: string): boolean {
   }
 }
 
-const raw = await Bun.stdin.text();
-let parsed: unknown = {};
-if (raw.trim() !== "") {
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    // A payload this cannot read is a payload it cannot clear. Exit 2 blocks;
-    // an unhandled throw exits 1, which the harness treats as non-blocking and
-    // which would turn a parse error into a silently disabled guard.
-    process.stderr.write(
-      "guard-record-edit: could not parse the hook payload, so it cannot tell\n" +
-        "whether this edit targets a committed decision. Refusing rather than\n" +
-        "passing (decision 0047 §2).\n",
-    );
-    process.exit(2);
-  }
-}
-const payload: HookPayload = typeof parsed === "object" && parsed !== null ? parsed : {};
-
-const target = targetPath(payload);
-if (target !== null) {
+const target = await readToolInput("guard-record-edit", ["file_path", "notebook_path"]);
+{
   const repoRelative = relative(process.cwd(), target);
   if (isDecisionRecord(repoRelative) && isTracked(repoRelative)) {
-    process.stderr.write(
+    refuse(
       `${repoRelative} is a committed decision, and 0032 §3 does not allow it to change —\n` +
         `not its Decision, not its Context, not its Status line, and not a table or a\n` +
         `list inside it. A record that may be edited must be edited to stay true, and\n` +
         `each place needing an edit is a place the edit can be missed.\n\n` +
-        `Write the new position as a new decision, stating itself in full so it reads\n` +
-        `without the one it replaces.\n\n` +
-        `${STATUS_FORMAT}\n\n` +
-        `Then add its row to decisions/README.md, which is where that relationship is\n` +
-        `visible without opening either file (0032 §4).\n\n` +
-        `A typo or a broken link is the only exception and is a person's to make.\n`,
+        `${WRITE_A_NEW_RECORD}\n\n` +
+        `A typo or a broken link is the only exception and is a person's to make.`,
     );
-    process.exit(2);
   }
 }
