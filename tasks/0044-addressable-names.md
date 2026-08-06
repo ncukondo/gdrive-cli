@@ -22,9 +22,12 @@ by path, before it writes anything.
   `src/commands/cp.ts`. **Read that function first** — the generalization is
   mostly moving it, including its handling of the `/` root alias, which is the
   part most likely to be lost in a rewrite.
-- `src/lib/resolve-path.ts` is what defines "cannot survive a path": it trims
-  each segment and splits on `/`. The refusal has to match what that function
-  actually does, not what this task says it does — read it.
+- `src/lib/resolve-path.ts` is what defines "cannot survive a path". It trims the
+  **whole argument** and then splits on `/` — not each segment, as 0055 §1 and an
+  earlier draft of this line both said. Measured: `Reports/ Notes` finds the
+  file, `Reports/Notes ` does not.
+  [`0056`](../decisions/0056-the-class-was-wider-than-0055-drew-it.md) carries the
+  correction and widens the case from two spellings to five.
 - The harm is visible in `resolve-path.ts`'s ambiguous-segment branch: two files
   with one name make an `INVALID_ARGS` for **both**.
 
@@ -43,10 +46,12 @@ by path, before it writes anything.
 - **A `--force`.** [`0055`](../decisions/0055-a-name-has-to-be-addressable.md)'s
   `Out of scope` refuses it; do not add one.
 - **Finding the duplicates an account already has.** Same section, same answer.
-- **`mv`.** It moves rather than duplicates, so it cannot create a sibling
-  collision — but check that claim against the code before trusting this line,
-  because a move into a folder that already holds that name does exactly what
-  §1 forbids. If it does, `mv` is in scope after all and this bullet is wrong.
+- ~~**`mv`**~~ — **this bullet was wrong and `mv` is in scope.** A move into a
+  folder that already holds the name produces §1's pair exactly, after which
+  `resolve-path.ts` answers *Ambiguous path segment* for both files, including
+  the one that was already there.
+  [`0056`](../decisions/0056-the-class-was-wider-than-0055-drew-it.md) §1 puts
+  `mv` under the sibling case and explains why it is not under the other one.
 
 ## TDD plan
 
@@ -71,8 +76,12 @@ by path, before it writes anything.
 - [ ] Each of `rename`, `mkdir`, `upload`, `cp`, `ln` and the four `create`s
       refuses a name a sibling already holds, with `INVALID_ARGS`, naming the
       remedy, and issuing no write
-- [ ] The same for a name that will not survive a path — a leading or trailing
-      space, or a `/`
+- [ ] The same for a name that will not survive a path, in all five spellings
+      [`0056`](../decisions/0056-the-class-was-wider-than-0055-drew-it.md) §2
+      names: leading or trailing whitespace, a `/`, one of the root's spellings,
+      an id-shaped name, and a `drive:` prefix
+- [ ] `mv` refuses a move into a folder that already holds the name, and does
+      **not** refuse an existing name a path cannot hold
 - [ ] `cp --name` is not an exemption
 - [ ] The `/` root alias is still handled, on both sides
 - [ ] One implementation of the check, not nine
