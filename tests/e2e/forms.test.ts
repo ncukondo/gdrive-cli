@@ -37,17 +37,19 @@ import {
  * one, on the file that is already among the slowest in a suite a `pre-push`
  * hook runs on every push, and that trade was made deliberately.
  *
- * **Containment does not hold on the failure path, and this file cannot make
- * it hold.** `forms create` creates the form, fills it, and moves it into
- * `--parent` last, so a `batchUpdate` that fails leaves an empty form in **My
- * Drive's root** — outside every sandbox, which 0043 §2 otherwise forbids —
- * and the command throws before printing the id, so nothing names it
- * afterwards. That failure is not hypothetical here: it is the exact signature
- * of every defect above, so the red path of these cases is the path that
- * orphans a form. Measured, once, while writing this file.
- * [#36](https://github.com/ncukondo/gdrive-cli/issues/36) is the fix — move
- * before filling — and it is a change to all four `create` commands rather
- * than to this file. `slides create` has the same shape and the same gap.
+ * **Containment holds on the failure path too**, which is what makes the red
+ * path of these cases safe to run at all. `forms create` moves the form into
+ * `--parent` *before* it fills it, so a `batchUpdate` that fails — the exact
+ * signature of every defect above — leaves the form inside this run's sandbox,
+ * and names its id in the error's `data`. A file that fails keeps its sandbox
+ * rather than deleting it (0043 §2), so the form is there to look at, and it
+ * goes with the folder when the next run prunes it.
+ *
+ * It was the other way round until
+ * [#36](https://github.com/ncukondo/gdrive-cli/issues/36): the move ran last,
+ * so the same failure left an empty form in **My Drive's root** — outside every
+ * sandbox 0043 §2 permits — and nothing printed its id. Measured, once, while
+ * writing this file. `slides create` has the same shape and the same guarantee.
  */
 
 const optionSchema = z.union([
