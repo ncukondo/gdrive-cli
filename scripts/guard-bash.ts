@@ -20,6 +20,7 @@
  * an agent, because a guard something can talk its way past is not a guard.
  */
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 export interface RepoState {
   /** Whether `main` is an ancestor of `HEAD` — i.e. nothing to rebase onto. */
@@ -33,212 +34,341 @@ export interface Block {
 }
 
 /**
- * Splits a command into whitespace-separated tokens, keeping a quoted run
- * together as one.
+ * One token of a command line: a word, or a shell operator that separates two
+ * commands.
  *
- * Quote awareness is not decoration here. `git commit -m "fix the -a flag"`
- * splits naively into a token that is exactly `-a`, and the staging rule below
- * would refuse a commit whose message merely mentions one.
+ * Tokenizing *before* splitting is what makes the split correct. Splitting the
+ * raw string on `;` or `|` first refuses
+ * `git commit -m "refuse git add -A; git add . too"` — a message this
+ * repository's own commits are full of — because the separator inside the quotes
+ * is not a separator at all.
  */
-function tokenize(segment: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: string | undefined;
-  let started = false;
+interface Token {
+  kind: "word" | "operator";
+  value: string;
+  /** True when the word arrived inside quotes, so it is one argument. */
+  quoted: boolean;
+}
 
-  for (let i = 0; i < segment.length; i++) {
-    const char = segment[i] ?? "";
+const OPERATORS = ["&&", "||", ";;", ";", "|", "&", "\n"];
+
+function tokenize(command: string): Token[] {
+  const tokens: Token[] = [];
+  let current = "";
+  let quoted = false;
+  let started = false;
+  let quote: string | undefined;
+
+  const flush = () => {
+    if (current !== "" || started) tokens.push({ kind: "word", value: current, quoted });
+    current = "";
+    started = false;
+    quoted = false;
+  };
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i] ?? "";
+
     if (quote !== undefined) {
-      if (char === quote) quote = undefined;
-      else current += char;
+      if (char === "\\" && quote === '"') {
+        current += command[++i] ?? "";
+      } else if (char === quote) {
+        quote = undefined;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === "\\") {
+      current += command[++i] ?? "";
+      started = true;
       continue;
     }
     if (char === '"' || char === "'") {
       quote = char;
+      quoted = true;
       started = true;
       continue;
     }
+
+    const operator = OPERATORS.find((op) => command.startsWith(op, i));
+    if (operator !== undefined) {
+      flush();
+      tokens.push({ kind: "operator", value: operator, quoted: false });
+      i += operator.length - 1;
+      continue;
+    }
     if (/\s/.test(char)) {
-      if (current !== "" || started) tokens.push(current);
-      current = "";
-      started = false;
+      flush();
       continue;
     }
     current += char;
   }
-  if (current !== "" || started) tokens.push(current);
+  flush();
   return tokens;
 }
 
-/** Splits a compound command into the segments a shell would run separately. */
-function segments(command: string): string[][] {
-  return command.split(/&&|\|\||[;|\n]/).map((segment) => tokenize(segment.trim()));
+/** The words of each command the shell would run separately. */
+function segments(command: string): Token[][] {
+  const out: Token[][] = [[]];
+  for (const token of tokenize(command)) {
+    if (token.kind === "operator") out.push([]);
+    else (out[out.length - 1] ?? []).push(token);
+  }
+  return out.filter((segment) => segment.length > 0);
 }
 
 /** Leading noise a shell leaves in a segment: punctuation and block keywords. */
-const SHELL_LEAD = new Set(["(", ")", "{", "}", "!", "if", "then", "else", "elif", "do", "while"]);
-
-/** Words that run the command that follows them, so the real binary is later. */
-const WRAPPERS = new Set(["sudo", "env", "command", "exec", "nohup", "time", "builtin"]);
-
-/** Global git options that swallow the next token, so the subcommand is not there. */
-const GIT_GLOBAL_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
-
-/** Flags that stage without naming anything, once a cluster is expanded. */
-const IMPLICIT_ADD_FLAGS = new Set(["-A", "-u", "--all", "--update", "--no-ignore-removal"]);
-const IMPLICIT_COMMIT_FLAGS = new Set(["-a", "--all"]);
+const SHELL_LEAD = new Set([
+  "(",
+  ")",
+  "{",
+  "}",
+  "!",
+  "if",
+  "then",
+  "else",
+  "elif",
+  "fi",
+  "do",
+  "done",
+  "while",
+  "until",
+]);
 
 /**
- * A parsed git invocation: what it is, which flags it carries before `--`, and
- * every pathspec on either side of it.
- *
- * Normalising here is what lets the rule below be one question. Two review
- * rounds found sixteen spellings, and every one of them was a way of moving the
- * interesting token somewhere the previous scan had stopped looking — behind a
- * wrapper word, behind an environment assignment, behind shell punctuation,
- * behind an absolute path, behind a global option, or behind `--`. None of them
- * changed what the command does to the index.
+ * Words that run the command after them. Unlisted ones are the reason this is
+ * not a complete rule ([0048](../decisions/0048-staging-refuses-a-class.md) §2);
+ * the interpreters below are handled separately, because their command arrives
+ * as a single quoted argument rather than as the rest of the line.
  */
-interface GitInvocation {
-  name: string;
-  /** Flags before `--`, with short clusters expanded so `-am` yields `-a`. */
+const WRAPPERS = new Set([
+  "sudo",
+  "doas",
+  "env",
+  "command",
+  "exec",
+  "nohup",
+  "time",
+  "builtin",
+  "nice",
+  "ionice",
+  "timeout",
+  "stdbuf",
+  "setsid",
+  "xargs",
+  "unbuffer",
+  "script",
+]);
+
+/** Interpreters whose *argument* is another command to check. */
+const INTERPRETERS = new Set(["bash", "sh", "zsh", "dash", "ksh", "eval"]);
+
+/** Global git options that swallow the next token. */
+const GIT_GLOBAL_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
+
+/** Long options that stage without naming anything; matched by unambiguous prefix. */
+const IMPLICIT_LONG = ["--all", "--update", "--no-ignore-removal"];
+const IMPLICIT_SHORT_ADD = new Set(["-A", "-u"]);
+const IMPLICIT_SHORT_COMMIT = new Set(["-a"]);
+
+/** Flags that make an empty pathspec list legitimate, because a person picks. */
+const INTERACTIVE = new Set(["-p", "-i", "--patch", "--interactive"]);
+
+export interface Invocation {
+  binary: string;
+  sub: string;
+  /** Flags before `--`, short clusters expanded so `-am` yields `-a` and `-m`. */
   flags: string[];
-  /** Everything that is a path argument, from before and after `--`. */
+  /** Path arguments, from before and after `--`. */
   pathspecs: string[];
+  /** A command carried as an argument, for `bash -c '…'` and `eval '…'`. */
+  nested: string[];
 }
 
-function parseGit(tokens: string[]): GitInvocation | null {
+/**
+ * Normalises one segment into the question the rules below ask.
+ *
+ * Both rules go through this. An earlier version normalised only the git side,
+ * so `sudo gh pr create` walked past a guard that caught `sudo git add -A` —
+ * two places to stop looking, which is the shape 0048 §2 warns about rather than
+ * any particular spelling.
+ */
+export function parseInvocation(words: Token[]): Invocation | null {
   let i = 0;
-  // Shell punctuation, block keywords, environment assignments and wrapper
-  // words all sit in front of the binary without changing it.
-  while (i < tokens.length) {
-    const token = tokens[i] ?? "";
-    if (SHELL_LEAD.has(token) || WRAPPERS.has(token) || /^[A-Za-z_][\w]*=/.test(token)) i++;
-    else break;
+  const nested: string[] = [];
+
+  for (;;) {
+    while (i < words.length) {
+      const word = words[i];
+      if (word === undefined) break;
+      const value = word.value;
+      if (SHELL_LEAD.has(value) || /^[A-Za-z_]\w*=/.test(value)) i++;
+      else break;
+    }
+    const head = (words[i]?.value ?? "").split("/").pop() ?? "";
+    if (WRAPPERS.has(head)) {
+      i++;
+      // Skip the wrapper's own arguments to reach the command it runs: its
+      // options, and a bare duration or count, because `timeout 5 git add -A`
+      // and `xargs -n 1 git add` both put a non-option between the two.
+      while (i < words.length) {
+        const value = words[i]?.value ?? "";
+        if (value.startsWith("-") || /^\d+[smhd]?$/.test(value)) i++;
+        else break;
+      }
+      continue;
+    }
+    if (INTERPRETERS.has(head)) {
+      // `bash -c '<command>'` and `eval '<command>'`: the argument is a command.
+      for (const word of words.slice(i + 1)) {
+        if (word.quoted || !word.value.startsWith("-")) nested.push(word.value);
+      }
+      return { binary: head, sub: "", flags: [], pathspecs: [], nested };
+    }
+    break;
   }
 
-  // `/usr/bin/git` is git. Match the basename, not the string.
-  const binary = (tokens[i] ?? "").split("/").pop();
-  if (binary !== "git") return null;
+  const binary = (words[i]?.value ?? "").split("/").pop() ?? "";
+  if (binary === "") return null;
   i++;
 
-  while (i < tokens.length) {
-    const token = tokens[i] ?? "";
-    if (!token.startsWith("-")) break;
-    i += GIT_GLOBAL_WITH_VALUE.has(token) ? 2 : 1;
+  if (binary === "git") {
+    while (i < words.length) {
+      const value = words[i]?.value ?? "";
+      if (!value.startsWith("-")) break;
+      i += GIT_GLOBAL_WITH_VALUE.has(value) ? 2 : 1;
+    }
   }
 
-  const name = tokens[i];
-  if (name === undefined) return null;
-
+  const sub = words[i]?.value ?? "";
   const flags: string[] = [];
   const pathspecs: string[] = [];
   let separated = false;
 
-  for (const token of tokens.slice(i + 1)) {
-    if (!separated && token === "--") {
+  for (const word of words.slice(i + 1)) {
+    if (!separated && !word.quoted && word.value === "--") {
       separated = true;
       continue;
     }
-    // After `--` every token is a path, which is 0048 §1's carve-out: a file
-    // genuinely named `-A` still commits. That is about the *name*, not about
-    // switching the rule off — a `.` after `--` is as unnamed as one before it.
-    if (separated || !token.startsWith("-")) {
-      pathspecs.push(token);
+    if (separated || !word.value.startsWith("-")) {
+      pathspecs.push(word.value);
       continue;
     }
-    // Expand a short cluster: `-am` is `-a` and `-m`.
-    if (/^-[A-Za-z]+$/.test(token) && !token.startsWith("--")) {
-      for (const letter of token.slice(1)) flags.push(`-${letter}`);
+    if (/^-[A-Za-z]+$/.test(word.value)) {
+      for (const letter of word.value.slice(1)) flags.push(`-${letter}`);
     } else {
-      flags.push(token);
+      flags.push(word.value);
     }
   }
 
-  return { name, flags, pathspecs };
+  return { binary, sub, flags, pathspecs, nested };
+}
+
+/** Whether a long flag is one git would resolve to an implicit-staging option. */
+function stagesByLongFlag(flag: string): boolean {
+  if (!flag.startsWith("--") || flag.length < 3) return false;
+  // git's parse-options accepts any unambiguous prefix, so `--al` is `--all`.
+  // `--no-all` and `--ignore-removal` are prefixes of nothing here, which is
+  // what keeps the negations out.
+  return IMPLICIT_LONG.some((full) => full.startsWith(flag));
 }
 
 /**
  * Whether a pathspec names something, as opposed to sweeping whatever is there.
  *
- * `./src` names a directory and is allowed. `.`, `..` and `:/` name the tree,
- * and a glob names whatever happens to match — in both cases the caller has not
- * said which files they mean, which is the whole of 0001's rule.
+ * `./src` names a directory. `.`, `..` and anything beginning `:` do not — the
+ * colon opens git's pathspec magic, where `:`, `:/`, `:(top)` and `:!sub` all
+ * reach outside what was typed. A glob names whatever matches, unless a file of
+ * that exact name exists, which is the same reasoning 0048 §1 applies to a file
+ * named `-A`.
  */
-function isNamedPath(spec: string): boolean {
-  if (["", ".", "./", "..", "../", ":/", ":/."].includes(spec)) return false;
-  if (/[*?]|\[.*\]/.test(spec)) return false;
+export function isNamedPath(spec: string, exists: (path: string) => boolean): boolean {
+  if (["", ".", "./", "..", "../"].includes(spec)) return false;
+  if (spec.startsWith(":")) return false;
+  if (/[*?]|\[[^\]]*\]/.test(spec)) return exists(spec);
   return true;
 }
 
 /**
- * Whether `tokens` adds to the index something the caller did not name as a
- * path ([0048](../decisions/0048-staging-refuses-a-class.md) §1).
- *
- * One question over a normalised invocation: does a flag stage implicitly, or is
- * a pathspec not a named path? Every spelling either review found collapses into
- * it, and `--` stops being a special case.
- *
- * 0048 §2 is explicit that this remains an approximation and that a spelling
- * which gets through is a defect here rather than a permission. Do not read the
- * allowed set as the permitted set — two rounds of doing exactly that are why
- * this function has the shape it has.
+ * Whether an invocation adds to the index something the caller did not name
+ * ([0048](../decisions/0048-staging-refuses-a-class.md) §1).
  */
-function stagesUnnamed(tokens: string[]): boolean {
-  const git = parseGit(tokens);
-  if (git === null) return false;
+function stagesUnnamed(git: Invocation, exists: (path: string) => boolean): boolean {
+  if (git.binary !== "git") return false;
 
-  if (git.name === "add" || git.name === "stage") {
-    return (
-      git.flags.some((flag) => IMPLICIT_ADD_FLAGS.has(flag)) ||
-      git.pathspecs.some((spec) => !isNamedPath(spec))
-    );
+  if (git.sub === "add" || git.sub === "stage") {
+    if (git.flags.some((f) => IMPLICIT_SHORT_ADD.has(f) || stagesByLongFlag(f))) return true;
+    if (git.pathspecs.some((spec) => !isNamedPath(spec, exists))) return true;
+    // No path and no interactive flag: the set comes from somewhere this cannot
+    // see, such as `xargs`, or the command is an error either way.
+    return git.pathspecs.length === 0 && !git.flags.some((f) => INTERACTIVE.has(f));
   }
 
-  if (git.name === "commit") {
-    return git.flags.some((flag) => IMPLICIT_COMMIT_FLAGS.has(flag));
+  if (git.sub === "commit") {
+    return git.flags.some((f) => IMPLICIT_SHORT_COMMIT.has(f) || stagesByLongFlag(f));
   }
 
   return false;
 }
 
-/** Whether `tokens` asks for a review rather than reading one. */
-function requestsReview(tokens: string[]): boolean {
+/** Whether an invocation asks for a review rather than reading one. */
+function requestsReview(inv: Invocation): boolean {
   return (
-    tokens[0] === "gh" && tokens[1] === "pr" && (tokens[2] === "create" || tokens[2] === "ready")
+    inv.binary === "gh" && inv.sub === "pr" && ["create", "ready"].includes(inv.pathspecs[0] ?? "")
   );
 }
 
-/** The rule `command` would break, or null when it breaks neither. */
-export function checkBashCommand(command: string, state: RepoState): Block | null {
-  for (const tokens of segments(command)) {
-    if (stagesUnnamed(tokens)) {
-      return {
-        rule: "stage-specific-paths",
-        message:
-          "Stage the paths you mean (decisions 0001, 0048 §1).\n" +
-          "This command adds to the index something you did not name. A commit built\n" +
-          "that way is indistinguishable from a correct one afterwards, which is why\n" +
-          "it is refused before it runs rather than checked after.\n\n" +
-          "  git status --short              # what there is to choose from\n" +
-          "  git add src/index.ts tests/index.test.ts\n\n" +
-          "`git commit -a` and `-am` are the same rule: they stage every tracked\n" +
-          "change without naming one. Stage, then commit.",
-      };
+const STAGE_MESSAGE =
+  "Stage the paths you mean (decisions 0001, 0048 §1).\n" +
+  "This command adds to the index something you did not name. A commit built\n" +
+  "that way is indistinguishable from a correct one afterwards, which is why\n" +
+  "it is refused before it runs rather than checked after.\n\n" +
+  "  git status --short              # what there is to choose from\n" +
+  "  git add src/index.ts tests/index.test.ts\n\n" +
+  "`git commit -a` and `-am` are the same rule: they stage every tracked change\n" +
+  "without naming one. Stage, then commit. A flag like `-A` is refused even\n" +
+  "beside a path — drop the flag, the path is enough.";
+
+const REBASE_MESSAGE =
+  "Rebase before requesting review (decision 0044 §1).\n" +
+  "main has moved since this branch was cut. GitHub records a pull request's\n" +
+  "base when it is opened, so the reviewer would be handed the main-only\n" +
+  "commits — including this task's own plan — replayed as if the branch had\n" +
+  "made them. That is what cost #16 a full round.\n\n" +
+  "  git rebase main && git push --force-with-lease\n\n" +
+  "Then open the request; the diff will be the branch's own work.";
+
+/**
+ * The rule `command` would break, or null when it breaks neither.
+ *
+ * `exists` is injected so the glob test can ask the filesystem without the tests
+ * needing one (0012).
+ */
+export function checkBashCommand(
+  command: string,
+  state: RepoState,
+  exists: (path: string) => boolean = existsSync,
+  depth = 0,
+): Block | null {
+  for (const words of segments(command)) {
+    const inv = parseInvocation(words);
+    if (inv === null) continue;
+
+    // `bash -c '…'` and `eval '…'` carry a command as an argument. Recursing is
+    // bounded: a command that nests this deep is not something to reason about.
+    if (inv.nested.length > 0) {
+      if (depth >= 3) return { rule: "stage-specific-paths", message: STAGE_MESSAGE };
+      for (const inner of inv.nested) {
+        const block = checkBashCommand(inner, state, exists, depth + 1);
+        if (block !== null) return block;
+      }
+      continue;
     }
 
-    if (requestsReview(tokens) && !state.rebased) {
-      return {
-        rule: "rebase-before-review",
-        message:
-          "Rebase before requesting review (decision 0044 §1).\n" +
-          "main has moved since this branch was cut. GitHub records a pull request's\n" +
-          "base when it is opened, so the reviewer would be handed the main-only\n" +
-          "commits — including this task's own plan — replayed as if the branch had\n" +
-          "made them. That is what cost #16 a full round.\n\n" +
-          "  git rebase main && git push --force-with-lease\n\n" +
-          "Then open the request; the diff will be the branch's own work.",
-      };
+    if (stagesUnnamed(inv, exists)) return { rule: "stage-specific-paths", message: STAGE_MESSAGE };
+    if (requestsReview(inv) && !state.rebased) {
+      return { rule: "rebase-before-review", message: REBASE_MESSAGE };
     }
   }
 
