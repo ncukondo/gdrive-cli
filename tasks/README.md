@@ -82,8 +82,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0029 `forms read` / `forms responses`](archive/0029-forms-read.md) | — | D | done |
 | [0030 `forms write` / `forms create`](archive/0030-forms-write.md) | 0029 | D | done |
 | [0031 `slides read`](archive/0031-slides-read.md) | 0029 | E | done |
-| [0032 `slides write` / `slides create`](0032-slides-write.md) | 0031, 0030 | E | todo |
-| [0033 `cp -r` copies a folder tree](0033-recursive-copy.md) | 0027 | — | todo |
+| [0032 `slides write` / `slides create`](archive/0032-slides-write.md) | 0031, 0030 | E | done |
+| [0033 `cp -r` copies a folder tree](archive/0033-recursive-copy.md) | 0027 | — | done |
 | [0034 What the live verification found](archive/0034-live-verification-fixes.md) | 0027, 0029 | — | done |
 | [0035 The release notes carry the breaking changes](archive/0035-release-notes.md) | — | F | done |
 | [0036 The table stays a table](archive/0036-renderer-properties.md) | 0034 | F | closed unmerged |
@@ -93,7 +93,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0040 An insert stops inheriting the formatting next to it](archive/0040-inserted-content-is-default-styled.md) | — | — | done |
 | [0041 The rules that can be checked become scripts](archive/0041-rules-are-executed.md) | — | G | done |
 | [0042 The rules a script cannot check move to where they are read](archive/0042-rules-are-read-where-they-apply.md) | — | G | done |
-| [0043 `gdrive rename`](0043-rename.md) | — | — | todo |
+| [0043 `gdrive rename`](archive/0043-rename.md) | — | — | done |
 | [0044 A name this CLI cannot address is refused](0044-addressable-names.md) | 0033, 0043 | — | todo |
 
 ## Parallelism notes
@@ -248,6 +248,22 @@ A form is not the exception the table made it, and the closing section of 0053 i
 the part worth carrying forward: a measurement of a *negative* needs a second
 observation before it becomes a record, since one read cannot tell "never" from
 "not yet".
+
+0032, 0033 and 0043 merged together, and what they are worth remembering for is
+what the two-stage check caught. Every branch passed its unit suite, its type
+check and a fresh reviewer before either stage ran. The live pass then found the
+`Copy of` naming defect and the `Untitled form` one; the reviewers then found
+`cp -r /` copying My Drive into itself for ever, a transport failure discarding
+the whole progress report, and — in the branch the live pass had cleared — that
+an omitted text field silently empties it. Neither stage subsumes the other, and
+the order matters less than that both happen.
+
+The `cp -r /` defect is the one to remember. `resolvePath` answers the literal
+`root` for `/`, while `parents` carries My Drive's real id, so the cycle guard
+compared two strings that could never match. The same branch had already resolved
+that alias on the destination side, with a test. A guard is only as good as the
+identifiers it compares, and the half that was written second is the half that
+was wrong.
 
 0044 is the class 0054 §3 turned out to be one member of. Reviewing the `cp -r`
 and `rename` branches found that `rename` can give a file a name a sibling
