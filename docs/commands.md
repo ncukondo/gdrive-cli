@@ -583,8 +583,14 @@ Four things are worth knowing before you run it on something large:
     "error": { "code": "PERMISSION_DENIED", "message": "..." },
     "data": { "folders": [{ "src": "1F...", "dst": "1Z...", "name": "2026" }],
               "copied":  [{ "src": "1A...", "dst": "1X...", "name": "a.pdf" }],
-              "failed":  { "src": "1C...", "name": "c.pdf" } } }
+              "failed":  { "src": "1C...", "name": "c.pdf", "stage": "copying" } } }
   ```
+
+  `failed.stage` says what to do with it. `copying` means nothing was created
+  for it — it is in neither list, and it is the one to try again. `listing` means
+  the opposite: a folder whose copy exists (`failed.dst` names it, and `folders`
+  holds it too) but whose contents were never read, so copying `failed.src`
+  again would make a second folder rather than fill the one that is there.
 
   The exit code and `error.code` are the underlying failure's. Under `-q` the
   same failure prints the new IDs one per line, the top folder first — enough
@@ -592,7 +598,8 @@ Four things are worth knowing before you run it on something large:
   re-running copies the whole tree a second time, and Drive permits duplicate
   names, so remove the partial copy first.
 - **Copying a folder into itself is refused** before anything is copied:
-  `gdrive cp -r A A/B` is `INVALID_ARGS`. Permissions, ownership and revision
+  `gdrive cp -r A A/B` is `INVALID_ARGS`, and so is `gdrive cp -r / Archive`
+  whatever spelling of the root you use. Permissions, ownership and revision
   history are not copied — `files.copy` does not carry them.
 
 See [`../decisions/0031`](../decisions/0031-recursive-copy.md).
