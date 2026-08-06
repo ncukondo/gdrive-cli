@@ -13,7 +13,7 @@ import {
   type FormsRequest,
 } from "../../lib/forms-api.ts";
 import { readInput, readProcessStdin } from "../../lib/input.ts";
-import { resolveTargetId } from "../../lib/resolve-path.ts";
+import { childrenNamed, resolveTargetId } from "../../lib/resolve-path.ts";
 import {
   documentFormat,
   encodingFormat,
@@ -142,6 +142,7 @@ export function registerForms(program: Command): void {
         createForm: (t) => createForm(formsClient, t),
         batchUpdate: (id, requests: FormsRequest[]) => batchUpdateForm(formsClient, id, requests),
         moveFile: (id, parentId) => moveFile(drive, id, parentId),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         readInput: input,
         title,
         format: opts.format,

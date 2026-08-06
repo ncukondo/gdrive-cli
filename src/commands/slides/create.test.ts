@@ -9,6 +9,8 @@ import {
 } from "../../lib/slide-document.ts";
 import type { SlidesRequest } from "../../lib/slides-api.ts";
 import { handleSlidesCreate, type SlidesCreateDeps } from "./create.ts";
+import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
+import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -73,6 +75,7 @@ async function run(options: Partial<SlidesCreateDeps> = {}): Promise<Run> {
     moveFile: async (id, parentId) => {
       moves.push({ id, parentId });
     },
+    findSiblings: async () => [],
     readInput: async () => slideDocumentToYaml(document),
     title: "Q4 review",
     format: "json",
@@ -200,5 +203,54 @@ describe("handleSlidesCreate (decision 0030 §4)", () => {
       { index: 0, title: "", kind: "elements" },
     ]);
     expect(result.batches).toHaveLength(1);
+  });
+  /**
+   * Decision 0055 §1-§2. The title is the Drive name, so the same `create` run
+   * twice is the collision - and §2 puts the check ahead of
+   * `presentations.create`, because a refusal afterwards leaves a deck the
+   * caller has to go and delete.
+   */
+  describe("a title that would not address the new deck", () => {
+    const siblings = (nodes: DriveNode[]) => {
+      const { client } = createWritableTreeDrive(nodes);
+      return (parentId: string, name: string) => childrenNamed(client, parentId, name);
+    };
+
+    it("refuses a title --parent already holds, and creates nothing", async () => {
+      const createPresentation = vi.fn(async (title: string) => ({ ...fresh, title }));
+      const result = await run({
+        parent: "Decks",
+        source: "@deck.yaml",
+        createPresentation,
+        findSiblings: siblings([{ id: "E1", name: "Q4 review", parents: ["1FoLdEr"] }]),
+      });
+      expect(codeOf(result.error)).toBe("INVALID_ARGS");
+      expect(String(result.error)).toContain("E1");
+      expect(createPresentation).not.toHaveBeenCalled();
+      expect(result.batches).toEqual([]);
+      expect(result.moves).toEqual([]);
+    });
+
+    it("refuses a title the My Drive root already holds", async () => {
+      const createPresentation = vi.fn(async (title: string) => ({ ...fresh, title }));
+      const result = await run({
+        createPresentation,
+        findSiblings: siblings([{ id: "E1", name: "Q4 review", parents: [ROOT_ID] }]),
+      });
+      expect(codeOf(result.error)).toBe("INVALID_ARGS");
+      expect(createPresentation).not.toHaveBeenCalled();
+    });
+
+    it.each([" Q4 review", "Q4 review ", "Q1/Q2"])(
+      "refuses %j without asking Drive anything",
+      async (title) => {
+        const createPresentation = vi.fn(async (t: string) => ({ ...fresh, title: t }));
+        const findSiblings = vi.fn(async () => []);
+        const result = await run({ title, createPresentation, findSiblings });
+        expect(codeOf(result.error)).toBe("INVALID_ARGS");
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(createPresentation).not.toHaveBeenCalled();
+      },
+    );
   });
 });

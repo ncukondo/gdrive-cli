@@ -1,12 +1,16 @@
 import { Command } from "commander";
 import type { CommandResult, OutputFormat } from "../../types/index.ts";
 import { formatValues, line, renderSuccess } from "../../lib/output.ts";
+import { MY_DRIVE, refuseUnaddressableName, type FindSiblings } from "../../lib/names.ts";
+import { ROOT_ID } from "../../lib/resolve-path.ts";
 
 export interface SheetsCreateDeps {
   resolvePath: (arg: string) => Promise<string>;
   createSpreadsheet: (title: string) => Promise<{ id: string; title: string }>;
   /** Drive move — the Sheets API cannot create a spreadsheet inside a folder. */
   moveFile: (spreadsheetId: string, parentId: string) => Promise<unknown>;
+  /** What the title would collide with where the deck lands (decision 0055 §1). */
+  findSiblings: FindSiblings;
   title: string;
   parent?: string;
   format: OutputFormat;
@@ -14,14 +18,23 @@ export interface SheetsCreateDeps {
   write: (msg: string) => void;
 }
 
+/**
+ * Decision 0055 §2 is what puts `--parent` ahead of the create: the title is the
+ * Drive name, and a refusal after `spreadsheets.create` would leave a
+ * spreadsheet the caller has to go and delete. Resolving the folder first costs
+ * nothing extra — it was resolved either way.
+ */
 export async function handleSheetsCreate(deps: SheetsCreateDeps): Promise<CommandResult> {
-  const created = await deps.createSpreadsheet(deps.title);
+  const parentId = deps.parent !== undefined ? await deps.resolvePath(deps.parent) : undefined;
+  await refuseUnaddressableName({
+    name: deps.title,
+    parentId: parentId ?? ROOT_ID,
+    findSiblings: deps.findSiblings,
+    where: deps.parent ?? MY_DRIVE,
+  });
 
-  let parentId: string | undefined;
-  if (deps.parent !== undefined) {
-    parentId = await deps.resolvePath(deps.parent);
-    await deps.moveFile(created.id, parentId);
-  }
+  const created = await deps.createSpreadsheet(deps.title);
+  if (parentId !== undefined) await deps.moveFile(created.id, parentId);
 
   deps.write(
     renderSuccess(
