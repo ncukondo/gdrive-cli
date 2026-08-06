@@ -347,4 +347,25 @@ describe("handleError", () => {
     expect(() => handleError(new AppError("NOT_FOUND", "x"), "text")).toThrow(ExitSignal);
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.GENERAL);
   });
+
+  /**
+   * Decision 0031 §4: the exit code and the error code are still the failure's,
+   * and what the run managed to change before it failed travels with them.
+   */
+  it("carries a failure's partial result into the envelope, without changing the exit code", () => {
+    const exitSpy = mockProcessExit();
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const error = new AppError("PERMISSION_DENIED", "denied", {
+      data: { payload: { copied: [{ src: "1A", dst: "1X", name: "a.pdf" }] }, quiet: "1X" },
+    });
+
+    expect(() => handleError(error, "json")).toThrow(ExitSignal);
+    const parsed = JSON.parse(stderrSpy.mock.calls.map((c) => c[0]).join(""));
+    expect(parsed.data).toEqual({ copied: [{ src: "1A", dst: "1X", name: "a.pdf" }] });
+    expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.GENERAL);
+
+    stderrSpy.mockClear();
+    expect(() => handleError(error, "text", true)).toThrow(ExitSignal);
+    expect(stderrSpy.mock.calls.map((c) => c[0]).join("")).toBe("Error: denied\n1X\n");
+  });
 });

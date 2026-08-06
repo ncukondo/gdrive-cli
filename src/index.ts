@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { z } from "zod";
 import type { OutputFormat } from "./types/index.ts";
-import { ExitCode, errorToCode, errorToExit } from "./types/index.ts";
+import { AppError, ExitCode, errorToCode, errorToExit } from "./types/index.ts";
 import { renderError } from "./lib/output.ts";
 import { nodeFs } from "./lib/fs.ts";
 import { loadConfig } from "./lib/config.ts";
@@ -141,10 +141,16 @@ export function resolveGlobalOptions(program: Command): GlobalOptions {
   return opts;
 }
 
-export function handleError(error: unknown, format: OutputFormat): void {
+/**
+ * `quiet` is optional because only a command that reports a partial result
+ * (decision 0031 §4) has anything to vary with it; every other registrar leaves
+ * it out and gets exactly the error line it got before.
+ */
+export function handleError(error: unknown, format: OutputFormat, quiet = false): void {
   const code = errorToCode(error);
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(renderError(code, message, format));
+  const data = error instanceof AppError ? error.data : undefined;
+  process.stderr.write(renderError(code, message, format, quiet, data));
   process.exit(errorToExit(code));
 }
 

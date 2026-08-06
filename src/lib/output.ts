@@ -1,13 +1,25 @@
-import type { ErrorCode, OutputFormat } from "../types/index.ts";
+import type { ErrorCode, ErrorData, OutputFormat } from "../types/index.ts";
 
 /** Serializes a success envelope (decision 0007). */
 export function formatJsonSuccess(data: unknown): string {
   return JSON.stringify({ success: true, data }, null, 2);
 }
 
-/** Serializes an error envelope (decision 0007). */
-export function formatJsonError(code: ErrorCode, message: string): string {
-  return JSON.stringify({ success: false, error: { code, message } }, null, 2);
+/**
+ * Serializes an error envelope (decision 0007), with the optional `data` of
+ * decision 0031 §4 when the failure has one.
+ *
+ * The key is spread in rather than set to `undefined`, because
+ * `JSON.stringify` would drop an `undefined` value anyway and a reader of this
+ * function should not have to know that: no `data` means no `data` key, which
+ * is exactly the envelope every consumer written against 0007 already parses.
+ */
+export function formatJsonError(code: ErrorCode, message: string, data?: ErrorData): string {
+  return JSON.stringify(
+    { success: false, error: { code, message }, ...(data ? { data: data.payload } : {}) },
+    null,
+    2,
+  );
 }
 
 /**
@@ -123,10 +135,28 @@ export function reportUnsupported<T>(
   return { unsupported: notes };
 }
 
-/** Renders an error for stderr in the active format (decision 0007). */
-export function renderError(code: ErrorCode, message: string, format: OutputFormat): string {
+/**
+ * Renders an error for stderr in the active format (decision 0007), with what
+ * the command changed before it failed when there is any (decision 0031 §4).
+ *
+ * The failure line is printed in every mode: a caller reading stderr is owed
+ * the reason whatever else follows it. What `data` varies is only what comes
+ * *under* it — a summary in text mode, and in `--quiet` the ids themselves, one
+ * per line, which is what a shell retry loop reads. JSON mode ignores `--quiet`
+ * as every other envelope does (decision 0007).
+ */
+export function renderError(
+  code: ErrorCode,
+  message: string,
+  format: OutputFormat,
+  quiet = false,
+  data?: ErrorData,
+): string {
   if (format === "json") {
-    return formatJsonError(code, message);
+    return formatJsonError(code, message, data);
   }
-  return `Error: ${message}\n`;
+  const under = quiet ? data?.quiet : data?.text;
+  return under === undefined || under === ""
+    ? `Error: ${message}\n`
+    : `Error: ${message}\n${under}\n`;
 }

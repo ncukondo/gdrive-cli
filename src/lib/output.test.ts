@@ -27,6 +27,64 @@ describe("formatJsonError", () => {
 });
 
 /**
+ * Decision 0031 §4. A failure that changed something says so in `data`, and a
+ * failure that changed nothing renders exactly the two-key object every caller
+ * written against decision 0007 already parses — the field is additive, so
+ * `data === undefined` and "no such key" have to stay the same thing.
+ */
+describe("a failure that changed something", () => {
+  const data = {
+    payload: { folders: [{ src: "1F", dst: "1Z", name: "2026" }] },
+    text: "Copied 1 folder and 2 files.",
+    quiet: "1Z\n1X\n1Y",
+  };
+
+  it("carries the payload as the envelope's data", () => {
+    const parsed = JSON.parse(formatJsonError("PERMISSION_DENIED", "denied", data));
+    expect(parsed).toEqual({
+      success: false,
+      error: { code: "PERMISSION_DENIED", message: "denied" },
+      data: { folders: [{ src: "1F", dst: "1Z", name: "2026" }] },
+    });
+  });
+
+  it("emits no data key at all when nothing was changed", () => {
+    expect(Object.keys(JSON.parse(formatJsonError("NOT_FOUND", "missing")))).toEqual([
+      "success",
+      "error",
+    ]);
+    expect(Object.keys(JSON.parse(renderError("NOT_FOUND", "missing", "json")))).toEqual([
+      "success",
+      "error",
+    ]);
+  });
+
+  it("prints the failure and then the summary in text mode", () => {
+    expect(renderError("PERMISSION_DENIED", "denied", "text", false, data)).toBe(
+      "Error: denied\nCopied 1 folder and 2 files.\n",
+    );
+  });
+
+  it("prints the ids one per line instead of the summary when quiet", () => {
+    expect(renderError("PERMISSION_DENIED", "denied", "text", true, data)).toBe(
+      "Error: denied\n1Z\n1X\n1Y\n",
+    );
+  });
+
+  it("prints the failure alone when the data has no text for this mode", () => {
+    const bare = { payload: { plan: [] } };
+    expect(renderError("PRUNE_REQUIRED", "refused", "text", false, bare)).toBe("Error: refused\n");
+    expect(renderError("PRUNE_REQUIRED", "refused", "text", true, bare)).toBe("Error: refused\n");
+  });
+
+  it("ignores --quiet in json mode, as every other envelope does", () => {
+    expect(renderError("PERMISSION_DENIED", "denied", "json", true, data)).toBe(
+      renderError("PERMISSION_DENIED", "denied", "json", false, data),
+    );
+  });
+});
+
+/**
  * Drive accepts a name containing a newline — one was created to confirm it —
  * and a line-oriented format cannot carry one. Text mode is lossy on purpose
  * (decision 0036 §2); what it may not do is let a value invent a field or a row
