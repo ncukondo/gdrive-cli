@@ -5,6 +5,7 @@ import {
   buildDriveClient,
   buildFormsClient,
   buildSheetsClient,
+  buildSlidesClient,
 } from "./google-clients.ts";
 
 /**
@@ -44,6 +45,13 @@ describe("buildFormsClient", () => {
     const forms = buildFormsClient(auth);
     expect(typeof forms.forms.get).toBe("function");
     expect(typeof forms.forms.responses.list).toBe("function");
+  });
+});
+
+describe("buildSlidesClient", () => {
+  it("exposes the presentation method the port declares", () => {
+    const slides = buildSlidesClient(auth);
+    expect(typeof slides.presentations.get).toBe("function");
   });
 });
 
