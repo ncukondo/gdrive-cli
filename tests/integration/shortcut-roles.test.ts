@@ -92,6 +92,7 @@ const tree: DriveNode[] = [
   { id: "newDoc", name: "Draft", mimeType: DOC, parents: [] },
   { id: "newSheet", name: "Draft", mimeType: SHEET, parents: [] },
   { id: "frmNew", name: "Draft", mimeType: FORM, parents: [] },
+  { id: "prsNew", name: "Draft", mimeType: SLIDES, parents: [] },
 ];
 
 interface DriveSpies {
@@ -409,6 +410,11 @@ describe("container arguments follow a shortcut (decision 0025 §1)", () => {
     expect(firstArg(drive.update)).toMatchObject({ fileId: "frmNew", addParents: "y2026" });
   });
 
+  it("`slides create --parent <link>` moves the new deck into the target", async () => {
+    await run(["slides", "create", "Draft", "--parent", "Reports/link-to-2026"]);
+    expect(firstArg(drive.update)).toMatchObject({ fileId: "prsNew", addParents: "y2026" });
+  });
+
   it("`mv <file> <link-to-folder>` lands in the target", async () => {
     await run(["mv", "plain.txt", "Reports/link-to-2026"]);
     expect(firstArg(drive.update)).toMatchObject({ fileId: "plain", addParents: "y2026" });
@@ -511,6 +517,14 @@ describe("content arguments follow a shortcut (decision 0025 §1)", () => {
   it("`slides read <link>` reads the target presentation", async () => {
     await run(["slides", "read", "Reports/link-to-deck"]);
     expect(firstArg(slides.get)).toMatchObject({ presentationId: "prs1" });
+  });
+
+  it("`slides write <link>` writes to the target presentation", async () => {
+    const document = join(workDir, "deck.yaml");
+    writeFileSync(document, "title: Q3 review\nslides:\n  - layout: BLANK\n");
+    await run(["slides", "write", "Reports/link-to-deck", "--file", document]);
+    expect(firstArg(slides.get)).toMatchObject({ presentationId: "prs1" });
+    expect(firstArg(slides.batchUpdate)).toMatchObject({ presentationId: "prs1" });
   });
 
   it("`ln <link> <folder>` links the document, not the shortcut (decision 0026 §2)", async () => {
