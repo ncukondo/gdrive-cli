@@ -11,12 +11,15 @@ export interface RenameDeps {
   format: OutputFormat;
   quiet: boolean;
   write: (msg: string) => void;
-  warn: (msg: string) => void;
 }
 
 /**
  * Renames a file (decision 0052). The argument is an entry — 0025 §1's role
  * table — so a shortcut is renamed rather than what it points at.
+ *
+ * There is no per-type behaviour and no report: Drive carries the new name into
+ * the in-document title of a Doc, a Sheet, a deck and a form alike, a form's
+ * only a few seconds later (decision 0053).
  */
 export async function handleRename(deps: RenameDeps): Promise<CommandResult> {
   // Before the path walk, which is itself a Drive call: Drive would take a

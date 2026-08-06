@@ -47,8 +47,6 @@ function readLocalFile(path: string): LocalFile {
 }
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
-/** What a write could not reach goes to stderr, not stdout (decision 0021 §3). */
-const stderr = (msg: string) => process.stderr.write(msg + "\n");
 
 /**
  * Decision 0025 §1's role table, wired argument by argument: `--parent` is a
@@ -227,7 +225,6 @@ export function registerDriveWrite(program: Command): void {
         format: opts.format,
         quiet: opts.quiet,
         write: stdout,
-        warn: stderr,
       });
       process.exit(result.exitCode);
     } catch (error) {
