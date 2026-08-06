@@ -208,7 +208,15 @@ nothing in the plan would ever have run it against one.*
      subcommand does it and in whichever direction. Taking a change back out
      (`git reset`, `git restore --staged`) is not this rule (0050 §2).
 
-     **Tokenize, then split, then one normaliser for both rules.** Produce words
+     **Tokenize, then split, then one normaliser for both rules.** The tokenizer
+     carries heredoc state: on a `<<DELIM`, the body up to the delimiter line is
+     one quoted word, because a heredoc body is *data*. Without it every line of
+     a `<<EOF … EOF` body is normalised as its own invocation, and writing prose
+     about staging — a commit message, a pull-request body, a record in this
+     repository — is refused. *Added mid-branch (`decisions/0041` §1): the fourth
+     review found this; 0050 §3 names it by one symptom, and the `-m "…"`
+     instance had been fixed while the class was not.*
+ Produce words
      and operator tokens in one pass and split the command on the *operator
      tokens*, never on the raw string — a `;` or `|` inside a quoted commit
      message is not a separator, and splitting first refuses messages this
@@ -320,3 +328,9 @@ part it never ran ([`decisions/0043`](../decisions/0043-e2e-runs-before-push.md)
   4. **`pre-commit` wall-clock time, before and after**, recorded in the outcome
      notes. 0047's Consequences commit to measuring and then cutting what hurts;
      without a number that sentence is the checklist this task exists to replace.
+     Measured on 2026-08-06: **11.6 s before, +0.24 s for the four guards** — 2%.
+     Nothing here is a candidate for cutting.
+  5. **A hook invoked with no payload.** The shims refuse by default now, so if
+     the harness ever calls one without stdin, every edit blocks and an agent has
+     no bypass (0047 §2). Nothing in the repository can test this; confirm it in
+     a live session before trusting the default.
