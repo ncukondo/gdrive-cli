@@ -88,49 +88,150 @@ describe("handleCp", () => {
   });
 
   /**
-   * Decision 0031 §1. Drive's own refusal mentions neither folders nor `-r`, so
-   * `cp` replaces it — but only after the copy has already failed. A pre-flight
-   * `files.get` would cost every ordinary copy a round trip to guard against a
-   * case that ends in an error anyway.
+   * Decision 0054 §1: one rule, no branch on file type and none on how the file
+   * was reached. What is asserted is the name `cp` *sends*, because the name
+   * that comes back is whatever the fake decided to return — and a copy named by
+   * Drive rather than by the request is exactly the defect this rule exists for.
+   */
+  describe("the name a copy is given", () => {
+    it("is the source's, when the caller named none", async () => {
+      const copyFile = vi.fn(async (_id: string, _p: string, _n?: string) => file());
+      await handleCp(
+        deps({ copyFile, getFile: async (id) => file({ id, name: "Budget", parents: [] }) }),
+      );
+      expect(copyFile).toHaveBeenCalledWith("S1", "DEST", "Budget");
+    });
+
+    it("is the source's for -r on an ordinary file too", async () => {
+      const copyFile = vi.fn(async (_id: string, _p: string, _n?: string) => file());
+      await handleCp(
+        deps({
+          recursive: true,
+          copyFile,
+          getFile: async (id) => file({ id, name: "Budget", parents: [] }),
+        }),
+      );
+      expect(copyFile).toHaveBeenCalledWith("S1", "DEST", "Budget");
+    });
+
+    it("is --name when it was given, at the top level of a tree as well", async () => {
+      const copyTree = vi.fn(async () => report());
+      await handleCp(
+        deps({
+          recursive: true,
+          name: "Budget (2026)",
+          copyTree,
+          getFile: async (id) => folder({ id, name: "Budget", parents: [] }),
+        }),
+      );
+      expect(copyTree).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Budget" }),
+        "DEST",
+        "Budget (2026)",
+      );
+    });
+  });
+
+  /**
+   * Decision 0031 §1's message, now decided before anything is attempted:
+   * decision 0054 spends a `files.get` on every copy anyway, so there is nothing
+   * left to save by finding out on the failure path.
    */
   describe("a folder without -r", () => {
-    const refuses = async () => {
-      throw new AppError("API_ERROR", "Copying a folder is not supported.");
-    };
-
-    it("names the folder and -r", async () => {
+    it("names the folder and -r, and copies nothing", async () => {
+      const copyFile = vi.fn(async () => file());
       const getFile = vi.fn(async () => folder({ id: "S1", name: "2026" }));
       await expect(
-        handleCp(deps({ copyFile: refuses, getFile, file: "Reports/2026" })),
+        handleCp(deps({ copyFile, getFile, file: "Reports/2026" })),
       ).rejects.toMatchObject({
         code: "INVALID_ARGS",
         message: expect.stringMatching(/Reports\/2026.*-r/s),
       });
+      expect(copyFile).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Decision 0054 §3. Drive would not refuse this — it would produce two files
+   * with one name that no listing tells apart and no path can address. The
+   * remedy is a name, so the message names the flag that gives one.
+   */
+  describe("a copy that would sit beside its own source", () => {
+    const inPlace = (overrides: Partial<CpDeps> = {}) =>
+      deps({
+        resolveFolder: async () => "HOME",
+        getFile: async (id) => file({ id, name: "Budget", parents: ["HOME"] }),
+        ...overrides,
+      });
+
+    it("is refused, naming --name, before anything is copied", async () => {
+      const copyFile = vi.fn(async () => file());
+      await expect(handleCp(inPlace({ copyFile }))).rejects.toMatchObject({
+        code: "INVALID_ARGS",
+        message: expect.stringContaining("--name"),
+      });
+      expect(copyFile).not.toHaveBeenCalled();
     });
 
-    it("costs an ordinary copy nothing", async () => {
-      const getFile = vi.fn(async () => file());
-      await handleCp(deps({ getFile }));
-      expect(getFile).not.toHaveBeenCalled();
+    it("succeeds once the copy is named", async () => {
+      const copyFile = vi.fn(async () => file({ id: "C1", name: "Budget (backup)" }));
+      await handleCp(inPlace({ copyFile, name: "Budget (backup)" }));
+      expect(copyFile).toHaveBeenCalledWith("S1", "HOME", "Budget (backup)");
     });
 
-    it("keeps Drive's own error when the source is not a folder after all", async () => {
-      const getFile = vi.fn(async () => file({ type: "file" }));
-      await expect(handleCp(deps({ copyFile: refuses, getFile }))).rejects.toMatchObject({
-        code: "API_ERROR",
-        message: "Copying a folder is not supported.",
-      });
+    it("is refused for a folder with -r as well", async () => {
+      const copyTree = vi.fn(async () => report());
+      await expect(
+        handleCp(
+          inPlace({
+            recursive: true,
+            copyTree,
+            getFile: async (id) => folder({ id, name: "2026", parents: ["HOME"] }),
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("--name") });
+      expect(copyTree).not.toHaveBeenCalled();
     });
 
-    it("keeps Drive's own error when the hint's own lookup fails", async () => {
-      // The hint is a nicety; losing the caller's real error to it would not be.
-      const getFile = vi.fn(async () => {
-        throw new AppError("AUTH_EXPIRED", "token expired");
-      });
-      await expect(handleCp(deps({ copyFile: refuses, getFile }))).rejects.toMatchObject({
-        code: "API_ERROR",
-        message: "Copying a folder is not supported.",
-      });
+    /**
+     * `root` is an alias Drive accepts, not an id: a file in My Drive's root
+     * lists the root's *real* id in `parents`, so comparing the two as strings
+     * would let the one case §3 exists for — a snapshot taken in place — through.
+     */
+    it("is refused when the destination was spelled as the My Drive root", async () => {
+      const copyFile = vi.fn(async () => file());
+      await expect(
+        handleCp(
+          deps({
+            dest: "/",
+            resolveFolder: async () => "root",
+            copyFile,
+            getFile: async (id) =>
+              id === "root"
+                ? folder({ id: "0AReAlRoOt", name: "My Drive", parents: [] })
+                : file({ id, name: "Budget", parents: ["0AReAlRoOt"] }),
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("--name") });
+      expect(copyFile).not.toHaveBeenCalled();
+    });
+
+    it("says something different from the folder-into-itself refusal", async () => {
+      // Different inputs, different reasons: one is a name collision, the other
+      // a copy that would recurse forever (decision 0054 §3 vs 0031 §6).
+      const sibling = await handleCp(inPlace()).catch((e: unknown) => e);
+      const cycle = await handleCp(
+        deps({
+          recursive: true,
+          getFile: async (id) =>
+            folder({ id, name: id, parents: { DEST: ["S1"], S1: [] }[id] ?? [] }),
+        }),
+      ).catch((e: unknown) => e);
+
+      expect(sibling).toBeInstanceOf(AppError);
+      expect(cycle).toBeInstanceOf(AppError);
+      expect(String(sibling)).not.toBe(String(cycle));
+      expect(String(cycle)).not.toContain("--name");
     });
   });
 
@@ -162,13 +263,23 @@ describe("handleCp", () => {
     it("prints the new top folder id when quiet, and the whole report in JSON", async () => {
       const q = collect();
       await handleCp(
-        deps({ recursive: true, getFile: async () => folder(), quiet: true, write: q.write }),
+        deps({
+          recursive: true,
+          getFile: async () => folder({ parents: [] }),
+          quiet: true,
+          write: q.write,
+        }),
       );
       expect(q.output).toBe("T1");
 
       const j = collect();
       await handleCp(
-        deps({ recursive: true, getFile: async () => folder(), format: "json", write: j.write }),
+        deps({
+          recursive: true,
+          getFile: async () => folder({ parents: [] }),
+          format: "json",
+          write: j.write,
+        }),
       );
       const parsed = JSON.parse(j.output);
       expect(parsed.data.file.id).toBe("T1");
@@ -183,14 +294,14 @@ describe("handleCp", () => {
       await handleCp(
         deps({
           recursive: true,
-          getFile: async () => file(),
+          getFile: async () => file({ name: "notes.txt", parents: [] }),
           copyTree,
           copyFile,
           write: out.write,
         }),
       );
       expect(copyTree).not.toHaveBeenCalled();
-      expect(copyFile).toHaveBeenCalledWith("S1", "DEST", undefined);
+      expect(copyFile).toHaveBeenCalledWith("S1", "DEST", "notes.txt");
       expect(out.output).toBe("Copied to copy (C1)");
     });
   });

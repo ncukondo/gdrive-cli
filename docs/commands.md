@@ -529,9 +529,20 @@ doc	2026-08-06 11:02	Notes 2026	1NoTeS...
 
 Quiet: the file ID.
 
-Without `-r`, a **folder** source fails: Drive has no request that copies one.
-The error names the folder and `-r`, and costs an ordinary copy nothing — the
-lookup that recognises the folder happens only once the copy has already failed.
+**A copy keeps the source's name** — every copy, at every level of a tree, file
+or folder, with `-r` or without. `--name` renames the thing you pointed the
+command at, and nothing else. Drive's own default (`Copy of <name>` for a Doc, the
+original name for a binary file) is never used
+([`../decisions/0054`](../decisions/0054-a-copy-keeps-its-name.md) §1–§2).
+
+One consequence: **copying a file into the folder it already sits in is refused**
+unless you say `--name`. Drive would allow it and leave you two files with one
+name that no listing tells apart and no path can address, so `cp` asks for the
+name instead — `gdrive cp "Reports/Budget" Reports --name "Budget (backup)"` is
+the snapshot you meant (§3).
+
+Without `-r`, a **folder** source fails: Drive has no request that copies one,
+and the error names the folder and `-r`. Nothing is attempted first.
 
 ### `gdrive cp -r <folder> <folder>`
 
