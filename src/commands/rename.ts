@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
 import { formatValues, line, renderSuccess } from "../lib/output.ts";
-import { refuseTakenName, refuseUnpathableName, type FindSiblings } from "../lib/names.ts";
+import { refuseUnaddressableName, refuseUnpathableName, type FindSiblings } from "../lib/names.ts";
 
 export interface RenameDeps {
   /** The file to rename, as an entry: renaming a shortcut renames the shortcut. */
@@ -27,11 +27,13 @@ export interface RenameDeps {
  * only a few seconds later (decision 0053).
  */
 export async function handleRename(deps: RenameDeps): Promise<CommandResult> {
-  // Before the path walk, which is itself a Drive call: Drive would take a
-  // blank name, or one with a space at either end, and leave a file nothing can
-  // address by path (decision 0055 §1). Nothing about the file changes that
-  // answer, so it is settled without asking about one.
-  refuseUnpathableName(deps.name);
+  // Before the path walk, which is itself a Drive call: Drive would take a blank
+  // name, or one ending in a space, and leave a file nothing can address by path
+  // (decision 0055 §1). The null parent asks only what holds in *every* folder,
+  // which is all that can be known before the walk says which folder that is —
+  // the readings that bite only at a drive root are checked below, once there is
+  // an answer to check them against.
+  refuseUnpathableName(deps.name, null);
 
   const fileId = await deps.resolvePath(deps.file);
 
@@ -43,7 +45,7 @@ export async function handleRename(deps: RenameDeps): Promise<CommandResult> {
   // makes it, so a file reachable through two folders is checked in both.
   const file = await deps.getFile(fileId);
   for (const parentId of file.parents) {
-    await refuseTakenName({
+    await refuseUnaddressableName({
       name: deps.name,
       parentId,
       findSiblings: deps.findSiblings,

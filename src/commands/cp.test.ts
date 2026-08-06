@@ -8,7 +8,7 @@ import {
   createWritableTreeDrive,
   type DriveNode,
 } from "../../tests/helpers/fake-drive.ts";
-import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
+import { UNPATHABLE_ANYWHERE, UNPATHABLE_AT_A_DRIVE_ROOT } from "../../tests/helpers/names.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -241,7 +241,7 @@ describe("handleCp", () => {
       expect(copyFile).not.toHaveBeenCalled();
     });
 
-    it.each(UNPATHABLE_NAMES)(
+    it.each(UNPATHABLE_ANYWHERE)(
       "is refused when --name is %j, without asking Drive anything",
       async (name) => {
         const copyFile = vi.fn(async () => file());
@@ -251,6 +251,31 @@ describe("handleCp", () => {
         });
         expect(findSiblings).not.toHaveBeenCalled();
         expect(copyFile).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "is refused when --name is %j and the destination is a drive root",
+      async (name) => {
+        const copyFile = vi.fn(async () => file());
+        await expect(
+          handleCp(deps({ copyFile, name, dest: "/", resolveFolder: async () => "root" })),
+        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(copyFile).not.toHaveBeenCalled();
+      },
+    );
+
+    /**
+     * Decision 0056 §2's other half. `Archive/Meeting_notes_2026_08` is a path
+     * that works, so `--name` naming it into an ordinary folder has to work too:
+     * an earlier draft refused this, and there is no `--force` to get past it.
+     */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "copies as --name %j into an ordinary folder",
+      async (name) => {
+        const copyFile = vi.fn(async () => file());
+        await handleCp(deps({ copyFile, name }));
+        expect(copyFile).toHaveBeenCalledWith("S1", "DEST", name);
       },
     );
 

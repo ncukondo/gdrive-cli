@@ -7,25 +7,43 @@ import type { ListParams } from "./api.ts";
 
 const none = async () => [];
 
+/** A shared drive's root, and My Drive's own real root id: one shape, both. */
+const DRIVE_ROOT = "0ABCDEFGHIJKLMNOPQR";
+const SUBFOLDER = "1FoLdEr";
+
 /**
- * Every way a name can escape a path, with the one the *next* one will be found
- * by: give a file the name, ask `resolvePath` for it, and see whether the file
- * comes back. Decision 0056 §2 is that sentence, and these are the five members
- * of it anybody has met — a sixth spelling added to the resolver arrives here as
- * a failing row rather than as a silent gap.
+ * Names a path loses **wherever the file sits** — the argument's trailing trim
+ * eats the end of one, a `/` splits one, and an empty one is filtered away.
  */
-const REFUSED = [
-  [" Notes", "leading whitespace, which the argument's own trim removes"],
-  ["Notes ", "trailing whitespace, ditto"],
-  [" Notes ", "both"],
+const REFUSED_ANYWHERE = [
+  ["Notes ", "the argument's own trim removes the trailing space"],
+  [" Notes ", "trailing, whatever else is going on"],
   ["Q1/Q2", "the separator between one segment and the next"],
-  ["root", "a spelling of the My Drive root"],
-  ["/", "another one"],
-  ["1AbCdEfGhIjKlMnOpQrSt", "id-shaped, so the argument is handed to Drive as an id"],
+  ["/", "nothing but the separator"],
+  ["", "there is no name"],
+  ["   ", "nor here"],
+] as const;
+
+/**
+ * Names a path loses **only at the top of a drive**, where the name is the whole
+ * argument and the resolver reads the argument before it splits anything.
+ *
+ * One segment in front of them and every one is fine, which is the correction
+ * decision 0056's Context records and the round trip below measures both ways.
+ */
+const REFUSED_AT_A_ROOT = [
+  [" Notes", "a leading space, which only the first segment loses"],
+  ["root", "a spelling of a drive's root"],
+  ["1AbCdEfGhIjKlMnOpQrSt", "20 characters of id shape"],
+  // The ordinary shape of a machine-made name, and the false refusal that sent
+  // this rule back for a second draft. `Reports/Meeting_notes_2026_08` finds it
+  // on a real account; only as a whole argument is it read as an id.
+  ["Meeting_notes_2026_08", "21 word characters, no space and no slash"],
+  [DRIVE_ROOT, "a drive root's own shape: `0A` and 17 more, 19 in all"],
   ["drive:Finance", "read as a shared drive name (decision 0019)"],
 ] as const;
 
-/** Names that reach the file, including the near misses of each row above. */
+/** Names that reach the file from anywhere, including each row's near miss. */
 const ACCEPTED = [
   "Budget",
   "Q1 report",
@@ -33,72 +51,148 @@ const ACCEPTED = [
   "2026-01",
   "Q1\nreport",
   "Budget (2)",
-  // 19 characters: one short of id-shaped, and not a drive root's `0A` + 17.
+  // 19 characters, one short of id-shaped and not starting `0A`.
   "AbCdEfGhIjKlMnOpQrS",
+  // 18 characters starting `0A`: one short of a drive root's shape.
+  "0ABCDEFGHIJKLMNOPQ",
   "drivelist",
   "root2",
-  "my/root".replace("/", "-"),
 ];
 
-/** What `resolvePath` answers for a file in My Drive's root called `name`. */
-async function resolveOwnName(name: string): Promise<string> {
-  const client = createTreeDrive([{ id: "N1", name, parents: [ROOT_ID] }], []);
-  return resolvePath(client, name).catch((error: unknown) => `threw ${String(error)}`);
+/** Where a file can sit, and the path that names it there. */
+const PLACES = {
+  root: (name: string) => ({
+    nodes: [{ id: "N1", name, parents: [ROOT_ID] }],
+    path: name,
+    parentId: ROOT_ID,
+  }),
+  subfolder: (name: string) => ({
+    nodes: [
+      { id: SUBFOLDER, name: "Reports", parents: [ROOT_ID] },
+      { id: "N1", name, parents: [SUBFOLDER] },
+    ],
+    path: `Reports/${name}`,
+    parentId: SUBFOLDER,
+  }),
+};
+
+/**
+ * Decision 0056 §2's sentence, run: give a file this name in this place, ask
+ * `resolvePath` for it by the path that names it there, and answer whether the
+ * file came back.
+ */
+async function resolverFindsIt(name: string, place: keyof typeof PLACES): Promise<boolean> {
+  const { nodes, path } = PLACES[place](name);
+  const client = createTreeDrive(nodes, []);
+  const id = await resolvePath(client, path).catch(() => null);
+  return id === "N1";
 }
 
+/** The refusal's own answer for the same name in the same place. */
+function refusesIt(name: string, place: keyof typeof PLACES): boolean {
+  try {
+    refuseUnpathableName(name, PLACES[place](name).parentId);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function messageFor(name: string, parentId: string | null, flag?: string): string {
+  try {
+    refuseUnpathableName(name, parentId, flag);
+    return "";
+  } catch (error: unknown) {
+    return error instanceof AppError ? error.message : String(error);
+  }
+}
+
+/**
+ * The refusal and the resolver have to agree, name by name and place by place.
+ * That is the whole of decision 0056 §2, and running it in *both* places is what
+ * catches a check drawn wider than the harm — the first draft of this rule was,
+ * and refused names that `Reports/<name>` finds perfectly well.
+ */
 describe("refuseUnpathableName", () => {
-  it.each(ACCEPTED)("accepts %j, which resolve-path brings back", async (name) => {
-    expect(await resolveOwnName(name)).toBe("N1");
-    expect(() => refuseUnpathableName(name)).not.toThrow();
+  it.each(ACCEPTED)(
+    "accepts %j, which the resolver brings back from either place",
+    async (name) => {
+      expect(await resolverFindsIt(name, "root")).toBe(true);
+      expect(await resolverFindsIt(name, "subfolder")).toBe(true);
+      expect(refusesIt(name, "root")).toBe(false);
+      expect(refusesIt(name, "subfolder")).toBe(false);
+    },
+  );
+
+  it.each(REFUSED_ANYWHERE)("refuses %j everywhere — %s", async (name) => {
+    expect(await resolverFindsIt(name, "root")).toBe(false);
+    expect(await resolverFindsIt(name, "subfolder")).toBe(false);
+    expect(refusesIt(name, "root")).toBe(true);
+    expect(refusesIt(name, "subfolder")).toBe(true);
+    // And with no folder known yet, which is `rename` before its walk.
+    expect(messageFor(name, null)).not.toBe("");
   });
 
-  it.each(REFUSED)("refuses %j — %s — which resolve-path does not bring back", async (name) => {
-    expect(await resolveOwnName(name)).not.toBe("N1");
-    expect(() => refuseUnpathableName(name)).toThrowError(
-      expect.objectContaining({ code: "INVALID_ARGS" }),
-    );
+  it.each(REFUSED_AT_A_ROOT)("refuses %j at a drive root but not below it — %s", async (name) => {
+    expect(await resolverFindsIt(name, "root")).toBe(false);
+    expect(refusesIt(name, "root")).toBe(true);
+
+    // The other half, and the one a stricter rule got wrong: one segment in
+    // front and the resolver has no trouble at all, so nothing may refuse it.
+    expect(await resolverFindsIt(name, "subfolder")).toBe(true);
+    expect(refusesIt(name, "subfolder")).toBe(false);
+    expect(messageFor(name, null)).toBe("");
   });
 
-  it("refuses a name that is empty or only whitespace", () => {
-    for (const name of ["", "   ", "\t\n"]) {
-      expect(() => refuseUnpathableName(name)).toThrowError(
-        expect.objectContaining({ code: "INVALID_ARGS" }),
-      );
-    }
+  /**
+   * A shared drive's root is spelled `drive:Finance/<name>`, so the name is not
+   * the first segment there and these six would in fact be reachable. They are
+   * refused anyway, because `files.get('root')` answers with an id of exactly a
+   * shared drive root's shape — the two roots cannot be told apart from the id,
+   * and `rename` sees a top-level file's parent only as that real id. Refusing
+   * is the side that never loses a file; the cost is a name a shared drive's
+   * root would have carried.
+   */
+  it.each(REFUSED_AT_A_ROOT)("refuses %j at a shared drive's root too", (name) => {
+    expect(messageFor(name, DRIVE_ROOT)).not.toBe("");
   });
 
-  it("says which of the five is wrong, not just that something is", () => {
-    // Six inputs, six reasons: a message that named the class rather than the
-    // fault would leave a caller guessing which character to change.
-    const reasons = new Set(
-      ["", " Notes", "Q1/Q2", "root", "1AbCdEfGhIjKlMnOpQrSt", "drive:Finance"].map((name) => {
-        try {
-          refuseUnpathableName(name);
-          return "accepted";
-        } catch (error: unknown) {
-          return error instanceof AppError ? error.message.replace(name, "<name>") : "not an error";
-        }
-      }),
-    );
-    expect(reasons.size).toBe(6);
+  it("says which reading swallowed the name, not just that one did", () => {
+    // Six inputs, six reasons: a message naming the class rather than the fault
+    // would leave a caller guessing which character to change.
+    const inputs = ["", " Notes", "Q1/Q2", "root", "1AbCdEfGhIjKlMnOpQrSt", "drive:Finance"];
+    const reasons = new Set(inputs.map((n) => messageFor(n, ROOT_ID).replace(n, "<name>")));
+    expect(reasons.size).toBe(inputs.length);
   });
 
-  it.each(REFUSED)("names a replacement for %j that is itself accepted", (name) => {
-    let message = "";
-    try {
-      refuseUnpathableName(name);
-    } catch (error: unknown) {
-      message = error instanceof AppError ? error.message : "";
-    }
-    const quoted = /"([^"]*)"[^"]*$/.exec(message)?.[1] ?? "";
-    expect(quoted).not.toBe(name);
-    // The suggestion is run through the same check it came from, so a message
-    // can never propose a name that would be refused in turn.
-    expect(() => refuseUnpathableName(quoted)).not.toThrow();
+  /**
+   * The messages for the root-only readings have to say *where* they bite. One
+   * that claimed a path could never find the file would be false — `Reports/root`
+   * finds it — and this file's own tables are what prove it false.
+   */
+  it.each(REFUSED_AT_A_ROOT)("says where the refusal of %j applies", (name) => {
+    expect(messageFor(name, ROOT_ID)).toContain("subfolder");
   });
+
+  it.each(REFUSED_ANYWHERE)("does not claim the refusal of %j is local to a root", (name) => {
+    expect(messageFor(name, ROOT_ID)).not.toContain("subfolder");
+  });
+
+  it.each([...REFUSED_ANYWHERE, ...REFUSED_AT_A_ROOT])(
+    "names a replacement for %j that is itself accepted",
+    (name) => {
+      const message = messageFor(name, ROOT_ID);
+      const quoted = /"([^"]*)"[^"]*$/.exec(message)?.[1] ?? "";
+      if (name.trim() === "") return; // nothing near an empty name to suggest
+      expect(quoted).not.toBe(name);
+      // Run back through the check it came from, so a message can never propose
+      // a name that would be refused in turn.
+      expect(messageFor(quoted, ROOT_ID)).toBe("");
+    },
+  );
 
   it("offers the replacement through the flag that carries a name, when there is one", () => {
-    expect(() => refuseUnpathableName("Notes ", "--name")).toThrow(/--name "Notes"/);
+    expect(messageFor("Notes ", ROOT_ID, "--name")).toContain('--name "Notes"');
   });
 });
 

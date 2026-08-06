@@ -11,7 +11,7 @@ import type { DriveFile } from "../types/index.ts";
 import type { UploadInput } from "../lib/api.ts";
 import { callArgs } from "../../tests/helpers/mock.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
-import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
+import { UNPATHABLE_ANYWHERE, UNPATHABLE_AT_A_DRIVE_ROOT } from "../../tests/helpers/names.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -229,14 +229,46 @@ describe("handleUpload", () => {
       expect(uploadMedia).toHaveBeenCalled();
     });
 
-    it.each(UNPATHABLE_NAMES)("refuses --name %j without asking Drive anything", async (name) => {
-      const uploadMedia = vi.fn(async () => file());
-      const findSiblings = vi.fn(none);
-      await expect(
-        handleUpload(against([], { uploadMedia, findSiblings, name })),
-      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
-      expect(findSiblings).not.toHaveBeenCalled();
-      expect(uploadMedia).not.toHaveBeenCalled();
+    it.each(UNPATHABLE_ANYWHERE)(
+      "refuses --name %j wherever it would land, without asking Drive anything",
+      async (name) => {
+        for (const parent of [undefined, "Reports"]) {
+          const uploadMedia = vi.fn(async () => file());
+          const findSiblings = vi.fn(none);
+          await expect(
+            handleUpload(
+              against([], {
+                uploadMedia,
+                findSiblings,
+                name,
+                ...(parent === undefined ? {} : { parent }),
+              }),
+            ),
+          ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+          expect(findSiblings).not.toHaveBeenCalled();
+          expect(uploadMedia).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "refuses --name %j with no --parent, where the name is the whole path argument",
+      async (name) => {
+        const uploadMedia = vi.fn(async () => file());
+        const findSiblings = vi.fn(none);
+        await expect(
+          handleUpload(against([], { uploadMedia, findSiblings, name })),
+        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(uploadMedia).not.toHaveBeenCalled();
+      },
+    );
+
+    /** Decision 0056 §2's other half: below a root every one of them works. */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)("uploads as --name %j into --parent", async (name) => {
+      const uploadMedia = vi.fn(async (_i: UploadInput) => file());
+      await handleUpload(against([], { uploadMedia, name, parent: "Reports" }));
+      expect(callArgs(uploadMedia)[0]).toMatchObject({ name, parentId: "PID" });
     });
   });
 });

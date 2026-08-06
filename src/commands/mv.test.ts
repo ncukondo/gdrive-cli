@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleMv, type MvDeps } from "./mv.ts";
 import { childrenNamed } from "../lib/resolve-path.ts";
+import { refuseUnpathableName } from "../lib/names.ts";
 import type { DriveFile } from "../types/index.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
 
@@ -138,6 +139,26 @@ describe("handleMv", () => {
       // "Pass --name" would be advice `mv` cannot take: it has no such flag.
       expect(String(error)).not.toContain("--name");
       expect(String(error)).toContain("rename");
+    });
+
+    /**
+     * `mv` is the one caller that reaches the sibling check without the
+     * unpathable one having run (decision 0056 §1), so the name it carries may
+     * itself be one `rename` would refuse. The suggestion has to be a name the
+     * `gdrive rename` it proposes would actually accept — `"a/b (2)"` is not.
+     */
+    it("suggests a name rename would accept, even for one a path cannot hold", async () => {
+      const error = await handleMv(
+        against([{ id: "D1", name: "a/b", parents: ["DEST"] }], {
+          getFile: async () => file({ id: "M1", name: "a/b", parents: ["HOME"] }),
+        }),
+      ).catch((e: unknown) => e);
+
+      const suggested = /gdrive rename "[^"]*" "([^"]*)"/.exec(String(error))?.[1] ?? "";
+      expect(suggested).not.toBe("");
+      // Run it through the check `rename` itself would apply, in the folder the
+      // move was heading for.
+      expect(() => refuseUnpathableName(suggested, "DEST")).not.toThrow();
     });
 
     it("asks about the file's own name in the destination folder", async () => {

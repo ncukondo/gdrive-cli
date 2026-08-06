@@ -102,34 +102,53 @@ happens to match one of those shapes has to be addressed by its real ID.
 
 Because a path is how you name a file you have not seen, **every command that
 gives a file a name refuses a name that could not then address it**, before it
-writes anything. The test is one sentence: *pass the name back as a path and you
-have to get this file*. Two things stop that.
+writes anything. The test is one sentence: *the path that would name this file
+in the folder it lands in has to bring back this file*. Two things stop that.
 
 **Something in the same folder already has the name.** A path segment spelling it
 matches both files, and `INVALID_ARGS` is then the answer for *both* — including
 the one that was already there and was never touched.
 
-**The name is one a path never delivers as itself.** Five spellings do that,
-because each means something else to the resolver:
+**The name is one a path does not deliver as itself.** Three spellings are lost
+wherever the file sits, because the argument is trimmed once and then split:
 
 | Name | What a path does with it instead |
 |------|----------------------------------|
-| `Notes ` / ` Notes` | The argument is trimmed before it is matched, so the file does not answer to the name it was just given. |
+| `Notes ` | The trailing space goes, and a file's own name is always the last segment of the path naming it. |
 | `Q1/Q2` | `/` separates one segment from the next, so this is two segments. |
-| `root`, `/`, empty | These are how a path spells the My Drive root, so the argument stops there. |
-| `1AbCdEfGhIjKlMnOpQrSt` | 20 or more of `A-Za-z0-9_-` with no `/` is [read as an ID](#addressing-files) and handed to Drive as one. |
+| empty, `   ` | There is no segment left to match. |
+
+Four more are lost **only at the top of a drive**, where the name is the whole
+argument and the resolver reads the argument before it splits anything:
+
+| Name | What a path does with it instead, *as a whole argument* |
+|------|--------------------------------------------------------|
+| ` Notes` | The leading space goes — but only from the *first* segment. |
+| `root`, `/` | How a path spells a drive's root, so the argument stops there. |
+| `1AbCdEfGhIjKlMnOpQrSt`, `Meeting_notes_2026_08`, `0ABCDEFGHIJKLMNOPQR` | 20 or more of `A-Za-z0-9_-` with no `/`, or a drive root's `0A` and 17 more, is [read as an ID](#addressing-files) and handed to Drive as one. |
 | `drive:Finance` | `drive:` [names a shared drive](#shared-drives). |
 
-That table is the five anyone has met, not a closed set: what decides is whether
-the resolver brings the file back, and the check asks the same code a path walk
-asks rather than repeating its rules.
+**In a subfolder all four are fine**, and are accepted:
+`Reports/Meeting_notes_2026_08` finds the file, so `gdrive mkdir --parent Reports
+Meeting_notes_2026_08` creates it. Only at a drive's root is the name on its own,
+and only there is it refused. (A shared drive's root is reached as
+`drive:Finance/<name>`, so these four would in fact survive there — but Drive
+hands out the same 19-character `0A…` shape for My Drive's own root, where they
+do not, and the two cannot be told apart from the ID. The refusal takes the side
+that never loses a file.)
+
+Neither table is closed. What decides is whether the resolver brings the file
+back, and the check asks the same code a path walk asks rather than repeating its
+rules — so a new spelling added to the resolver is refused here without anyone
+having to remember.
 
 `rename`, `mkdir`, `upload`, `cp`, `ln`, `mv` and `docs` / `sheets` / `forms` /
 `slides create` all apply this. The error is `INVALID_ARGS`, it says which of the
-two it was and — for the second — which of the spellings, and it names a
-replacement that it has checked would be accepted. Nothing is created or changed:
-the check is one query against the destination folder, made before the write, so
-there is never anything to undo.
+two it was, which spelling, and — for the four above — that a subfolder would
+have been fine, and it names a replacement it has checked would be accepted.
+Nothing is created or changed: the check costs one query against the destination
+folder before the write, so there is never anything to undo. (`rename` and `mv`
+pay a lookup first, to learn which folder they are asking about.)
 
 There is no `--force`, and `--name` is not an exemption — asking for the
 collision deliberately still asks for something this CLI cannot address
@@ -577,12 +596,17 @@ moves, and `<file>` is an entry, so renaming a shortcut renames the shortcut and
 leaves its target alone.
 
 `<name>` has to be one this CLI can then address the file by, so
-[all five spellings a path never delivers](#a-name-has-to-be-addressable) —
-whitespace at either end, a `/`, a root spelling, an ID shape, a `drive:` prefix
-— are `INVALID_ARGS` before anything is asked of Drive. A name a *sibling*
-already holds is refused too, which costs `rename` one extra lookup: it is the
-only one of these commands that has to ask Drive which folder its result lands
-in. Renaming a file to the name it already has is a no-op, not a collision.
+[a name a path does not deliver](#a-name-has-to-be-addressable). A trailing
+space, a `/`, and an empty name are `INVALID_ARGS` before anything is asked of
+Drive at all, because those hold in every folder. The rest — a leading space, a
+root spelling, an ID shape, a `drive:` prefix — depend on which folder the file
+is in, so they are decided after the lookup that finds out, and only bite when
+the file sits at the top of a drive.
+
+A name a *sibling* already holds is refused too. Both cost `rename` one extra
+lookup: it is the only one of these commands that has to ask Drive which folder
+its result lands in. Renaming a file to the name it already has is a no-op, not
+a collision.
 
 ```console
 $ gdrive rename -f text "Reports/Notes" "Notes 2026"

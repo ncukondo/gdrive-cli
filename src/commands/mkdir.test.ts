@@ -3,7 +3,7 @@ import { handleMkdir, type MkdirDeps } from "./mkdir.ts";
 import { childrenNamed, ROOT_ID } from "../lib/resolve-path.ts";
 import type { DriveFile } from "../types/index.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
-import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
+import { UNPATHABLE_ANYWHERE, UNPATHABLE_AT_A_DRIVE_ROOT } from "../../tests/helpers/names.ts";
 
 function folder(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -193,14 +193,51 @@ describe("handleMkdir", () => {
       expect(createFolder).toHaveBeenCalledWith("New", undefined);
     });
 
-    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (name) => {
+    it.each(UNPATHABLE_ANYWHERE)(
+      "refuses %j wherever it would land, without asking Drive anything",
+      async (name) => {
+        for (const parent of [undefined, "Docs"]) {
+          const createFolder = vi.fn(async () => folder());
+          const findSiblings = vi.fn(none);
+          await expect(
+            handleMkdir(
+              against([], {
+                createFolder,
+                findSiblings,
+                name,
+                ...(parent === undefined ? {} : { parent }),
+              }),
+            ),
+          ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+          expect(findSiblings).not.toHaveBeenCalled();
+          expect(createFolder).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "refuses %j with no --parent, where the name is the whole path argument",
+      async (name) => {
+        const createFolder = vi.fn(async () => folder());
+        const findSiblings = vi.fn(none);
+        await expect(
+          handleMkdir(against([], { createFolder, findSiblings, name })),
+        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(createFolder).not.toHaveBeenCalled();
+      },
+    );
+
+    /**
+     * The other half of decision 0056 §2, and the regression this rule was
+     * redrawn for: one segment in front and `Docs/Meeting_notes_2026_08` is a
+     * path that works, so refusing it would refuse an ordinary folder name with
+     * no `--force` to get past.
+     */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)("creates %j inside --parent", async (name) => {
       const createFolder = vi.fn(async () => folder());
-      const findSiblings = vi.fn(none);
-      await expect(
-        handleMkdir(against([], { createFolder, findSiblings, name })),
-      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
-      expect(findSiblings).not.toHaveBeenCalled();
-      expect(createFolder).not.toHaveBeenCalled();
+      await handleMkdir(against([], { createFolder, name, parent: "Docs" }));
+      expect(createFolder).toHaveBeenCalledWith(name, "PID");
     });
   });
 });
