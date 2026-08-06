@@ -105,6 +105,49 @@ export interface FormRaw {
   publishSettings?: unknown;
 }
 
+// --- Raw Forms v1 shapes a request carries (decision 0028) ------------------
+
+/**
+ * The write half of the API resource. It is a separate set of types from the
+ * read half above for two reasons: what a request may send is a strict subset —
+ * an image is output-only, an `unsupported` item is never sent at all (0028 §2)
+ * — and every field here has to be a *concrete* shape, because
+ * `google-clients.ts` checks the request union against the generated
+ * `forms_v1` types and `unknown` would defeat that check
+ * ([0015](../../decisions/0015-no-type-assertions.md)).
+ */
+export interface OptionWrite {
+  value: string;
+  isOther?: boolean;
+  goToAction?: string;
+  goToSectionId?: string;
+}
+
+export interface QuestionWrite {
+  questionId?: string;
+  required: boolean;
+  choiceQuestion?: { type: string; options: OptionWrite[]; shuffle?: boolean };
+  scaleQuestion?: { low: number; high: number; lowLabel?: string; highLabel?: string };
+  textQuestion?: { paragraph: boolean };
+  dateQuestion?: { includeTime: boolean; includeYear: boolean };
+  timeQuestion?: { duration: boolean };
+  fileUploadQuestion?: {
+    folderId?: string;
+    maxFiles?: number;
+    maxFileSize?: string;
+    types?: string[];
+  };
+}
+
+export interface ItemWrite {
+  itemId?: string;
+  title?: string;
+  description?: string;
+  questionItem?: { question: QuestionWrite };
+  pageBreakItem?: Record<string, never>;
+  textItem?: Record<string, never>;
+}
+
 // --- The document schema (decision 0027 §2) ---------------------------------
 
 /**
@@ -445,7 +488,7 @@ function toQuestionItem(item: ItemRaw, question: QuestionRaw): Projected {
   return unsupported(item, kindKey(question, QUESTION_META) ?? "questionItem", question);
 }
 
-function toItem(item: ItemRaw): Projected {
+function toItemProjection(item: ItemRaw): Projected {
   const question = item.questionItem?.question;
   if (question !== undefined) return toQuestionItem(item, question);
   if (item.pageBreakItem !== undefined) {
@@ -457,6 +500,11 @@ function toItem(item: ItemRaw): Projected {
   return unsupported(item, kindKey(item, ITEM_META) ?? "unknown");
 }
 
+/** One item's projection, which the write side compares an edit against. */
+export function toDocumentItem(item: ItemRaw): FormItem {
+  return toItemProjection(item).item;
+}
+
 /**
  * Projects a form resource onto the document (0027 §2), reporting the items
  * whose kind the schema does not model (0027 §4).
@@ -464,7 +512,7 @@ function toItem(item: ItemRaw): Projected {
 export function toFormDocument(form: FormRaw): FormProjection {
   const notes: UnsupportedItemNote[] = [];
   const items = (form.items ?? []).map((raw) => {
-    const { item, note } = toItem(raw);
+    const { item, note } = toItemProjection(raw);
     if (note !== undefined) notes.push(note);
     return item;
   });
@@ -483,6 +531,168 @@ export function toFormDocument(form: FormRaw): FormProjection {
     },
     unsupported: notes,
   };
+}
+
+// --- Document → API resource (decision 0028) --------------------------------
+
+const API_BY_CHOICE_TYPE: Record<ChoiceType, string> = {
+  radio: "RADIO",
+  checkbox: "CHECKBOX",
+  dropdown: "DROP_DOWN",
+};
+
+function toApiOption(option: z.infer<typeof ChoiceOptionSchema>): OptionWrite {
+  if (typeof option === "string") return { value: option };
+  const { value, other, go_to_action, go_to_section_id } = option;
+  return {
+    value,
+    ...(other === true ? { isOther: true } : {}),
+    ...(go_to_action !== undefined ? { goToAction: go_to_action } : {}),
+    ...(go_to_section_id !== undefined ? { goToSectionId: go_to_section_id } : {}),
+  };
+}
+
+/** A question item without its kind — everything a `Question` shares. */
+type QuestionKind = Omit<QuestionWrite, "questionId" | "required">;
+
+const QUESTION_TYPES = ["choice", "scale", "text", "date", "time", "file_upload"] as const;
+
+function isQuestionType(type: FormItem["type"]): type is (typeof QUESTION_TYPES)[number] {
+  return QUESTION_TYPES.some((candidate) => candidate === type);
+}
+
+/**
+ * The one API field a `type` names (0027 §2). The `switch` is exhaustive over
+ * the same discriminant the projection built, so a kind added to the schema
+ * fails to compile here until it can be written as well as read.
+ */
+function toApiQuestion(
+  item: Extract<FormItem, { type: (typeof QUESTION_TYPES)[number] }>,
+): QuestionKind {
+  switch (item.type) {
+    case "choice":
+      return {
+        choiceQuestion: {
+          type: API_BY_CHOICE_TYPE[item.choice_type],
+          ...(item.shuffle === true ? { shuffle: true } : {}),
+          options: item.options.map(toApiOption),
+        },
+      };
+    case "scale":
+      return {
+        scaleQuestion: {
+          low: item.low,
+          high: item.high,
+          ...(item.low_label !== undefined ? { lowLabel: item.low_label } : {}),
+          ...(item.high_label !== undefined ? { highLabel: item.high_label } : {}),
+        },
+      };
+    case "text":
+      return { textQuestion: { paragraph: item.paragraph === true } };
+    case "date":
+      return {
+        dateQuestion: {
+          includeTime: item.include_time === true,
+          includeYear: item.include_year === true,
+        },
+      };
+    case "time":
+      return { timeQuestion: { duration: item.duration === true } };
+    case "file_upload":
+      return {
+        fileUploadQuestion: {
+          ...(item.folder_id !== undefined ? { folderId: item.folder_id } : {}),
+          ...(item.max_files !== undefined ? { maxFiles: item.max_files } : {}),
+          ...(item.max_file_size !== undefined ? { maxFileSize: item.max_file_size } : {}),
+          ...(item.types !== undefined ? { types: item.types } : {}),
+        },
+      };
+  }
+}
+
+/**
+ * The API resource a document item describes, or `null` for one the schema
+ * could not model — 0028 §2 emits no request for those at all, so there is
+ * nothing to build. The ids are carried through: they are read-only as
+ * *instructions* (0028 §6), and the caller that creates an item is the one that
+ * has to leave them off.
+ */
+export function toApiItem(item: FormItem): ItemWrite | null {
+  if (item.type === "unsupported") return null;
+
+  const head = {
+    ...(item.id !== undefined ? { itemId: item.id } : {}),
+    ...(item.title !== undefined ? { title: item.title } : {}),
+    ...(item.description !== undefined ? { description: item.description } : {}),
+  };
+
+  if (item.type === "page_break") return { ...head, pageBreakItem: {} };
+  if (item.type === "text_item") return { ...head, textItem: {} };
+  if (!isQuestionType(item.type)) return null;
+
+  return {
+    ...head,
+    questionItem: {
+      question: {
+        ...(item.question_id !== undefined ? { questionId: item.question_id } : {}),
+        required: item.required === true,
+        ...toApiQuestion(item),
+      },
+    },
+  };
+}
+
+const API_KIND_PATH: Record<Exclude<FormItem["type"], "unsupported">, string> = {
+  choice: "questionItem.question.choiceQuestion",
+  scale: "questionItem.question.scaleQuestion",
+  text: "questionItem.question.textQuestion",
+  date: "questionItem.question.dateQuestion",
+  time: "questionItem.question.timeQuestion",
+  file_upload: "questionItem.question.fileUploadQuestion",
+  page_break: "pageBreakItem",
+  text_item: "textItem",
+};
+
+/** Where an existing item keeps its kind, read off the resource's own keys. */
+function apiKindPath(item: ItemRaw): string | undefined {
+  const question = item.questionItem?.question;
+  if (question !== undefined) {
+    const key = kindKey(question, QUESTION_META);
+    return key === undefined ? "questionItem" : `questionItem.question.${key}`;
+  }
+  return kindKey(item, ITEM_META);
+}
+
+/**
+ * The `updateMask` for an `updateItem`, naming every field the document carries
+ * and nothing else.
+ *
+ * A field mask clears what it names and the message leaves out, so the mask is
+ * the whole safety story for an update: `questionItem.question` would name
+ * `grading` — which 0027 defers, so no document has it — and Google's own field
+ * documentation says clearing it "deletes all question Grading". The kind's own
+ * path is as deep as this goes for the same reason.
+ *
+ * The one field named that the new item may not have is the kind the item is
+ * *leaving*: a `text` question rewritten as a `choice` has to lose its
+ * `textQuestion`, or the API is handed an item claiming two kinds at once.
+ */
+export function itemUpdateMask(item: FormItem, current: ItemRaw): string {
+  if (item.type === "unsupported") return "";
+  const kind = API_KIND_PATH[item.type];
+  const question = isQuestionType(item.type);
+
+  const paths = ["title", "description"];
+  if (question) paths.push("questionItem.question.required");
+  paths.push(kind);
+
+  const leaving = apiKindPath(current);
+  if (leaving !== undefined && leaving !== kind) {
+    // An item that stops being a question takes the whole `questionItem` with
+    // it — including the grading that belonged to the question that is gone.
+    paths.push(!question && leaving.startsWith("questionItem") ? "questionItem" : leaving);
+  }
+  return paths.join(",");
 }
 
 // --- Document ⇄ YAML --------------------------------------------------------

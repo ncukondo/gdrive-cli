@@ -3,9 +3,14 @@ import YAML from "yaml";
 import { AppError } from "../types/index.ts";
 import {
   formDocumentToYaml,
+  itemUpdateMask,
   parseFormDocument,
+  toApiItem,
+  toDocumentItem,
   toFormDocument,
+  type FormItem,
   type FormRaw,
+  type ItemRaw,
 } from "./form-document.ts";
 
 /** The {@link AppError} code a call raises, without asserting on the error. */
@@ -559,6 +564,164 @@ describe("formDocumentToYaml", () => {
         "",
       ].join("\n"),
     );
+  });
+});
+
+/**
+ * The other direction (decision 0028). What makes one document serve both is
+ * that `type` names exactly one API shape (0027 §2), so these tests are about
+ * that correspondence holding in both directions at once.
+ */
+describe("toApiItem", () => {
+  const items = toFormDocument(form).document.items;
+  const at = (index: number): FormItem => {
+    const item = items[index];
+    if (item === undefined) throw new Error(`no fixture item at ${index}`);
+    return item;
+  };
+
+  it("rebuilds a choice question, spelling the API's own enum", () => {
+    expect(toApiItem(at(0))).toEqual({
+      itemId: "i-radio",
+      title: "Which team are you on?",
+      description: "Pick one.",
+      questionItem: {
+        question: {
+          questionId: "q-radio",
+          required: true,
+          choiceQuestion: {
+            type: "RADIO",
+            options: [
+              { value: "Sales" },
+              { value: "Engineering" },
+              { value: "Other", isOther: true },
+            ],
+          },
+        },
+      },
+    });
+  });
+
+  it("carries an option's shuffle and section navigation back", () => {
+    expect(toApiItem(at(1))).toMatchObject({
+      questionItem: {
+        question: {
+          choiceQuestion: {
+            type: "CHECKBOX",
+            shuffle: true,
+            options: [
+              { value: "Docs" },
+              { value: "Sheets", goToAction: "NEXT_SECTION" },
+              { value: "Slides", goToSectionId: "i-page" },
+            ],
+          },
+        },
+      },
+    });
+  });
+
+  it("rebuilds every other modelled kind under its own API field", () => {
+    const kindOf = (item: FormItem): string => {
+      const raw = toApiItem(item);
+      if (raw === null) return "none";
+      const question = raw.questionItem?.question;
+      if (question === undefined)
+        return Object.keys(raw).filter((k) => k.endsWith("Item"))[0] ?? "";
+      return Object.keys(question).filter((k) => k.endsWith("Question"))[0] ?? "";
+    };
+    expect(items.map(kindOf)).toEqual([
+      "choiceQuestion",
+      "choiceQuestion",
+      "choiceQuestion",
+      "scaleQuestion",
+      "textQuestion",
+      "dateQuestion",
+      "timeQuestion",
+      "fileUploadQuestion",
+      "pageBreakItem",
+      "textItem",
+    ]);
+  });
+
+  it("emits nothing at all for an item the schema could not model (0028 §2)", () => {
+    expect(toApiItem({ type: "unsupported", raw: { videoItem: {} } })).toBeNull();
+  });
+
+  /**
+   * The property that keeps the two directions from drifting: whatever `read`
+   * emitted, sending it back and reading it again is the same document. It runs
+   * over the whole fixture set, so a kind added to one direction and not the
+   * other fails here rather than in a form.
+   */
+  it("round-trips every modelled item through the API shape unchanged", () => {
+    for (const item of items) {
+      const raw = toApiItem(item);
+      if (raw === null) throw new Error("the fixture is fully modelled");
+      expect(toDocumentItem(raw)).toEqual(item);
+    }
+  });
+
+  it("keeps a hand-written item with no ids free of them", () => {
+    const [item] = parseFormDocument("title: T\nitems:\n  - type: text\n    title: Name\n").items;
+    expect(toApiItem(item ?? { type: "text" })).toEqual({
+      title: "Name",
+      questionItem: { question: { required: false, textQuestion: { paragraph: false } } },
+    });
+  });
+});
+
+/**
+ * The mask is what stops an update from deleting what the document never
+ * carried. `grading` is the case that matters: 0027 defers it, so it is absent
+ * from every item this file builds, and a mask naming its parent would clear it
+ * on the first write.
+ */
+describe("itemUpdateMask", () => {
+  const raw = (index: number): ItemRaw => {
+    const item = form.items?.[index];
+    if (item === undefined) throw new Error(`no fixture item at ${index}`);
+    return item;
+  };
+  const document = toFormDocument(form).document;
+  const doc = (index: number): FormItem => {
+    const item = document.items[index];
+    if (item === undefined) throw new Error(`no fixture item at ${index}`);
+    return item;
+  };
+
+  it("names the prose, the required flag and the question's own kind", () => {
+    expect(itemUpdateMask(doc(0), raw(0)).split(",")).toEqual([
+      "title",
+      "description",
+      "questionItem.question.required",
+      "questionItem.question.choiceQuestion",
+    ]);
+  });
+
+  it("never names a field the document does not carry", () => {
+    for (const [index, item] of document.items.entries()) {
+      const named = itemUpdateMask(item, raw(index)).split(",");
+      expect(named).not.toContain("questionItem.question.grading");
+      expect(named).not.toContain("questionItem.question");
+      expect(named).not.toContain("questionItem");
+      expect(named).not.toContain("questionItem.question.questionId");
+      expect(named).not.toContain("itemId");
+    }
+  });
+
+  it("names the kind an item is leaving, so a retyped item is not left with two", () => {
+    // The scale question, rewritten in the document as a text question.
+    const retyped: FormItem = { id: "i-scale", type: "text", title: "How satisfied?" };
+    expect(itemUpdateMask(retyped, raw(3)).split(",")).toContain(
+      "questionItem.question.scaleQuestion",
+    );
+  });
+
+  it("clears the whole question when a question becomes something else", () => {
+    const retyped: FormItem = { id: "i-scale", type: "page_break", title: "Section 2" };
+    const named = itemUpdateMask(retyped, raw(3)).split(",");
+    expect(named).toContain("pageBreakItem");
+    expect(named).toContain("questionItem");
   });
 });
 
