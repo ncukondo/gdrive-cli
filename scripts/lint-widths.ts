@@ -33,6 +33,17 @@ import { stripNoise } from "./lib/ts-source.js";
 const ROOTS = ["src", "scripts"];
 
 /**
+ * The in-band exception, mirroring `lint-casts.ts`'s `// assertion:`.
+ *
+ * This guard runs in CI as well as `pre-commit`, and 0047 §2's bypass is
+ * `--no-verify`, which CI does not have. Without a marker the first legitimate
+ * `String(n).padStart(2, "0")` — zero-padding a number is not a display width
+ * and 0036 §3 does not forbid it — blocks the build until somebody edits the
+ * guard. A justification on the line is cheaper and is visible in review.
+ */
+const ALLOW_MARKER = "// width:";
+
+/**
  * Identifiers that only appear when something is measuring. `stringWidth`
  * covers `Bun.stringWidth` and any import of `string-width`, both of which 0036
  * measured and found disagreeing.
@@ -74,6 +85,7 @@ export function findWidthCalls(files: SourceFile[]): WidthFinding[] {
 
     code.forEach((line, index) => {
       const original = raw[index] ?? "";
+      if (original.includes(ALLOW_MARKER)) return;
 
       for (const call of CALLS) {
         if (new RegExp(String.raw`\b${call}\b`).test(line)) {
@@ -117,7 +129,9 @@ if (import.meta.main) {
         `column that does not line up, and for a machine reader that is the id\n` +
         `running into the name. Separate fields with a tab and pad nothing; a\n` +
         `person who wants columns pipes the output through a formatter that has a\n` +
-        `font and a terminal in front of it.\n\n`,
+        `font and a terminal in front of it.\n` +
+        `If a line is padding something that is not a display width — a number, an\n` +
+        `id — justify it on the same line with "${ALLOW_MARKER} <reason>".\n\n`,
     );
     for (const f of findings) {
       process.stderr.write(`  ${f.file}:${f.line}  ${f.identifier}\n    ${f.text}\n`);

@@ -54,3 +54,17 @@ describe("findWidthCalls", () => {
     expect(scan("const cols = fields.join('\\t');")).toEqual([]);
   });
 });
+
+describe("the in-band exception", () => {
+  it("skips a line that justifies itself", () => {
+    expect(scan('const hh = String(h).padStart(2, "0"); // width: a number, not a column')).toEqual(
+      [],
+    );
+  });
+
+  it("still reports an unjustified one on the next line", () => {
+    const found = scan("a.padEnd(4); // width: fine\nb.padEnd(4);");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.line).toBe(2);
+  });
+});
