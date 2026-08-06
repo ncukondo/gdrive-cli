@@ -8,6 +8,7 @@ import {
   createWritableTreeDrive,
   type DriveNode,
 } from "../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -240,14 +241,44 @@ describe("handleCp", () => {
       expect(copyFile).not.toHaveBeenCalled();
     });
 
-    it("is refused when --name could not survive a path, without asking Drive", async () => {
+    it.each(UNPATHABLE_NAMES)(
+      "is refused when --name is %j, without asking Drive anything",
+      async (name) => {
+        const copyFile = vi.fn(async () => file());
+        const findSiblings = vi.fn(async () => []);
+        await expect(handleCp(deps({ copyFile, findSiblings, name }))).rejects.toMatchObject({
+          code: "INVALID_ARGS",
+        });
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(copyFile).not.toHaveBeenCalled();
+      },
+    );
+
+    /**
+     * The default name is the source's, so a source already unreachable by name
+     * would hand that name to the copy as well. `cp` gives a name, so it is
+     * refused like any other — and `--name` is how the copy arrives addressable
+     * instead of inheriting the problem. (`mv` is the opposite case, and decision
+     * 0056 §1 says why: it carries a name rather than giving one.)
+     */
+    it("is refused when the source's own name is one a path cannot hold", async () => {
       const copyFile = vi.fn(async () => file());
-      const findSiblings = vi.fn(async () => []);
-      await expect(handleCp(deps({ copyFile, findSiblings, name: "Q1/Q2" }))).rejects.toMatchObject(
-        { code: "INVALID_ARGS" },
-      );
-      expect(findSiblings).not.toHaveBeenCalled();
+      await expect(
+        handleCp(
+          deps({ copyFile, getFile: async (id) => file({ id, name: "Budget ", parents: [] }) }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
       expect(copyFile).not.toHaveBeenCalled();
+
+      const named = vi.fn(async () => file());
+      await handleCp(
+        deps({
+          copyFile: named,
+          name: "Budget",
+          getFile: async (id) => file({ id, name: "Budget ", parents: [] }),
+        }),
+      );
+      expect(named).toHaveBeenCalledWith("S1", "DEST", "Budget");
     });
 
     it("copies when the destination holds nothing by that name", async () => {

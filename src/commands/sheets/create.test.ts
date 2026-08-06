@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleSheetsCreate } from "./create.ts";
 import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../../tests/helpers/names.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -83,16 +84,13 @@ describe("handleSheetsCreate", () => {
       expect(d.createSpreadsheet).not.toHaveBeenCalled();
     });
 
-    it.each([" Budget", "Budget ", "Q1/Q2"])(
-      "refuses %j without asking Drive anything",
-      async (title) => {
-        const d = baseDeps();
-        await expect(handleSheetsCreate({ ...d, title })).rejects.toMatchObject({
-          code: "INVALID_ARGS",
-        });
-        expect(d.findSiblings).not.toHaveBeenCalled();
-        expect(d.createSpreadsheet).not.toHaveBeenCalled();
-      },
-    );
+    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (title) => {
+      const d = baseDeps();
+      await expect(handleSheetsCreate({ ...d, title })).rejects.toMatchObject({
+        code: "INVALID_ARGS",
+      });
+      expect(d.findSiblings).not.toHaveBeenCalled();
+      expect(d.createSpreadsheet).not.toHaveBeenCalled();
+    });
   });
 });

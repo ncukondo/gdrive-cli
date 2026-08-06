@@ -87,6 +87,38 @@ export async function childrenNamed(
   }
 }
 
+/**
+ * What the resolver makes of an argument *before* it asks Drive anything —
+ * every way a `<file>` argument can mean something other than "one segment
+ * spelled exactly like this".
+ *
+ * It is a named function rather than a paragraph because two callers have to
+ * agree on it: {@link walk}, which acts on the reading, and decision 0056 §2's
+ * refusal, which asks whether a name would survive it. 0055 §1 described this
+ * front matter instead of naming it, and the description was wrong within a day.
+ * A sixth reading added here is a sixth name refused there, and it cannot be
+ * added to one without the other.
+ */
+export type Reading =
+  | { kind: "root" }
+  | { kind: "id"; id: string }
+  | { kind: "drive"; rest: string }
+  | { kind: "path"; segments: string[] };
+
+/** Reads an argument the way {@link walk} does, without looking anything up. */
+export function readArgument(arg: string): Reading {
+  // The trim is of the *whole argument*, once, and the split comes after it —
+  // so a leading space is lost only from the first segment and a trailing one
+  // only from the last (decision 0056's Context, measured against this code).
+  const trimmed = arg.trim();
+  if (trimmed === "" || trimmed === "/" || trimmed === ROOT_ID) return { kind: "root" };
+  if (looksLikeId(trimmed)) return { kind: "id", id: trimmed };
+  if (trimmed.startsWith(DRIVE_PREFIX)) {
+    return { kind: "drive", rest: trimmed.slice(DRIVE_PREFIX.length) };
+  }
+  return { kind: "path", segments: trimmed.split("/").filter((s) => s !== "") };
+}
+
 interface Start {
   parentId: string;
   segments: string[];
@@ -149,22 +181,14 @@ interface Walked {
  * with it.
  */
 async function walk(client: DriveClient, arg: string): Promise<Walked> {
-  const trimmed = arg.trim();
-  if (trimmed === "" || trimmed === "/" || trimmed === ROOT_ID) {
-    return { id: ROOT_ID, candidate: null };
-  }
-  if (looksLikeId(trimmed)) {
-    return { id: trimmed, candidate: null };
-  }
+  const reading = readArgument(arg);
+  if (reading.kind === "root") return { id: ROOT_ID, candidate: null };
+  if (reading.kind === "id") return { id: reading.id, candidate: null };
 
-  const start: Start = trimmed.startsWith(DRIVE_PREFIX)
-    ? await startFromDrive(client, trimmed.slice(DRIVE_PREFIX.length))
-    : {
-        parentId: ROOT_ID,
-        segments: trimmed.split("/").filter((s) => s !== ""),
-        label: "",
-        hintable: true,
-      };
+  const start: Start =
+    reading.kind === "drive"
+      ? await startFromDrive(client, reading.rest)
+      : { parentId: ROOT_ID, segments: reading.segments, label: "", hintable: true };
 
   let { parentId } = start;
   let last: Candidate | null = null;

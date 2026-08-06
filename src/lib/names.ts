@@ -1,4 +1,5 @@
 import { AppError } from "../types/index.ts";
+import { DRIVE_PREFIX, readArgument } from "./resolve-path.ts";
 
 /**
  * The one check behind decision 0055 §1: a name this CLI could not afterwards
@@ -58,36 +59,84 @@ function instead(name: string, flag?: string): string {
 }
 
 /**
- * Decision 0055 §1's second case: a name that cannot survive a path.
+ * Decision 0056 §2's test, asked of the resolver rather than restated: a name is
+ * addressable when passing it back to `resolvePath` would return the file it
+ * names. `readArgument` is the front matter of that walk, so this reads "the
+ * resolver would take this name as one path segment, spelled exactly as given" —
+ * and every other reading it has is a way the name goes somewhere else.
  *
- * What "survive" means is decided by `resolve-path.ts`, and by what it actually
- * does rather than by any description of it. It trims the **whole argument**
- * before splitting it — not each segment — so a name with whitespace at either
- * end is unreachable exactly where it sits at an end of the path, and a file's
- * own name is always the last segment of the path that names it. A `/` needs no
- * such argument: it splits the segment wherever the name appears.
+ * A whole name rather than the tail of a path is the only form these commands
+ * can ask about: they know the destination folder's *id*, never a path to it.
+ * It is also the strict reading, and the one that is uniform — a leading space
+ * survives at depth (`Reports/ Notes` finds the file) but not at My Drive's
+ * root, and a rule that held in one folder and not another would be worse than
+ * one that holds everywhere.
+ *
+ * 0055 §1 enumerated two of the ways instead, and was three short within a day.
+ * This asks the code, so a sixth reading added to {@link readArgument} is
+ * refused here without anybody remembering to come back.
+ */
+export function isAddressableName(name: string): boolean {
+  const reading = readArgument(name);
+  return reading.kind === "path" && reading.segments.length === 1 && reading.segments[0] === name;
+}
+
+/**
+ * A name close to the one asked for that {@link isAddressableName} accepts, or
+ * null when nothing near it does.
+ *
+ * The candidates are ordered by how little they change: trim, de-slash,
+ * disambiguate, de-colon, prefix. The last three are for the readings with no
+ * natural repair — a root spelling and an id-shaped name are fixed by anything
+ * that makes them longer, a `drive:` prefix only by breaking the prefix.
+ *
+ * Every candidate is run through the same check the refusal used, so a message
+ * can never propose a name that would be refused in turn, and a reading nothing
+ * here repairs simply yields no suggestion rather than a wrong one.
+ */
+function nearestAddressable(name: string): string | null {
+  const base = name.replaceAll("/", "-").trim();
+  if (base === "") return null;
+  const candidates = [name.trim(), base, `${base} (2)`, base.replaceAll(":", "-"), `A ${base}`];
+  return candidates.find((candidate) => candidate !== name && isAddressableName(candidate)) ?? null;
+}
+
+/**
+ * Which of the readings swallowed the name, in the caller's terms. The list is
+ * decision 0056 §2's five, and it is a `switch` over {@link readArgument}'s own
+ * result rather than a second set of string tests, so a reading that grows a
+ * member cannot be described here as something it is not.
+ */
+function whyUnpathable(name: string): string | null {
+  const reading = readArgument(name);
+  switch (reading.kind) {
+    case "root":
+      return name.trim() === ""
+        ? `A file needs a name: "${name}" is empty or only whitespace.`
+        : `"${name}" is how a path names the My Drive root, so a path argument spelling it never reaches a file.`;
+    case "id":
+      return `"${name}" has the shape of a Drive file id — 20 or more of "A-Z a-z 0-9 _ -" with no "/" — so a path argument spelling it is handed to Drive as an id and never reaches this file.`;
+    case "drive":
+      return `"${name}" begins with "${DRIVE_PREFIX}", which a path argument reads as a shared drive name, so nothing could then find the file by that name.`;
+    case "path":
+      if (isAddressableName(name)) return null;
+      return name.includes("/")
+        ? `"${name}" contains "/", which separates one path segment from the next, so nothing could then find the file by that name.`
+        : `"${name}" begins or ends with whitespace, and a path argument is trimmed before it is matched, so nothing could then find the file by that name.`;
+  }
+}
+
+/**
+ * Decision 0055 §1's second case, as decision 0056 §2 widened it: a name that
+ * cannot survive a path, in any of the five ways a path can lose one.
  *
  * Nothing here is asked of Drive, so this half runs before any lookup at all.
  */
 export function refuseUnpathableName(name: string, flag?: string): void {
-  if (name.trim() === "") {
-    throw new AppError(
-      "INVALID_ARGS",
-      `A file needs a name: "${name}" is empty or only whitespace.`,
-    );
-  }
-  if (name !== name.trim()) {
-    throw new AppError(
-      "INVALID_ARGS",
-      `"${name}" begins or ends with whitespace, and a path argument is trimmed before it is matched, so nothing could then find the file by that name. ${instead(name.trim(), flag)}`,
-    );
-  }
-  if (name.includes("/")) {
-    throw new AppError(
-      "INVALID_ARGS",
-      `"${name}" contains "/", which separates one path segment from the next, so nothing could then find the file by that name. ${instead(name.replaceAll("/", "-"), flag)}`,
-    );
-  }
+  const why = whyUnpathable(name);
+  if (why === null) return;
+  const fix = nearestAddressable(name);
+  throw new AppError("INVALID_ARGS", fix === null ? why : `${why} ${instead(fix, flag)}`);
 }
 
 /**

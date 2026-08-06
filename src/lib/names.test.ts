@@ -2,34 +2,62 @@ import { describe, expect, it, vi } from "vitest";
 import { refuseTakenName, refuseUnaddressableName, refuseUnpathableName } from "./names.ts";
 import { childrenNamed, ROOT_ID, resolvePath } from "./resolve-path.ts";
 import { AppError } from "../types/index.ts";
-import { createWritableTreeDrive } from "../../tests/helpers/fake-drive.ts";
+import { createTreeDrive, createWritableTreeDrive } from "../../tests/helpers/fake-drive.ts";
 import type { ListParams } from "./api.ts";
 
 const none = async () => [];
 
+/**
+ * Every way a name can escape a path, with the one the *next* one will be found
+ * by: give a file the name, ask `resolvePath` for it, and see whether the file
+ * comes back. Decision 0056 §2 is that sentence, and these are the five members
+ * of it anybody has met — a sixth spelling added to the resolver arrives here as
+ * a failing row rather than as a silent gap.
+ */
+const REFUSED = [
+  [" Notes", "leading whitespace, which the argument's own trim removes"],
+  ["Notes ", "trailing whitespace, ditto"],
+  [" Notes ", "both"],
+  ["Q1/Q2", "the separator between one segment and the next"],
+  ["root", "a spelling of the My Drive root"],
+  ["/", "another one"],
+  ["1AbCdEfGhIjKlMnOpQrSt", "id-shaped, so the argument is handed to Drive as an id"],
+  ["drive:Finance", "read as a shared drive name (decision 0019)"],
+] as const;
+
+/** Names that reach the file, including the near misses of each row above. */
+const ACCEPTED = [
+  "Budget",
+  "Q1 report",
+  "a b.txt",
+  "2026-01",
+  "Q1\nreport",
+  "Budget (2)",
+  // 19 characters: one short of id-shaped, and not a drive root's `0A` + 17.
+  "AbCdEfGhIjKlMnOpQrS",
+  "drivelist",
+  "root2",
+  "my/root".replace("/", "-"),
+];
+
+/** What `resolvePath` answers for a file in My Drive's root called `name`. */
+async function resolveOwnName(name: string): Promise<string> {
+  const client = createTreeDrive([{ id: "N1", name, parents: [ROOT_ID] }], []);
+  return resolvePath(client, name).catch((error: unknown) => `threw ${String(error)}`);
+}
+
 describe("refuseUnpathableName", () => {
-  it("accepts a name a path argument reaches unchanged", () => {
-    for (const name of ["Budget", "Q1 report", "a b.txt", "2026-01"]) {
-      expect(() => refuseUnpathableName(name)).not.toThrow();
-    }
+  it.each(ACCEPTED)("accepts %j, which resolve-path brings back", async (name) => {
+    expect(await resolveOwnName(name)).toBe("N1");
+    expect(() => refuseUnpathableName(name)).not.toThrow();
   });
 
-  /**
-   * The refusal exists because of what `resolve-path.ts` does, so the harm is
-   * measured there rather than described: a file really given one of these
-   * names is not found by the name it was just given.
-   */
-  it.each([" Notes", "Notes ", " Notes ", "Q1/Q2"])(
-    "refuses %j, which resolve-path cannot then find",
-    async (name) => {
-      const { client } = createWritableTreeDrive([{ id: "N1", name, parents: [ROOT_ID] }]);
-      await expect(resolvePath(client, name)).rejects.toBeInstanceOf(AppError);
-
-      expect(() => refuseUnpathableName(name)).toThrowError(
-        expect.objectContaining({ code: "INVALID_ARGS" }),
-      );
-    },
-  );
+  it.each(REFUSED)("refuses %j — %s — which resolve-path does not bring back", async (name) => {
+    expect(await resolveOwnName(name)).not.toBe("N1");
+    expect(() => refuseUnpathableName(name)).toThrowError(
+      expect.objectContaining({ code: "INVALID_ARGS" }),
+    );
+  });
 
   it("refuses a name that is empty or only whitespace", () => {
     for (const name of ["", "   ", "\t\n"]) {
@@ -39,22 +67,34 @@ describe("refuseUnpathableName", () => {
     }
   });
 
-  it("names a replacement that would be accepted", () => {
-    const cases = [" Notes ", "Q1/Q2"];
-    for (const name of cases) {
-      const error = (() => {
+  it("says which of the five is wrong, not just that something is", () => {
+    // Six inputs, six reasons: a message that named the class rather than the
+    // fault would leave a caller guessing which character to change.
+    const reasons = new Set(
+      ["", " Notes", "Q1/Q2", "root", "1AbCdEfGhIjKlMnOpQrSt", "drive:Finance"].map((name) => {
         try {
           refuseUnpathableName(name);
-          return null;
-        } catch (e: unknown) {
-          return e;
+          return "accepted";
+        } catch (error: unknown) {
+          return error instanceof AppError ? error.message.replace(name, "<name>") : "not an error";
         }
-      })();
-      expect(error).toBeInstanceOf(AppError);
-      const quoted = /"([^"]*)"[^"]*$/.exec(String(error))?.[1] ?? "";
-      expect(quoted).not.toBe(name);
-      expect(() => refuseUnpathableName(quoted)).not.toThrow();
+      }),
+    );
+    expect(reasons.size).toBe(6);
+  });
+
+  it.each(REFUSED)("names a replacement for %j that is itself accepted", (name) => {
+    let message = "";
+    try {
+      refuseUnpathableName(name);
+    } catch (error: unknown) {
+      message = error instanceof AppError ? error.message : "";
     }
+    const quoted = /"([^"]*)"[^"]*$/.exec(message)?.[1] ?? "";
+    expect(quoted).not.toBe(name);
+    // The suggestion is run through the same check it came from, so a message
+    // can never propose a name that would be refused in turn.
+    expect(() => refuseUnpathableName(quoted)).not.toThrow();
   });
 
   it("offers the replacement through the flag that carries a name, when there is one", () => {

@@ -3,6 +3,7 @@ import { handleDocsCreate } from "./create.ts";
 import type { ParagraphBoundary } from "../../lib/docs-api.ts";
 import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
+import { UNPATHABLE_NAMES } from "../../../tests/helpers/names.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -129,16 +130,13 @@ describe("handleDocsCreate", () => {
       expect(d.createDocument).not.toHaveBeenCalled();
     });
 
-    it.each([" Plan", "Plan ", "Q1/Q2"])(
-      "refuses %j without asking Drive anything",
-      async (title) => {
-        const d = baseDeps();
-        await expect(handleDocsCreate({ ...d, title })).rejects.toMatchObject({
-          code: "INVALID_ARGS",
-        });
-        expect(d.findSiblings).not.toHaveBeenCalled();
-        expect(d.createDocument).not.toHaveBeenCalled();
-      },
-    );
+    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (title) => {
+      const d = baseDeps();
+      await expect(handleDocsCreate({ ...d, title })).rejects.toMatchObject({
+        code: "INVALID_ARGS",
+      });
+      expect(d.findSiblings).not.toHaveBeenCalled();
+      expect(d.createDocument).not.toHaveBeenCalled();
+    });
   });
 });
