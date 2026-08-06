@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   copyFile,
   createFolder,
+  createShortcut,
   deleteFile,
   downloadMedia,
   escapeQueryValue,
@@ -362,6 +363,51 @@ describe("metadata & mutations", () => {
     });
   });
 
+  it("createShortcut sends the shortcut MIME, the parent, the target and the name", async () => {
+    const create = vi.fn(async (_params: CreateParam) => ({
+      data: raw({
+        id: "lnk",
+        name: "Budget",
+        mimeType: SHORTCUT_MIME,
+        shortcutDetails: {
+          targetId: "T1",
+          targetMimeType: "application/vnd.google-apps.document",
+        },
+      }),
+    }));
+    const shortcut = await createShortcut(mockDrive({ create }), "T1", "DEST", "Budget");
+    expect(callArgs(create)[0].requestBody).toMatchObject({
+      name: "Budget",
+      mimeType: SHORTCUT_MIME,
+      parents: ["DEST"],
+      shortcutDetails: { targetId: "T1" },
+    });
+    expect(shortcut).toMatchObject({
+      id: "lnk",
+      type: "shortcut",
+      target_id: "T1",
+      target_type: "doc",
+    });
+  });
+
+  it("createShortcut lets a placement Drive refuses travel as PERMISSION_DENIED", async () => {
+    // The rule is Google's, so the message is too (decision 0026 §4).
+    const create = vi.fn(async (_params: CreateParam) => {
+      throw Object.assign(
+        new Error("Shortcuts to files outside this shared drive are not allowed"),
+        {
+          code: 403,
+        },
+      );
+    });
+    await expect(
+      createShortcut(mockDrive({ create }), "T1", "DEST", "Budget"),
+    ).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      message: "Shortcuts to files outside this shared drive are not allowed",
+    });
+  });
+
   it("moveFile removes current parents and adds the new one", async () => {
     const get = vi.fn(async () => ({ data: raw({ id: "m", parents: ["old1", "old2"] }) }));
     const update = vi.fn(async (_params: UpdateParam) => ({
@@ -438,6 +484,7 @@ describe("supportsAllDrives", () => {
     await getFile(drive, "f");
     await createFolder(drive, "n", "P");
     await copyFile(drive, "f", "P");
+    await createShortcut(drive, "t", "P", "n");
     await moveFile(drive, "f", "P");
     await trashFile(drive, "f");
     await deleteFile(drive, "f");
