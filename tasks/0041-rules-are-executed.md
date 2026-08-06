@@ -104,7 +104,7 @@ a `tasks/README.md` fragment — so no test touches git, and the git plumbing li
 in the six lines the tests do not cover.
 
 **Every check also runs against this repository's own records**, in a test that
-reads `decisions/README.md`, `tasks/README.md` and each `decisions/*.md` with
+reads `tasks/README.md` and each `decisions/*.md` with
 `readFileSync` and asserts no findings. It is hermetic in the sense that matters:
 no git, no network. A literal input can only confirm the assumption the code
 beside it was written from, and the corpus is the only thing that contradicts it.
@@ -129,12 +129,13 @@ nothing in the plan would ever have run it against one.*
 3. **Red — `scripts/lint-records.ts`.** Three exported checks over a staged file
    list of `{status, path}`:
    - `checkDecisionEdits` — a `M` on `decisions/NNNN-*.md` is a finding; `A` is
-     not; `decisions/README.md` is exempt in both directions (0032 §4 requires it
-     to be edited). Error text quotes 0032 §3 and says the fix is a new number,
-     naming `revises` / `extends`.
-   - `checkIndexRow(added, readme)` — every added decision needs a row in
-     `decisions/README.md` linking its exact filename. Missing row is a finding
-     that quotes 0032's "the index becomes load-bearing".
+     not; a `CLAUDE.md` beside them is not a record and is exempt. Error text
+     quotes 0032 §3 and says the fix is a new number, naming the relationship.
+     *`checkIndexRow` was here and is gone mid-branch (`decisions/0041` §1):
+     [`0049`](../decisions/0049-the-directory-is-the-index.md) deleted the index
+     it enforced, on the ground that `ls` and `grep -h '^Status:' decisions/*.md`
+     already produce it from the records. A guard whose subject is deleted goes
+     with it.*
    - `checkStatusLine(path, source)` — an added decision's `Status:` line is
      `accepted`, optionally followed by `— revises`, `— extends` or `— corrects`
      and at least one `[NNNN](NNNN-….md)` link. A `superseded by` status is a
@@ -241,8 +242,7 @@ nothing in the plan would ever have run it against one.*
 ## Acceptance criteria
 
 - [ ] Committing a modification to a committed `decisions/NNNN-*.md` fails, and
-      `decisions/README.md` still commits freely
-- [ ] Committing a new decision without its index row fails, naming the row to add
+      `decisions/CLAUDE.md` beside it still commits freely
 - [ ] A `tasks/README.md` row flipped to `done` while its link still points
       outside `archive/` fails the commit
 - [ ] Committing `src/**` on `main` fails and names the branch to use; committing
@@ -267,7 +267,7 @@ part it never ran ([`decisions/0043`](../decisions/0043-e2e-runs-before-push.md)
 
 - **Automated**: `bun run test scripts` — every check function against literal
   inputs, including the near-misses (`git add ./src`, a `padEnd` in a comment,
-  `decisions/README.md`, a `todo` row outside `archive/`). `bun run test:e2e` —
+  `decisions/CLAUDE.md`, a `todo` row outside `archive/`). `bun run test:e2e` —
   nothing; this task touches no Google API.
 - **Manual, against a real repository**: the wiring, which no unit test reaches.
   1. A real `git commit` that violates each of the four `pre-commit` rules, and
