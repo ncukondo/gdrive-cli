@@ -1,9 +1,18 @@
 import type { FormRaw } from "../../src/lib/form-document.ts";
-import type { FormResponseRaw, FormsClient } from "../../src/lib/forms-api.ts";
+import type { BatchUpdateParams, FormResponseRaw, FormsClient } from "../../src/lib/forms-api.ts";
 
 export interface FakeFormsOptions {
   /** What `forms.get` returns; omitting it leaves the method throwing. */
   form?: FormRaw;
+  /**
+   * The form `forms.get` returns *after* a `forms.batchUpdate` has run, so a
+   * test can tell a read of the old revision from a read of the new one.
+   */
+  formAfterUpdate?: FormRaw;
+  /** The id `forms.create` hands back; the title comes from the request. */
+  createdId?: string;
+  /** Thrown by `forms.batchUpdate` alone, for the conflict tests. */
+  batchError?: unknown;
   /**
    * What `forms.responses.list` returns, one array per page. The fake hands
    * out a `nextPageToken` for every page but the last, so a caller that reads
@@ -20,6 +29,10 @@ export interface FakeForms {
   calls: string[];
   /** The page token each `forms.responses.list` call carried. */
   pageTokens: (string | undefined)[];
+  /** Every `forms.batchUpdate` body, so a test can assert what was sent. */
+  batches: BatchUpdateParams[];
+  /** Every title `forms.create` was given. */
+  created: string[];
 }
 
 /**
@@ -29,6 +42,8 @@ export interface FakeForms {
 export function createFakeForms(options: FakeFormsOptions = {}): FakeForms {
   const calls: string[] = [];
   const pageTokens: (string | undefined)[] = [];
+  const batches: BatchUpdateParams[] = [];
+  const created: string[] = [];
   const pages = options.pages ?? [[]];
 
   const client: FormsClient = {
@@ -36,8 +51,30 @@ export function createFakeForms(options: FakeFormsOptions = {}): FakeForms {
       get: async ({ formId }) => {
         calls.push("forms.get");
         if (options.error !== undefined) throw options.error;
-        if (options.form === undefined) throw new Error(`no form in the fake: ${formId}`);
-        return { data: options.form };
+        const current =
+          batches.length > 0 && options.formAfterUpdate !== undefined
+            ? options.formAfterUpdate
+            : options.form;
+        if (current === undefined) throw new Error(`no form in the fake: ${formId}`);
+        return { data: current };
+      },
+      create: async ({ requestBody }) => {
+        calls.push("forms.create");
+        if (options.error !== undefined) throw options.error;
+        created.push(requestBody.info.title);
+        return {
+          data: {
+            formId: options.createdId ?? "1NeWfOrM",
+            info: { title: requestBody.info.title },
+          },
+        };
+      },
+      batchUpdate: async (params) => {
+        calls.push("forms.batchUpdate");
+        if (options.batchError !== undefined) throw options.batchError;
+        if (options.error !== undefined) throw options.error;
+        batches.push(params);
+        return { data: {} };
       },
       responses: {
         list: async ({ pageToken }) => {
@@ -58,5 +95,5 @@ export function createFakeForms(options: FakeFormsOptions = {}): FakeForms {
     },
   };
 
-  return { client, calls, pageTokens };
+  return { client, calls, pageTokens, batches, created };
 }

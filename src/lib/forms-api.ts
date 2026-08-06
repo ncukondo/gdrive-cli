@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { MAX_PAGES, mapDriveError as mapApiError } from "./api.ts";
 import { choiceTypeOf } from "./form-document.ts";
-import type { FormDocument, FormRaw } from "./form-document.ts";
+import type { FormDocument, FormRaw, ItemWrite } from "./form-document.ts";
+import { AppError } from "../types/index.ts";
 
 /**
  * The Forms v1 client port and the response join (decision 0027 §6).
@@ -49,6 +50,39 @@ export interface ListResponsesParams {
   pageToken?: string;
 }
 
+// --- The write side (decision 0028) -----------------------------------------
+
+/** Where a request names an item: its position in the form's flat list. */
+export interface ItemLocation {
+  index: number;
+}
+
+/**
+ * The `batchUpdate` requests this CLI sends. `updateSettings` is deliberately
+ * absent: the document carries no settings at all, so `write` has nothing to
+ * say about `quizSettings.isQuiz` — and sending it derived from the document
+ * would send `false`, which per Google's own field documentation "deletes all
+ * question Grading" ([0027](../../decisions/0027-forms-document.md) defers
+ * grading, so the document could not restore it).
+ *
+ * `google-clients.ts` checks every member and field here against the generated
+ * `forms_v1.Schema$Request`, the way it does for Docs.
+ */
+export type FormsRequest =
+  | { updateFormInfo: { info: { title?: string; description?: string }; updateMask: string } }
+  | { createItem: { item: ItemWrite; location: ItemLocation } }
+  | { updateItem: { item: ItemWrite; location: ItemLocation; updateMask: string } }
+  | { moveItem: { originalLocation: ItemLocation; newLocation: ItemLocation } }
+  | { deleteItem: { location: ItemLocation } };
+
+export interface BatchUpdateParams {
+  formId: string;
+  requestBody: {
+    requests: FormsRequest[];
+    writeControl?: { requiredRevisionId: string };
+  };
+}
+
 /**
  * Minimal abstraction over `google.forms({version:"v1"}).forms` for
  * testability (decision 0012).
@@ -56,6 +90,9 @@ export interface ListResponsesParams {
 export interface FormsClient {
   forms: {
     get: (params: { formId: string }) => Promise<{ data: FormRaw }>;
+    /** The API takes a title and nothing else — see `createForm` (0028 §7). */
+    create: (params: { requestBody: { info: { title: string } } }) => Promise<{ data: FormRaw }>;
+    batchUpdate: (params: BatchUpdateParams) => Promise<{ data: { form?: FormRaw } }>;
     responses: {
       list: (params: ListResponsesParams) => Promise<{ data: ListResponsesRaw }>;
     };
@@ -69,6 +106,70 @@ export async function getForm(client: FormsClient, formId: string): Promise<Form
     const res = await client.forms.get({ formId });
     return res.data;
   } catch (error) {
+    mapApiError(error);
+  }
+}
+
+/**
+ * Creates an empty form. `forms.create` accepts a title and nothing else — no
+ * description, no items, no parent folder — so a filled form in a folder costs
+ * two more calls, which is what `forms create` spends (decision 0028 §7).
+ */
+export async function createForm(
+  client: FormsClient,
+  title: string,
+): Promise<{ id: string; title: string }> {
+  try {
+    const res = await client.forms.create({ requestBody: { info: { title } } });
+    return { id: res.data.formId ?? "", title: res.data.info?.title ?? title };
+  } catch (error) {
+    mapApiError(error);
+  }
+}
+
+/**
+ * Whether a failure is the API refusing a stale `requiredRevisionId`.
+ *
+ * Narrow on purpose: only a rejected precondition, and only when Google's own
+ * message says it was about the revision. A 400 has many other causes, and
+ * telling a caller to re-read the form when the real problem is a malformed
+ * request would send them round a loop that cannot end.
+ */
+function isRevisionConflict(error: unknown): boolean {
+  if (!(error instanceof Error) || !("code" in error)) return false;
+  const { code } = error;
+  if (code !== 400 && code !== 409) return false;
+  return /revision/i.test(error.message);
+}
+
+/**
+ * Applies a planned batch. `revisionId` is the one the document was read at
+ * (decision 0028 §5): sent, it makes a form edited in the browser meanwhile
+ * fail instead of being overwritten; absent, the write is unconditional, which
+ * is what a hand-authored document gets.
+ */
+export async function batchUpdateForm(
+  client: FormsClient,
+  formId: string,
+  requests: FormsRequest[],
+  revisionId?: string,
+): Promise<void> {
+  try {
+    await client.forms.batchUpdate({
+      formId,
+      requestBody: {
+        requests,
+        ...(revisionId !== undefined ? { writeControl: { requiredRevisionId: revisionId } } : {}),
+      },
+    });
+  } catch (error) {
+    if (revisionId !== undefined && isRevisionConflict(error)) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new AppError(
+        "API_ERROR",
+        `The form changed since it was read at revision ${revisionId}, so nothing was written: ${detail}. Read the form again and apply your edit to the fresh document.`,
+      );
+    }
     mapApiError(error);
   }
 }

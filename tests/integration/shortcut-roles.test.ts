@@ -235,6 +235,8 @@ interface FormsSpies {
   client: FormsClient;
   get: ReturnType<typeof vi.fn>;
   list: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  batchUpdate: ReturnType<typeof vi.fn>;
 }
 
 function createFormsSpies(): FormsSpies {
@@ -242,7 +244,17 @@ function createFormsSpies(): FormsSpies {
     data: { formId, info: { title: "Survey" }, items: [] },
   }));
   const list = vi.fn(async () => ({ data: { responses: [] } }));
-  return { client: { forms: { get, responses: { list } } }, get, list };
+  const create = vi.fn(async ({ requestBody }: { requestBody: { info: { title: string } } }) => ({
+    data: { formId: "frmNew", info: { title: requestBody.info.title } },
+  }));
+  const batchUpdate = vi.fn(async () => ({ data: {} }));
+  return {
+    client: { forms: { get, create, batchUpdate, responses: { list } } },
+    get,
+    list,
+    create,
+    batchUpdate,
+  };
 }
 
 interface SlidesSpies {

@@ -2,7 +2,7 @@ import { google } from "googleapis";
 import type { docs_v1, drive_v3, forms_v1, sheets_v4, slides_v1 } from "googleapis";
 import type { DriveClient } from "./api.ts";
 import type { DocsClient, DocsRequest } from "./docs-api.ts";
-import type { FormsClient } from "./forms-api.ts";
+import type { FormsClient, FormsRequest } from "./forms-api.ts";
 import type { SheetsClient } from "./sheets-api.ts";
 import type { SlidesClient } from "./slides-api.ts";
 
@@ -106,6 +106,12 @@ export type GeneratedParamChecks = [
     UnknownParams<FormsClient["forms"]["get"], forms_v1.Params$Resource$Forms$Get>
   >,
   AssertNoUnknownParams<
+    UnknownParams<FormsClient["forms"]["create"], forms_v1.Params$Resource$Forms$Create>
+  >,
+  AssertNoUnknownParams<
+    UnknownParams<FormsClient["forms"]["batchUpdate"], forms_v1.Params$Resource$Forms$Batchupdate>
+  >,
+  AssertNoUnknownParams<
     UnknownParams<
       FormsClient["forms"]["responses"]["list"],
       forms_v1.Params$Resource$Forms$Responses$List
@@ -146,17 +152,28 @@ export type GeneratedParamChecks = [
  * Assignability alone would not catch that — a *type* with an extra property is
  * still assignable, only a fresh object literal is not. So this repeats the
  * `UnknownParams` trick one level down: every member name must still be a key
- * of `Schema$Request`, and every field inside it a key of that member's schema.
+ * of the API's `Schema$Request`, and every field inside it a key of that
+ * member's schema.
  */
-type UnknownRequestKeys<T> = T extends unknown
+type UnknownRequestKeys<T, Schema> = T extends unknown
   ? {
-      [K in keyof T]-?: K extends keyof docs_v1.Schema$Request
-        ? Exclude<keyof T[K], keyof NonNullable<docs_v1.Schema$Request[K]>>
+      [K in keyof T]-?: K extends keyof Schema
+        ? Exclude<keyof T[K], keyof NonNullable<Schema[K]>>
         : K;
     }[keyof T]
   : never;
 
 export type DocsRequestChecks = [
-  AssertNoUnknownParams<UnknownRequestKeys<DocsRequest>>,
+  AssertNoUnknownParams<UnknownRequestKeys<DocsRequest, docs_v1.Schema$Request>>,
   DocsRequest extends docs_v1.Schema$Request ? true : never,
+];
+
+/**
+ * The same guard for Forms (decision 0028). It matters more here than for Docs:
+ * a field name the API ignores is how an `updateMask` silently stops protecting
+ * the field it was written to protect.
+ */
+export type FormsRequestChecks = [
+  AssertNoUnknownParams<UnknownRequestKeys<FormsRequest, forms_v1.Schema$Request>>,
+  FormsRequest extends forms_v1.Schema$Request ? true : never,
 ];

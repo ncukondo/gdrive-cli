@@ -110,6 +110,10 @@ const formsClient: FormsClient = {
     get: async ({ formId }) => ({
       data: { formId, info: { title: "2026 Engagement survey" }, items: [] },
     }),
+    create: async ({ requestBody }) => ({
+      data: { formId: "1NeWfOrM", info: { title: requestBody.info.title } },
+    }),
+    batchUpdate: async () => ({ data: {} }),
     responses: { list: async () => ({ data: { responses: [] } }) },
   },
 };
