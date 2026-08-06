@@ -1,8 +1,8 @@
 # gdrive-cli
 
 A command-line tool for **Google Drive, Docs, Sheets, Forms, and Slides** —
-listing and managing files, reading and making simple edits to Documents and
-Spreadsheets, reading Forms and their responses, reading Slides decks — with
+listing and managing files, reading and making simple edits to Documents,
+Spreadsheets and Forms, reading Form responses, reading Slides decks — with
 **multiple-account switching**. A sibling of
 [`gcal-cli`](https://github.com/ncukondo/gcal-cli), designed for both human and
 AI-agent use.
@@ -27,10 +27,14 @@ AI-agent use.
   lists, and links. `--as text` writes the exact bytes instead.
 - **Sheets** — `tabs`, `read` (table/CSV/JSON), `write`, `append`, `clear`,
   `create`.
-- **Forms** — `forms read` prints a whole form as one YAML document, ids and
-  all; `forms responses` tabulates the answers with the question titles as
-  column headers (table/CSV/JSON), with or without a linked spreadsheet. A form
-  reports `type: form`, so `ls --type form` finds one.
+- **Forms** — one YAML document in both directions: `read` prints a whole form,
+  ids and all, and `write` applies an edited one back, matching items **by id**
+  so a renamed question keeps every answer already attached to it. Every write
+  reports its plan, `--dry-run` writes nothing, and deleting a question needs
+  `--prune`, because deleting one severs its responses for good. `create` makes
+  a form from a document. `forms responses` tabulates the answers with the
+  question titles as column headers (table/CSV/JSON), with or without a linked
+  spreadsheet. A form reports `type: form`, so `ls --type form` finds one.
 - **Slides** — `slides read` prints a deck as one YAML document: each slide's
   layout, its placeholder text and its speaker notes, with everything else —
   hand-placed shapes, images, tables, charts — listed read-only under
@@ -100,6 +104,7 @@ gdrive docs append "Notes/Meeting" @draft.md   # …and Markdown back in
 gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:C10" --as csv
 gdrive ls Surveys --type form        # the files `forms read` can take
 gdrive forms read "Surveys/2026" > form.yaml          # the whole form as YAML
+gdrive forms write "Surveys/2026" --file form.yaml    # …and the edited one back
 gdrive forms responses "Surveys/2026" --as csv        # answers, by question title
 gdrive slides read "Decks/Q3" > deck.yaml             # the whole deck as YAML
 gdrive share link "Reports/2026/Budget"
