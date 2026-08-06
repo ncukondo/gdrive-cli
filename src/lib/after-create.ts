@@ -9,10 +9,10 @@ import { formatValues, line } from "./output.ts";
  * `presentations.create` all take a title and ignore a parent (decision 0028
  * §7), so every one of them makes a file in My Drive's root and then has two
  * things left to do: move it where the caller asked, and fill it. This runs
- * those in that order and attaches the file to whatever fails, which is the
- * pair of guarantees [#36](https://github.com/ncukondo/gdrive-cli/issues/36)
- * asked for: the file is inside `--parent` before anything can fail on it, and
- * a caller that never got a success envelope still learns the id.
+ * those in that order and attaches the file to whatever fails, which is
+ * decision 0057's two sections: the file is inside `--parent` before anything
+ * can fail on it (§1), and a caller that never got a success envelope still
+ * learns the id (§2).
  *
  * It lives here rather than in one of the four commands because all four have
  * the shape, and because what a stopped `create` reports is worth testing
@@ -77,7 +77,12 @@ function leftBehind(created: NewFile, requested: string | undefined, placedIn?: 
  * arrived as — a dropped socket is a plain `Error` and a bug in this program is
  * a `TypeError`, and requiring an `AppError` would throw the id away for the
  * failures least likely to have been anticipated. `errorToCode` decides the
- * code, so it is the one `handleError` would have derived from the original.
+ * code, so it is the one `handleError` would have derived from the original,
+ * and `transient` travels with it: `mapDriveError` sets that flag on the move's
+ * 429s and 5xx, nothing here consumes it, and a re-wrap that flattened it would
+ * hand a retry added later a rate limit dressed as a refusal. `copy-tree.ts`
+ * does drop it, correctly — its wrap is outside `withRetry`, which has already
+ * acted on the flag by then.
  */
 export async function afterCreate<T>(
   created: NewFile,
@@ -96,6 +101,7 @@ export async function afterCreate<T>(
     const message = error instanceof Error ? error.message : String(error);
     throw new AppError(errorToCode(error), message, {
       data: leftBehind(created, parentId, placedIn),
+      transient: error instanceof AppError && error.transient,
     });
   }
 }
