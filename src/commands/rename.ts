@@ -1,11 +1,16 @@
 import { Command } from "commander";
-import { AppError, type CommandResult, type DriveFile, type OutputFormat } from "../types/index.ts";
+import type { CommandResult, DriveFile, OutputFormat } from "../types/index.ts";
 import { formatValues, line, renderSuccess } from "../lib/output.ts";
+import { refuseTakenName, refuseUnpathableName, type FindSiblings } from "../lib/names.ts";
 
 export interface RenameDeps {
   /** The file to rename, as an entry: renaming a shortcut renames the shortcut. */
   resolvePath: (arg: string) => Promise<string>;
   renameFile: (fileId: string, name: string) => Promise<DriveFile>;
+  /** The file's own parents — the folder the new name has to be unique in. */
+  getFile: (fileId: string) => Promise<DriveFile>;
+  /** What the new name would collide with there (decision 0055 §1). */
+  findSiblings: FindSiblings;
   file: string;
   name: string;
   format: OutputFormat;
@@ -23,11 +28,29 @@ export interface RenameDeps {
  */
 export async function handleRename(deps: RenameDeps): Promise<CommandResult> {
   // Before the path walk, which is itself a Drive call: Drive would take a
-  // blank name and leave a file nothing can address by path.
-  if (deps.name.trim() === "") {
-    throw new AppError("INVALID_ARGS", "<name> is empty.");
-  }
+  // blank name, or one with a space at either end, and leave a file nothing can
+  // address by path (decision 0055 §1). Nothing about the file changes that
+  // answer, so it is settled without asking about one.
+  refuseUnpathableName(deps.name);
+
   const fileId = await deps.resolvePath(deps.file);
+
+  // The second round trip decision 0055 §2 allows this one command: `rename` is
+  // the only one that does not already know the folder its result lands in, and
+  // the collision it has to rule out is with that folder's other entries. The
+  // file itself is not one of them — renaming it to the name it already has is a
+  // no-op, not a collision. `parents` is read as the list Drive's resource still
+  // makes it, so a file reachable through two folders is checked in both.
+  const file = await deps.getFile(fileId);
+  for (const parentId of file.parents) {
+    await refuseTakenName({
+      name: deps.name,
+      parentId,
+      findSiblings: deps.findSiblings,
+      selfId: file.id,
+    });
+  }
+
   const renamed = await deps.renameFile(fileId, deps.name);
 
   deps.write(
