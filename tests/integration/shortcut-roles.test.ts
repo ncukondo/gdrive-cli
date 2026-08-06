@@ -367,6 +367,11 @@ describe("container arguments follow a shortcut (decision 0025 §1)", () => {
     expect(firstArg(drive.copy)).toMatchObject({ fileId: "plain" });
     expect(firstArg(drive.copy).requestBody).toMatchObject({ parents: ["y2026"] });
   });
+
+  it("`ln <file> <link-to-folder>` creates the shortcut inside the target", async () => {
+    await run(["ln", "plain.txt", "Reports/link-to-2026"]);
+    expect(firstArg(drive.create).requestBody).toMatchObject({ parents: ["y2026"] });
+  });
 });
 
 describe("content arguments follow a shortcut (decision 0025 §1)", () => {
@@ -441,6 +446,40 @@ describe("content arguments follow a shortcut (decision 0025 §1)", () => {
     await run(["forms", "responses", "Reports/link-to-form"]);
     expect(firstArg(forms.get)).toMatchObject({ formId: "frm1" });
     expect(firstArg(forms.list)).toMatchObject({ formId: "frm1" });
+  });
+
+  it("`ln <link> <folder>` links the document, not the shortcut (decision 0026 §2)", async () => {
+    // Drive refuses to store a shortcut to a shortcut, so following turns the
+    // request the API would reject into the one the user meant.
+    await run(["ln", "Reports/link-to-doc", "Other"]);
+    expect(firstArg(drive.create).requestBody).toMatchObject({
+      mimeType: "application/vnd.google-apps.shortcut",
+      parents: ["other"],
+      shortcutDetails: { targetId: "doc1" },
+    });
+  });
+});
+
+describe("`gdrive ln` (decision 0026)", () => {
+  it("names the shortcut after its target", async () => {
+    await run(["ln", "Reports/Notes", "Other"]);
+    expect(firstArg(drive.create).requestBody).toMatchObject({
+      name: "Notes",
+      shortcutDetails: { targetId: "doc1" },
+    });
+  });
+
+  it("names it after what a shortcut target points at, not after the link", async () => {
+    await run(["ln", "Reports/link-to-doc", "Other"]);
+    expect(firstArg(drive.create).requestBody).toMatchObject({ name: "Notes" });
+  });
+
+  it("takes --name instead, and then asks Drive nothing about the target", async () => {
+    await run(["ln", "Reports/Notes", "Other", "--name", "Notes (linked)"]);
+    expect(firstArg(drive.create).requestBody).toMatchObject({ name: "Notes (linked)" });
+    // A path target is named by the walk's own listing, so nothing here needs
+    // `files.get` (decisions 0026 §3, 0025 §4).
+    expect(drive.get).not.toHaveBeenCalled();
   });
 });
 

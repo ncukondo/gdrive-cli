@@ -9,18 +9,21 @@ import { getAccountClient } from "../lib/account.ts";
 import {
   copyFile,
   createFolder,
+  createShortcut,
   deleteFile,
+  getFile,
   moveFile,
   trashFile,
   uploadMedia,
   type DriveClient,
 } from "../lib/api.ts";
-import { resolvePath, resolveTargetId } from "../lib/resolve-path.ts";
+import { resolvePath, resolveTarget, resolveTargetId } from "../lib/resolve-path.ts";
 import { resolveGlobalOptions, handleError, type GlobalOptions } from "../index.ts";
 import { createUploadCommand, guessMimeType, handleUpload, type LocalFile } from "./upload.ts";
 import { createMkdirCommand, handleMkdir } from "./mkdir.ts";
 import { createMvCommand, handleMv } from "./mv.ts";
 import { createCpCommand, handleCp } from "./cp.ts";
+import { createLnCommand, handleLn } from "./ln.ts";
 import { createRmCommand, handleRm } from "./rm.ts";
 
 async function buildDrive(opts: GlobalOptions): Promise<DriveClient> {
@@ -45,9 +48,13 @@ const stdout = (msg: string) => process.stdout.write(msg + "\n");
 
 /**
  * Decision 0025 §1's role table, wired argument by argument: `--parent` is a
- * container and follows a shortcut, and so is the destination of `mv` and `cp`,
- * while what `mv`, `cp`, and `rm` act *on* is an entry and never does — `rm
- * link` deletes the link, not the document behind it.
+ * container and follows a shortcut, and so is the destination of `mv`, `cp` and
+ * `ln`, while what `mv`, `cp`, and `rm` act *on* is an entry and never does —
+ * `rm link` deletes the link, not the document behind it.
+ *
+ * `ln`'s `<target>` is the content row (decision 0026 §2): linking a shortcut
+ * links the document it points at, because Drive refuses to store a shortcut to
+ * a shortcut anyway.
  */
 export function registerDriveWrite(program: Command): void {
   const upload = createUploadCommand();
@@ -149,6 +156,34 @@ export function registerDriveWrite(program: Command): void {
     }
   });
   program.addCommand(cp);
+
+  const ln = createLnCommand();
+  ln.action(async (target: string, folder: string) => {
+    const opts = resolveGlobalOptions(program);
+    const o = ln.opts<{ name?: string }>();
+    try {
+      const drive = await buildDrive(opts);
+      const result = await handleLn({
+        // content: linking a shortcut links what it points at (decision 0026 §2)
+        resolveTarget: (arg) => resolveTarget(drive, arg),
+        // container
+        resolveFolder: (arg) => resolveTargetId(drive, arg),
+        getFile: (id) => getFile(drive, id),
+        createShortcut: (targetId, parentId, name) =>
+          createShortcut(drive, targetId, parentId, name),
+        target,
+        dest: folder,
+        format: opts.format,
+        quiet: opts.quiet,
+        write: stdout,
+        ...(o.name !== undefined ? { name: o.name } : {}),
+      });
+      process.exit(result.exitCode);
+    } catch (error) {
+      handleError(error, opts.format);
+    }
+  });
+  program.addCommand(ln);
 
   const rm = createRmCommand();
   rm.action(async (file: string) => {
