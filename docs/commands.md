@@ -159,8 +159,8 @@ same reason: `cat link` should read the target, `rm link` should not delete it.
 
 | Role | Follows | Arguments |
 |------|---------|-----------|
-| **Container** — "look inside this" | always | every intermediate path segment; `ls [folder]`; `--parent` on `mkdir`, `upload`, `docs create`, `sheets create`; the destination of `mv`, `cp` and `ln` |
-| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear`; `forms read/responses`; `slides read`; `ln <target>` |
+| **Container** — "look inside this" | always | every intermediate path segment; `ls [folder]`; `--parent` on `mkdir`, `upload`, `docs create`, `sheets create`, `forms create`; the destination of `mv`, `cp` and `ln` |
+| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear`; `forms read/responses/write`; `slides read`; `ln <target>` |
 | **Entry** — "this file, as an entry in a folder" | never | `rm`; `mv <file>`; `cp <file>`; `share list/add/remove/link`; `info` |
 
 The two arguments of `mv link Other` play different roles in one command: the
@@ -1022,21 +1022,23 @@ Quiet: the new spreadsheet ID.
 ## Forms (`gdrive forms`)
 
 A form is **one YAML document** (see
-[`../decisions/0027`](../decisions/0027-forms-document.md)). `read` prints it,
-and there are no per-question commands: to change question 3, read the form,
-edit that node, and write the document back.
+[`../decisions/0027`](../decisions/0027-forms-document.md) and
+[`0028`](../decisions/0028-forms-write.md)). `read` prints it and `write`
+accepts the same document back; there are no per-question commands, so to change
+question 3 you read the form, edit that node, and write the document back.
 
 The Forms API must be enabled on your Google Cloud project
 ([`authentication.md`](authentication.md)); no new OAuth scope is needed, so an
 existing login keeps working.
 
-`<form>` is a *content* argument in both commands, so it follows a
-[shortcut](#shortcuts) to the form it points at.
+`<form>` is a *content* argument in `read`, `responses` and `write`, so it
+follows a [shortcut](#shortcuts) to the form it points at; `forms create
+--parent` is a container and follows one too.
 
 ### Finding a form
 
 A form reports [`type: form`](#the-file-object), so `--type form` lists the
-files these two commands can take:
+files these commands can take:
 
 ```console
 $ gdrive ls -f text Surveys --type form
@@ -1166,7 +1168,9 @@ report either — the report is a per-item list, and these are not items:
 | `document_title` | The Drive file name, which `gdrive info` and `gdrive ls` report. Nothing can change it through this API, so nothing here loses it |
 | `publish_settings` | Output-only, and form lifecycle rather than content |
 
-A form that is a quiz therefore reads with no sign that it is one. If you edit a
+A form that is a quiz therefore reads with no sign that it is one. What the
+document does not carry, `forms write` never sends: a quiz stays a quiz and its
+grading survives an edit, and `forms create` cannot make a quiz. If you edit a
 quiz's document, keep in mind that these settings live outside it.
 
 ### `gdrive forms read <form>`
@@ -1241,8 +1245,161 @@ submitted	Which team are you on?	How satisfied are you?
 Quiet: CSV to stdout.
 
 The respondent's email address and the response ID are not columns; response
-filtering, fetching one response by ID, and quiz grades are not implemented,
-and neither is writing a form (`forms write` / `forms create`).
+filtering, fetching one response by ID, and quiz grades are not implemented.
+
+### `gdrive forms write <form> [--file <path>] [--prune] [--dry-run]`
+
+Applies a document to a form. Items are matched **by `id` alone** — nothing
+compares titles, and nothing guesses that a renamed question is the same
+question — so the three edits an agent actually makes are exactly expressible:
+
+| In the document | In the form | What happens |
+|---|---|---|
+| `id` present, matches | yes | The item is updated in place, keeping its `question_id` and every answer already joined to it |
+| no `id` | — | The item is created at the position it holds in the document |
+| — | `id` not in the document | The item is deleted, and **only** with `--prune` |
+| the order differs | — | The item is moved |
+
+An `id` the form does not have is an `INVALID_ARGS` error, not a create: it
+means the document was written against a different form, and creating the item
+would half-apply that mistake. Drop the `id` to add the item as new.
+
+`--file` names a path; `@path` and `-` (stdin) work as they do everywhere else,
+and with no `--file` at all the document is read from stdin — so
+`gdrive forms read F | gdrive forms write F` is a round trip that changes
+nothing.
+
+The read-only fields `read` emitted — `id`, `revision_id`, `responder_uri`,
+`linked_sheet_id` and each item's `question_id` — are **ignored**, not rejected,
+so the round trip needs no stripping step. `revision_id` is the one exception
+to "ignored": it is sent back as the revision the write requires (see below).
+
+For the fields the document *does* model, the document is the desired state. A
+form `description` deleted from the document is deleted from the form.
+
+```console
+$ gdrive forms read "Surveys/2026" > form.yaml
+$ $EDITOR form.yaml
+$ gdrive forms write -f text "Surveys/2026" --file form.yaml
+action	position	id	title
+update	0	1a2b3c4d	Which team do you work in?
+create	3		Anything else?
+Applied 2 changes to 1FoRm...
+```
+
+#### Deleting a question needs `--prune`
+
+An item in the form and not in the document is **not** deleted by default;
+`write` refuses the whole thing with `PRUNE_REQUIRED` (exit 3), names the items
+and names the flag, and writes nothing at all — not the creates, not the
+updates. The plan is built whole or not at all.
+
+This is deliberate. Deleting a form question deletes the question *and* severs
+its responses, which are keyed by `question_id`; there is no trash to recover
+them from, unlike [`gdrive rm`](#gdrive-rm-file). The likely mistake
+is an agent that assembles a document programmatically and drops an item it did
+not understand, so `--prune` is the same shape of promise as `rm --permanent`:
+available, spelled out, never the default.
+
+```console
+$ gdrive forms write "Surveys/2026" --file form.yaml
+Error: Applying this document would delete 1 item the form has and the document does not: "How satisfied are you?" (2b3c4d5e). Deleting a question deletes its responses with it, and nothing has been changed. Re-run with --prune to delete them, or put them back in the document.
+```
+
+`--dry-run` reports the plan and issues no write. It refuses a deletion on the
+same terms, so the sequence to run when you are not sure is `--dry-run --prune`
+first and `--prune` after — one extra `forms.get` and nothing else.
+
+#### The plan
+
+Every `write` reports what it did, or would do, as `data.plan`: one entry per
+create, update, move and delete, each naming the item.
+
+```json
+{ "id": "1FoRm...", "applied": true,
+  "plan": [ { "action": "update", "id": "1a2b3c4d", "title": "Which team do you work in?", "index": 0 },
+            { "action": "move", "id": "2b3c4d5e", "title": "How satisfied are you?", "from": 3, "index": 1 },
+            { "action": "create", "title": "Anything else?", "index": 3 } ] }
+```
+
+- `action` is `form_info`, `create`, `update`, `move` or `delete`. `form_info`
+  is the form's own `title` and `description`; it names no item.
+- `id` is absent on a create — the API assigns one — and on `form_info`.
+- `index` is where the item ends up; `from` is where a moved item was.
+- `applied` is `false` for a `--dry-run` and for an empty plan, and `dry_run`
+  is `true` on a dry run.
+- In text mode the plan is a table: `action`, `position`, `id`, `title`, with
+  `position` reading `3->1` for a move. A trailing line says whether it reached
+  the form.
+- Quiet: the number of changes.
+
+That is what makes the deletion rule checkable rather than merely promised. A
+caller asking *did my deletion happen* has three answers to tell apart, and the
+envelope tells them apart without reading the exit code: a successful write
+whose plan holds a `delete` entry **applied** it, a `PRUNE_REQUIRED` error
+**refused** it, and a successful write with no `delete` entry was **never
+asked** to (the item was already gone).
+
+An item that reads as `type: unsupported` produces no request at all — not an
+update, not a delete — so it stays exactly as it is while the questions around
+it change; only a `move` can name it. Adding a *new* `unsupported` item is the
+one thing `write` cannot do, since `raw` holds the API's shape rather than the
+document's; those are reported through the `unsupported` channel, one line on
+stderr in text mode, and left out of the form.
+
+Nothing about form **settings** is ever sent. The document carries none, so an
+update derived from it would say `isQuiz: false` — which, per Google's own
+field documentation, deletes every question's grading. A quiz stays a quiz, and
+`write` cannot turn a form into one.
+
+#### A browser edit between `read` and `write`
+
+When the document carries the `revision_id` that `read` emitted, `write` sends
+it as the revision the form must still be at. A form edited elsewhere in the
+meantime makes the write fail, and it fails before anything is written:
+
+```console
+$ gdrive forms write "Surveys/2026" --file form.yaml
+Error: The form changed since it was read at revision 00000007, so nothing was written: ... Read the form again and apply your edit to the fresh document.
+```
+
+There is no merge. Re-read the form and re-apply the edit. Deleting the
+`revision_id` line writes unconditionally, which is what a hand-authored
+document does — so the safe behavior is what the round trip gives you for free.
+
+### `gdrive forms create <title> [--file <path>] [--parent <folder>]`
+
+Creates a form. With `--file`, the new form is filled from a document; without
+one, it is an empty form with that title.
+
+The Forms API creates a form with a title and nothing else, so this is up to
+three calls: create, then one `batchUpdate` carrying the whole document, then a
+Drive move when `--parent` is given. `docs create` and `sheets create` have the
+same shape for the same reason.
+
+The `<title>` argument names the form and **wins over the document's `title`**;
+everything else — the description and the items — comes from the document. Every
+`id` and `question_id` in it is ignored, because a new form has no items of its
+own to match: that is what makes reading one form and creating another a copy
+rather than an error about unknown IDs.
+
+```console
+$ gdrive forms create -f text "2027 Engagement survey" --file form.yaml --parent Surveys
+Created 2027 Engagement survey (1NeWfOrM...)
+```
+
+```json
+{ "id": "1NeWfOrM...", "title": "2027 Engagement survey", "parent_id": "1FoLdEr...",
+  "plan": [ { "action": "form_info", "title": "2027 Engagement survey" },
+            { "action": "create", "title": "Which team are you on?", "index": 0 } ] }
+```
+
+Quiet: the new form ID.
+
+A copy is a copy of the *questions*, not of the form: the responses stay with
+the original, and an `unsupported` item — a video, an image, a grid — cannot be
+recreated and is reported rather than carried. A form that is a quiz copies as
+a form that is not one.
 
 ---
 
@@ -1471,7 +1628,7 @@ honor `GDRIVE_CLI_VERSION` and `GDRIVE_CLI_INSTALL_DIR`. See
 | `0` | Success | — |
 | `1` | Operation failed | `NOT_FOUND`, `PERMISSION_DENIED`, `API_ERROR`, `CONFIG_ERROR`, `IO_ERROR` |
 | `2` | Authentication problem | `AUTH_REQUIRED`, `AUTH_EXPIRED`, `ACCOUNT_NOT_FOUND` |
-| `3` | Bad arguments | `INVALID_ARGS` |
+| `3` | Bad arguments | `INVALID_ARGS`, `PRUNE_REQUIRED` |
 
 Errors go to stderr — as `Error: <message>` in text mode, or as the envelope in
 JSON mode. See [`../decisions/0007`](../decisions/0007-output-and-errors.md).
@@ -1483,3 +1640,9 @@ it; ask an organizer of the drive for a higher role. Exit **2** is reserved for
 the cases `gdrive auth` really does fix, including a token minted before a
 scope was added. See
 [`../decisions/0017`](../decisions/0017-permission-denied-error-code.md).
+
+`PRUNE_REQUIRED` is raised by [`gdrive forms write`](#gdrive-forms-write-form---file-path---prune---dry-run)
+alone, and shares exit **3** with `INVALID_ARGS` while staying a separate code,
+because the two ask for different next actions: `INVALID_ARGS` means fix the
+document, `PRUNE_REQUIRED` means confirm you meant to delete a question and
+re-run with `--prune`. Nothing was written either way.
