@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleMkdir } from "./mkdir.ts";
+import { handleMkdir, type MkdirDeps } from "./mkdir.ts";
+import { childrenNamed, ROOT_ID } from "../lib/resolve-path.ts";
 import type { DriveFile } from "../types/index.ts";
+import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
 
 function folder(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -31,6 +33,8 @@ function collect() {
   };
 }
 
+const none = async () => [];
+
 describe("handleMkdir", () => {
   it("creates in root when no --parent (no path resolution)", async () => {
     const resolvePath = vi.fn();
@@ -38,6 +42,7 @@ describe("handleMkdir", () => {
     await handleMkdir({
       resolvePath,
       createFolder,
+      findSiblings: none,
       name: "New",
       format: "text",
       quiet: false,
@@ -53,6 +58,7 @@ describe("handleMkdir", () => {
     await handleMkdir({
       resolvePath,
       createFolder,
+      findSiblings: none,
       name: "New",
       parent: "Docs",
       format: "text",
@@ -67,6 +73,7 @@ describe("handleMkdir", () => {
     const text = collect();
     await handleMkdir({
       resolvePath: vi.fn(),
+      findSiblings: none,
       createFolder: async () => folder({ id: "F1", name: "New" }),
       name: "New",
       format: "text",
@@ -78,6 +85,7 @@ describe("handleMkdir", () => {
     const json = collect();
     await handleMkdir({
       resolvePath: vi.fn(),
+      findSiblings: none,
       createFolder: async () => folder({ id: "F1" }),
       name: "New",
       format: "json",
@@ -89,6 +97,7 @@ describe("handleMkdir", () => {
     const quiet = collect();
     await handleMkdir({
       resolvePath: vi.fn(),
+      findSiblings: none,
       createFolder: async () => folder({ id: "F1" }),
       name: "New",
       format: "text",
@@ -107,6 +116,7 @@ describe("handleMkdir", () => {
     const text = collect();
     await handleMkdir({
       resolvePath: vi.fn(),
+      findSiblings: none,
       createFolder: async () => folder({ id: "F1", name: "Q1\nreport" }),
       name: "Q1\nreport",
       format: "text",
@@ -118,6 +128,7 @@ describe("handleMkdir", () => {
     const json = collect();
     await handleMkdir({
       resolvePath: vi.fn(),
+      findSiblings: none,
       createFolder: async () => folder({ id: "F1", name: "Q1\nreport" }),
       name: "Q1\nreport",
       format: "json",
@@ -125,5 +136,73 @@ describe("handleMkdir", () => {
       write: json.write,
     });
     expect(JSON.parse(json.output).data.file.name).toBe("Q1\nreport");
+  });
+
+  /**
+   * Decision 0055 §1. Two folders with one name in one folder make
+   * `resolve-path.ts` answer *Ambiguous path segment* for both, so the second
+   * `mkdir` is what loses the first one.
+   *
+   * The real `childrenNamed` runs against a tree, so what is asserted is the
+   * folder looked in and the name looked for, not a stub's opinion.
+   */
+  describe("a name that would not address the new folder", () => {
+    const against = (nodes: DriveNode[], overrides: Partial<MkdirDeps> = {}): MkdirDeps => {
+      const { client } = createWritableTreeDrive(nodes);
+      return {
+        resolvePath: async () => "PID",
+        createFolder: async () => folder(),
+        findSiblings: (parentId, name) => childrenNamed(client, parentId, name),
+        name: "New",
+        format: "text",
+        quiet: false,
+        write: () => {},
+        ...overrides,
+      };
+    };
+
+    it("refuses a name --parent already holds, and creates nothing", async () => {
+      const createFolder = vi.fn(async () => folder());
+      await expect(
+        handleMkdir(
+          against([{ id: "E1", name: "New", parents: ["PID"] }], {
+            createFolder,
+            parent: "Docs",
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("E1") });
+      expect(createFolder).not.toHaveBeenCalled();
+    });
+
+    /**
+     * No `--parent` means the My Drive root, which is a folder like any other:
+     * the check looks there under the alias a path walk starts from.
+     */
+    it("refuses a name the My Drive root already holds", async () => {
+      const createFolder = vi.fn(async () => folder());
+      await expect(
+        handleMkdir(against([{ id: "E1", name: "New", parents: [ROOT_ID] }], { createFolder })),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+      expect(createFolder).not.toHaveBeenCalled();
+    });
+
+    it("creates when nothing there holds the name", async () => {
+      const createFolder = vi.fn(async () => folder());
+      await handleMkdir(against([{ id: "E1", name: "Old", parents: [ROOT_ID] }], { createFolder }));
+      expect(createFolder).toHaveBeenCalledWith("New", undefined);
+    });
+
+    it.each([" New", "New ", "Q1/Q2", "  "])(
+      "refuses %j without asking Drive anything",
+      async (name) => {
+        const createFolder = vi.fn(async () => folder());
+        const findSiblings = vi.fn(none);
+        await expect(
+          handleMkdir(against([], { createFolder, findSiblings, name })),
+        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(createFolder).not.toHaveBeenCalled();
+      },
+    );
   });
 });

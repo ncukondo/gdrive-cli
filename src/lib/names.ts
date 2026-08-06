@@ -22,10 +22,16 @@ export interface Sibling {
  */
 export type FindSiblings = (parentId: string, name: string) => Promise<Sibling[]>;
 
+/**
+ * The folder a file lands in when the caller named none — every command with an
+ * optional `--parent` says this, and it is what the refusal has to look in.
+ */
+export const MY_DRIVE = "My Drive";
+
 export interface NameCheck {
   /** The name the caller asked for. */
   name: string;
-  /** The folder it would land in; `ROOT_ID` when the caller named none. */
+  /** The folder it would land in; the `root` alias when the caller named none. */
   parentId: string;
   findSiblings: FindSiblings;
   /** How the caller spelled that folder, for the message. */
