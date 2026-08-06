@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { copyTree } from "./copy-tree.ts";
 import { FOLDER_MIME, SHORTCUT_MIME } from "./api.ts";
 import { AppError, type ErrorData } from "../types/index.ts";
@@ -84,6 +84,28 @@ describe("copyTree", () => {
     expect(under("DEST")).toEqual(["2026"]);
     expect(under("new1").sort()).toEqual(["a.pdf", "sub"]);
     expect(under("new3")).toEqual(["b.txt"]);
+  });
+
+  /**
+   * Every copy names itself in the request, because Drive's default name is not
+   * the source's — a live run had a nested Doc land as `Copy of TreeDoc` while
+   * the binary file beside it kept its name. The request body is what is
+   * asserted, not the resulting tree: the tree is only ever as truthful about
+   * naming as the fake that built it, and it was the fake echoing the name back
+   * that hid this in the first place.
+   */
+  it("names every copy in the request, rather than leaving it to Drive", async () => {
+    const drive = createWritableTreeDrive(twoLevelTree());
+    const copy = vi.fn(drive.client.files.copy);
+    const client = { ...drive.client, files: { ...drive.client.files, copy } };
+
+    const report = await copyTree(client, source, "DEST");
+
+    expect(copy.mock.calls.map(([params]) => [params.fileId, params.requestBody.name])).toEqual([
+      ["1A", "a.pdf"],
+      ["1B", "b.txt"],
+    ]);
+    expect(report.copied.map((c) => c.name)).toEqual(["a.pdf", "b.txt"]);
   });
 
   it("copies an empty folder as an empty folder", async () => {
