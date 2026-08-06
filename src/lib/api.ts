@@ -701,10 +701,12 @@ export async function trashFile(client: DriveClient, fileId: string): Promise<Dr
 /**
  * Changes a file's Drive name (decision 0052).
  *
- * `name` is the only field in the body: for a Doc, a Sheet and a deck Drive
- * carries it into the in-document title, and for a form it does not — which the
- * caller reports from the `mimeType` on the response rather than asking again
- * (§3).
+ * `name` is the only field in the body, and there is nothing to vary by type:
+ * Drive carries the new name into the in-document title of a Doc, a Sheet, a
+ * deck and a form alike — a form's `documentTitle` a few seconds later, which is
+ * a read that lags rather than a title left behind (decision 0053). 0052 §3 once
+ * had the caller report a form as a partial rename; that is withdrawn, and this
+ * response is not to be inspected for a type.
  */
 export async function renameFile(
   client: DriveClient,

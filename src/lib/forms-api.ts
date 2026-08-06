@@ -119,10 +119,12 @@ export async function getForm(client: FormsClient, formId: string): Promise<Form
  *
  * Both titles are sent, to the same string. A form has two names: `title` is
  * what responders see, and `documentTitle` is the Drive name that `ls`,
- * `search` and `info` report and that a path resolves by. `documentTitle` is
- * settable **only here** — no `batchUpdate` request can change it, and this CLI
- * has no rename — so a form created without one is called `Untitled form` in
- * Drive permanently, and cannot be addressed by path afterwards.
+ * `search` and `info` report and that a path resolves by. No `batchUpdate`
+ * request can set `documentTitle`, so this is the only call that writes the two
+ * together; a form created without one starts out `Untitled form` in Drive and
+ * unreachable by path. Sending it here is what spares the caller having to
+ * notice and repair that — `gdrive rename` is the repair, and it reaches this
+ * field too (decision 0053, revising 0052 §3).
  */
 export async function createForm(
   client: FormsClient,

@@ -109,12 +109,13 @@ describe("createForm", () => {
 
   /**
    * A form has two names: the title responders see, and the Drive name that
-   * `ls`, `search` and `info` report — and that a path resolves by.
-   * `documentTitle` can be set **on create and never again**: no `batchUpdate`
-   * can change it, and this CLI has no rename. A form created without one is
-   * called `Untitled form` in Drive for good, and is unreachable by path.
+   * `ls`, `search` and `info` report — and that a path resolves by. No
+   * `batchUpdate` can set `documentTitle`, so a create is the only call that
+   * writes both at once, and a form made without one starts out `Untitled form`
+   * in Drive and unreachable by path. `gdrive rename` repairs that afterwards
+   * (decision 0053); sending it here is what saves anyone needing to.
    */
-  it("names the form in Drive too, which only a create can do", async () => {
+  it("names the form in Drive too, in the one call that can name both", async () => {
     const fake = createFakeForms({ createdId: "1NeW" });
     await createForm(fake.client, "New survey");
     expect(fake.created).toEqual([{ title: "New survey", documentTitle: "New survey" }]);
