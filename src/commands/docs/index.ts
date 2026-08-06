@@ -14,7 +14,7 @@ import {
   type DocsClient,
 } from "../../lib/docs-api.ts";
 import { readInput, readProcessStdin } from "../../lib/input.ts";
-import { resolveTargetId } from "../../lib/resolve-path.ts";
+import { childrenNamed, resolveTargetId } from "../../lib/resolve-path.ts";
 import {
   documentFormat,
   resolveGlobalOptions,
@@ -92,6 +92,7 @@ export function registerDocs(program: Command): void {
         insertMarkdown: (id, index, source, options) =>
           insertMarkdown(docsClient, id, index, source, options),
         moveFile: (id, parentId) => moveFile(drive, id, parentId),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         readInput: input,
         title,
         format: opts.format,

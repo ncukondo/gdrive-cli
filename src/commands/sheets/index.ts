@@ -14,7 +14,7 @@ import {
   type SheetsClient,
 } from "../../lib/sheets-api.ts";
 import { readInput, readProcessStdin } from "../../lib/input.ts";
-import { resolveTargetId } from "../../lib/resolve-path.ts";
+import { childrenNamed, resolveTargetId } from "../../lib/resolve-path.ts";
 import {
   encodingFormat,
   resolveGlobalOptions,
@@ -185,6 +185,7 @@ export function registerSheets(program: Command): void {
         resolvePath: (arg) => resolveTargetId(drive, arg),
         createSpreadsheet: (t) => createSpreadsheet(sheetsClient, t),
         moveFile: (id, parentId) => moveFile(drive, id, parentId),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         title,
         format: opts.format,
         quiet: opts.quiet,

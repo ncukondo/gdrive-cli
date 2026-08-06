@@ -6,6 +6,8 @@ import type { FormsRequest } from "../../lib/forms-api.ts";
 import { planFormCreate } from "./plan.ts";
 import { reportSkippedItems } from "./format.ts";
 import { documentSource } from "./write.ts";
+import { MY_DRIVE, refuseUnaddressableName, type FindSiblings } from "../../lib/names.ts";
+import { ROOT_ID } from "../../lib/resolve-path.ts";
 
 export interface FormsCreateDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -13,6 +15,8 @@ export interface FormsCreateDeps {
   batchUpdate: (formId: string, requests: FormsRequest[]) => Promise<void>;
   /** Drive move — the Forms API cannot create a form inside a folder. */
   moveFile: (formId: string, parentId: string) => Promise<unknown>;
+  /** What the title would collide with where the form lands (decision 0055 §1). */
+  findSiblings: FindSiblings;
   readInput: (arg: string) => Promise<string>;
   title: string;
   /** The `--file` option; without it the new form is empty (decision 0028 §7). */
@@ -29,7 +33,10 @@ export interface FormsCreateDeps {
  * for the same reason and with the same comment on `moveFile`.
  *
  * The document is parsed before the form exists, so a document that does not
- * parse leaves no empty form behind to clean up.
+ * parse leaves no empty form behind to clean up. Decision 0055 §2 puts the name
+ * check in the same place and for the same reason, which is what moves
+ * `--parent`'s resolution ahead of the create: it was resolved either way, and
+ * a refusal afterwards would leave a form to go and delete.
  */
 export async function handleFormsCreate(deps: FormsCreateDeps): Promise<CommandResult> {
   let document: FormDocument | undefined;
@@ -37,17 +44,21 @@ export async function handleFormsCreate(deps: FormsCreateDeps): Promise<CommandR
     document = parseFormDocument(await deps.readInput(documentSource(deps.source)));
   }
 
+  const parentId = deps.parent !== undefined ? await deps.resolvePath(deps.parent) : undefined;
+  await refuseUnaddressableName({
+    name: deps.title,
+    parentId: parentId ?? ROOT_ID,
+    findSiblings: deps.findSiblings,
+    where: deps.parent ?? MY_DRIVE,
+  });
+
   const created = await deps.createForm(deps.title);
   const plan = document === undefined ? undefined : planFormCreate(document, created.title);
   if (plan !== undefined && plan.requests.length > 0) {
     await deps.batchUpdate(created.id, plan.requests);
   }
 
-  let parentId: string | undefined;
-  if (deps.parent !== undefined) {
-    parentId = await deps.resolvePath(deps.parent);
-    await deps.moveFile(created.id, parentId);
-  }
+  if (parentId !== undefined) await deps.moveFile(created.id, parentId);
 
   deps.write(
     renderSuccess(

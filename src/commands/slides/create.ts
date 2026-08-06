@@ -10,6 +10,8 @@ import type { SlidesRequest } from "../../lib/slides-api.ts";
 import { planSlideCreate } from "./plan.ts";
 import { reportSkippedFields } from "./format.ts";
 import { documentSource } from "./write.ts";
+import { MY_DRIVE, refuseUnaddressableName, type FindSiblings } from "../../lib/names.ts";
+import { ROOT_ID } from "../../lib/resolve-path.ts";
 
 export interface SlidesCreateDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -19,6 +21,8 @@ export interface SlidesCreateDeps {
   batchUpdate: (presentationId: string, requests: SlidesRequest[]) => Promise<void>;
   /** Drive move — the Slides API cannot create a deck inside a folder. */
   moveFile: (presentationId: string, parentId: string) => Promise<unknown>;
+  /** What the title would collide with where the deck lands (decision 0055 §1). */
+  findSiblings: FindSiblings;
   readInput: (arg: string) => Promise<string>;
   title: string;
   /** The `--file` option; without it the new deck is Slides' own (0030 §4). */
@@ -43,12 +47,24 @@ export interface SlidesCreateDeps {
  * out once the deck exists to be matched against, so that one fails with an
  * empty deck left over. Nothing can move it earlier — the layouts belong to the
  * deck the create just made.
+ *
+ * Decision 0055 §2's name check goes in the same place, which is what moves
+ * `--parent`'s resolution ahead of the create: it was resolved either way, and
+ * a refusal afterwards would leave a deck to go and delete.
  */
 export async function handleSlidesCreate(deps: SlidesCreateDeps): Promise<CommandResult> {
   let document: SlideDocument | undefined;
   if (deps.source !== undefined) {
     document = parseSlideDocument(await deps.readInput(documentSource(deps.source)));
   }
+
+  const parentId = deps.parent !== undefined ? await deps.resolvePath(deps.parent) : undefined;
+  await refuseUnaddressableName({
+    name: deps.title,
+    parentId: parentId ?? ROOT_ID,
+    findSiblings: deps.findSiblings,
+    where: deps.parent ?? MY_DRIVE,
+  });
 
   const created = await deps.createPresentation(deps.title);
   const presentationId = created.presentationId ?? "";
@@ -69,11 +85,7 @@ export async function handleSlidesCreate(deps: SlidesCreateDeps): Promise<Comman
     await deps.batchUpdate(presentationId, plan.requests);
   }
 
-  let parentId: string | undefined;
-  if (deps.parent !== undefined) {
-    parentId = await deps.resolvePath(deps.parent);
-    await deps.moveFile(presentationId, parentId);
-  }
+  if (parentId !== undefined) await deps.moveFile(presentationId, parentId);
 
   deps.write(
     renderSuccess(

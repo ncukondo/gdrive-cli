@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleDocsCreate } from "./create.ts";
 import type { ParagraphBoundary } from "../../lib/docs-api.ts";
+import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
+import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -27,6 +29,7 @@ const baseDeps = () => ({
   ),
   warn: vi.fn(),
   moveFile: vi.fn(async (_id: string, _parentId: string) => {}),
+  findSiblings: vi.fn(async (_p: string, _n: string) => []),
   readInput: vi.fn(async (arg: string) => `<${arg}>`),
   title: "Plan",
   format: "text" as const,
@@ -93,5 +96,49 @@ describe("handleDocsCreate", () => {
     const out = collect();
     await handleDocsCreate({ ...d, quiet: true, write: out.write });
     expect(out.output).toBe("NEW");
+  });
+
+  /**
+   * Decision 0055 §1–§2. The title is the Drive name, so the same `create` run
+   * twice is the collision — and §2 puts the check ahead of `documents.create`,
+   * because a refusal afterwards leaves a document the caller has to go and
+   * delete, content and all.
+   */
+  describe("a title that would not address the new document", () => {
+    const against = (nodes: DriveNode[]) => {
+      const { client } = createWritableTreeDrive(nodes);
+      return {
+        ...baseDeps(),
+        findSiblings: (parentId: string, name: string) => childrenNamed(client, parentId, name),
+      };
+    };
+
+    it("refuses a title --parent already holds, and creates nothing", async () => {
+      const d = against([{ id: "E1", name: "Plan", parents: ["PID"] }]);
+      await expect(
+        handleDocsCreate({ ...d, parent: "Reports", content: "@notes.md" }),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("E1") });
+      expect(d.createDocument).not.toHaveBeenCalled();
+      expect(d.insertMarkdown).not.toHaveBeenCalled();
+      expect(d.moveFile).not.toHaveBeenCalled();
+    });
+
+    it("refuses a title the My Drive root already holds", async () => {
+      const d = against([{ id: "E1", name: "Plan", parents: [ROOT_ID] }]);
+      await expect(handleDocsCreate(d)).rejects.toMatchObject({ code: "INVALID_ARGS" });
+      expect(d.createDocument).not.toHaveBeenCalled();
+    });
+
+    it.each([" Plan", "Plan ", "Q1/Q2"])(
+      "refuses %j without asking Drive anything",
+      async (title) => {
+        const d = baseDeps();
+        await expect(handleDocsCreate({ ...d, title })).rejects.toMatchObject({
+          code: "INVALID_ARGS",
+        });
+        expect(d.findSiblings).not.toHaveBeenCalled();
+        expect(d.createDocument).not.toHaveBeenCalled();
+      },
+    );
   });
 });

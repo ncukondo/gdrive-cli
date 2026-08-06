@@ -3,6 +3,8 @@ import { AppError } from "../../types/index.ts";
 import { formDocumentToYaml, toFormDocument, type FormRaw } from "../../lib/form-document.ts";
 import type { FormsRequest } from "../../lib/forms-api.ts";
 import { handleFormsCreate, type FormsCreateDeps } from "./create.ts";
+import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
+import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -75,6 +77,7 @@ async function run(options: Partial<FormsCreateDeps> = {}): Promise<Run> {
       moves.push({ formId, parentId });
       return {};
     },
+    findSiblings: async () => [],
     readInput: async () => yaml,
     title: "New survey",
     format: "json",
@@ -91,6 +94,9 @@ async function run(options: Partial<FormsCreateDeps> = {}): Promise<Run> {
   }
   return { output: out.output, warnings, batches, moves, created };
 }
+
+const codeOf = (error: unknown): string =>
+  error instanceof AppError ? error.code : `not an AppError: ${String(error)}`;
 
 describe("handleFormsCreate", () => {
   it("creates an empty form from a title alone, with no batch at all", async () => {
@@ -187,5 +193,49 @@ describe("handleFormsCreate", () => {
     });
     expect(result.error instanceof AppError ? result.error.code : "").toBe("INVALID_ARGS");
     expect(createForm).not.toHaveBeenCalled();
+  });
+  /**
+   * Decision 0055 §1-§2. The title is the Drive name, so the same `create` run
+   * twice is the collision - and §2 puts the check ahead of `forms.create`,
+   * because a refusal afterwards leaves a form the caller has to go and delete,
+   * items and all.
+   */
+  describe("a title that would not address the new form", () => {
+    const siblings = (nodes: DriveNode[]) => {
+      const { client } = createWritableTreeDrive(nodes);
+      return (parentId: string, name: string) => childrenNamed(client, parentId, name);
+    };
+
+    it("refuses a title --parent already holds, and creates nothing", async () => {
+      const result = await run({
+        parent: "Surveys",
+        source: "@form.yaml",
+        findSiblings: siblings([{ id: "E1", name: "New survey", parents: ["1FoLdEr"] }]),
+      });
+      expect(codeOf(result.error)).toBe("INVALID_ARGS");
+      expect(String(result.error)).toContain("E1");
+      expect(result.created).toEqual([]);
+      expect(result.batches).toEqual([]);
+      expect(result.moves).toEqual([]);
+    });
+
+    it("refuses a title the My Drive root already holds", async () => {
+      const result = await run({
+        findSiblings: siblings([{ id: "E1", name: "New survey", parents: [ROOT_ID] }]),
+      });
+      expect(codeOf(result.error)).toBe("INVALID_ARGS");
+      expect(result.created).toEqual([]);
+    });
+
+    it.each([" New survey", "New survey ", "Q1/Q2"])(
+      "refuses %j without asking Drive anything",
+      async (title) => {
+        const findSiblings = vi.fn(async () => []);
+        const result = await run({ title, findSiblings });
+        expect(codeOf(result.error)).toBe("INVALID_ARGS");
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(result.created).toEqual([]);
+      },
+    );
   });
 });
