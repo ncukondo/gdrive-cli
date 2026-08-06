@@ -33,7 +33,7 @@ export function looksLikeId(arg: string): boolean {
   return FILE_ID.test(arg) || SHARED_DRIVE_ROOT_ID.test(arg);
 }
 
-interface Candidate {
+export interface Candidate {
   id: string;
   name: string;
   /** True when this entry is a pointer rather than a file (decision 0025). */
@@ -42,7 +42,16 @@ interface Candidate {
   targetId: string | null;
 }
 
-async function childrenNamed(
+/**
+ * The entries directly inside `parentId` carrying exactly `name` — one segment
+ * of a path walk.
+ *
+ * It is exported because decision 0055 §1's refusal is defined *as* this
+ * lookup: a name is taken when a path segment spelling it would match something
+ * already there, and the only way for the two to stay the same question is for
+ * them to be the same query.
+ */
+export async function childrenNamed(
   client: DriveClient,
   parentId: string,
   name: string,
