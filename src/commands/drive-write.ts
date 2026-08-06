@@ -18,6 +18,7 @@ import {
   uploadMedia,
   type DriveClient,
 } from "../lib/api.ts";
+import { copyTree } from "../lib/copy-tree.ts";
 import { resolvePath, resolveTarget, resolveTargetId } from "../lib/resolve-path.ts";
 import { resolveGlobalOptions, handleError, type GlobalOptions } from "../index.ts";
 import { createUploadCommand, guessMimeType, handleUpload, type LocalFile } from "./upload.ts";
@@ -136,7 +137,7 @@ export function registerDriveWrite(program: Command): void {
   const cp = createCpCommand();
   cp.action(async (file: string, folder: string) => {
     const opts = resolveGlobalOptions(program);
-    const o = cp.opts<{ name?: string }>();
+    const o = cp.opts<{ name?: string; recursive?: boolean }>();
     try {
       const drive = await buildDrive(opts);
       const result = await handleCp({
@@ -145,16 +146,22 @@ export function registerDriveWrite(program: Command): void {
         // container
         resolveFolder: (arg) => resolveTargetId(drive, arg),
         copyFile: (id, parentId, name) => copyFile(drive, id, parentId, name),
+        getFile: (id) => getFile(drive, id),
+        copyTree: (source, destId, name) =>
+          copyTree(drive, source, destId, name === undefined ? {} : { name }),
         file,
         dest: folder,
         format: opts.format,
         quiet: opts.quiet,
         write: stdout,
         ...(o.name !== undefined ? { name: o.name } : {}),
+        ...(o.recursive === true ? { recursive: true } : {}),
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      // `cp -r` is the one command here that can fail after changing something,
+      // so it is the one that has a partial result to print (decision 0031 §4).
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(cp);
