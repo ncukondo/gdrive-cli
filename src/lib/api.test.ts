@@ -29,6 +29,7 @@ import {
   normalizePermission,
   resolveDriveScope,
   updatePermissionRole,
+  withRetry,
   type DriveClient,
   type DriveFileRaw,
   type ListParams,
@@ -955,5 +956,138 @@ describe("permission operations", () => {
     await expect(
       deletePermission(mockDrive({}, { delete: boom }), "F", "p1"),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+// --- Retry (decision 0031 §5) -----------------------------------------------
+
+/**
+ * Which failures are Drive asking for a pause, and which are Drive refusing.
+ * `cp -r` stops at the first of the second kind (0031 §3), so a misclassified
+ * rate limit ends a run that had only to wait — and a misclassified refusal is
+ * four pointless round trips before the same error.
+ *
+ * The status alone does not answer it. Drive's documented rate limits are a
+ * **403** with `rateLimitExceeded` or `userRateLimitExceeded` as well as a 429,
+ * and a 403 is otherwise the one status that certainly will not fix itself.
+ */
+describe("which Drive failures are worth waiting out", () => {
+  const withReason = (status: number, message: string, reason?: string) =>
+    Object.assign(new Error(message), {
+      code: status,
+      response: { data: { error: { errors: reason === undefined ? [] : [{ reason }] } } },
+    });
+
+  const transientOf = (error: unknown): boolean | undefined => {
+    try {
+      mapDriveError(error);
+    } catch (e) {
+      if (e instanceof AppError) return e.transient;
+    }
+    return undefined;
+  };
+
+  it.each([429, 500, 502, 503, 504])("waits out HTTP %i", (status) => {
+    expect(transientOf(Object.assign(new Error("busy"), { code: status }))).toBe(true);
+  });
+
+  it.each(["rateLimitExceeded", "userRateLimitExceeded", "sharingRateLimitExceeded"])(
+    "waits out a 403 whose reason is %s",
+    (reason) => {
+      expect(transientOf(withReason(403, "Rate Limit Exceeded", reason))).toBe(true);
+    },
+  );
+
+  it.each([
+    ["a file permission 403", withReason(403, "No permission", "insufficientFilePermissions")],
+    ["a scope 403", withReason(403, "Insufficient Permission", "insufficientPermissions")],
+    ["a 403 with no reason at all", Object.assign(new Error("denied"), { code: 403 })],
+    // A pause of seconds does not clear a quota measured in days.
+    ["a daily quota 403", withReason(403, "Daily Limit Exceeded", "dailyLimitExceeded")],
+    ["a 404", Object.assign(new Error("gone"), { code: 404 })],
+    ["a 400", Object.assign(new Error("bad"), { code: 400 })],
+    ["a 401", Object.assign(new Error("expired"), { code: 401 })],
+  ])("refuses to wait out %s", (_label, error) => {
+    expect(transientOf(error)).toBe(false);
+  });
+
+  it("leaves every error an AppError already, transient or not", () => {
+    // Nothing else in the CLI passes `transient`, so the flag every existing
+    // throw site produces has to be the one that stops a retry loop.
+    expect(new AppError("NOT_FOUND", "x").transient).toBe(false);
+  });
+});
+
+describe("withRetry", () => {
+  /** Records what it was asked to wait, and waits for none of it. */
+  function fakeSleep() {
+    const waited: number[] = [];
+    return { waited, sleep: async (ms: number) => void waited.push(ms) };
+  }
+
+  const rateLimited = () => Object.assign(new Error("Rate Limit Exceeded"), { code: 429 });
+
+  it("returns the eventual success and reports no failure", async () => {
+    let attempts = 0;
+    const { waited, sleep } = fakeSleep();
+    const result = await withRetry(
+      async () => {
+        attempts += 1;
+        if (attempts < 3) mapDriveError(rateLimited());
+        return "done";
+      },
+      { baseDelayMs: 10, sleep },
+    );
+    expect(result).toBe("done");
+    expect(attempts).toBe(3);
+    // Exponential, so a busy account is not asked the same question at the same
+    // rate it just refused.
+    expect(waited).toEqual([10, 20]);
+  });
+
+  it("gives up after a bounded number of attempts, with the last failure", async () => {
+    let attempts = 0;
+    const { sleep } = fakeSleep();
+    await expect(
+      withRetry(
+        async () => {
+          attempts += 1;
+          mapDriveError(rateLimited());
+        },
+        { attempts: 4, baseDelayMs: 1, sleep },
+      ),
+    ).rejects.toMatchObject({ code: "API_ERROR" });
+    expect(attempts).toBe(4);
+  });
+
+  it("does not retry a refusal", async () => {
+    let attempts = 0;
+    const { waited, sleep } = fakeSleep();
+    await expect(
+      withRetry(
+        async () => {
+          attempts += 1;
+          mapDriveError(Object.assign(new Error("denied"), { code: 403 }));
+        },
+        { baseDelayMs: 1, sleep },
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    expect(attempts).toBe(1);
+    expect(waited).toEqual([]);
+  });
+
+  it("does not retry something that never reached Drive", async () => {
+    let attempts = 0;
+    const { sleep } = fakeSleep();
+    await expect(
+      withRetry(
+        async () => {
+          attempts += 1;
+          throw new TypeError("bug in the caller");
+        },
+        { baseDelayMs: 1, sleep },
+      ),
+    ).rejects.toThrow(TypeError);
+    expect(attempts).toBe(1);
   });
 });
