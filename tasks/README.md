@@ -78,10 +78,10 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0025 List numbering & links](archive/0025-list-numbering-and-links.md) | 0023 | — | done |
 | [0026 Soft line breaks](archive/0026-soft-line-breaks.md) | 0025 | — | done |
 | [0027 Shortcuts resolve by argument role](archive/0027-shortcuts.md) | — | — | done |
-| [0028 `gdrive ln` creates a shortcut](0028-ln.md) | 0027 | — | todo |
+| [0028 `gdrive ln` creates a shortcut](archive/0028-ln.md) | 0027 | — | done |
 | [0029 `forms read` / `forms responses`](archive/0029-forms-read.md) | — | D | done |
-| [0030 `forms write` / `forms create`](0030-forms-write.md) | 0029 | D | todo |
-| [0031 `slides read`](0031-slides-read.md) | 0029 | E | todo |
+| [0030 `forms write` / `forms create`](archive/0030-forms-write.md) | 0029 | D | done |
+| [0031 `slides read`](archive/0031-slides-read.md) | 0029 | E | done |
 | [0032 `slides write` / `slides create`](0032-slides-write.md) | 0031, 0030 | E | todo |
 | [0033 `cp -r` copies a folder tree](0033-recursive-copy.md) | 0027 | — | todo |
 | [0034 What the live verification found](archive/0034-live-verification-fixes.md) | 0027, 0029 | — | done |
@@ -210,6 +210,30 @@ no-op, which is 0028 §3's lesson arriving through a different door.
 
 Every Workspace type the CLI names now has a planned read and write path. What
 is uneven is fidelity, not coverage.
+
+0028, 0030 and 0031 ran side by side in three worktrees and merged together, and
+what that batch is worth remembering for is not the parallelism. Each branch
+passed its unit suite, its type check and a fresh reviewer, and a live pass
+against a real account then found **five defects none of those could reach** —
+four of them on 0030's write side. The shape repeated: a fake client accepts any
+request its author thought was right, and an unedited round trip builds no
+request at all, so a write-side encoding error survives both. `{value, isOther}`
+together, an item id copied out of another form through `goToSectionId`, a
+`fileUploadQuestion` the API refuses to create, and a form whose Drive name stays
+`Untitled form` because `documentTitle` is settable only at creation — that last
+one being unfixable after the fact, since nothing here renames a file. 0031's
+half was cheaper but the same kind: a real deck showed the second `BODY` of
+`TITLE_AND_TWO_COLUMNS` landing among the elements, which is what
+[`decisions/0051`](../decisions/0051-elements-holds-placeholders-too.md) answers.
+
+Two things followed from it. `decisions/0043` gave the live suite a cadence but
+`tests/e2e/` still covers only Drive, Docs and Sheets — issue #30 — and until it
+covers a write path, the manual pass is the only thing standing between an
+encoding error and a merge. And a test can be real and still blind: 0030's
+"carries none of the document's ids" asserted `itemId` and `questionId`, which is
+the implementation's own definition of an id, so the field that was also an id
+walked through it. It now asserts that no id the source form had appears anywhere
+in the request body at all.
 
 0033 comes from the same survey but is not about a file type. `files.copy` does
 not copy folders and Drive has no server-side recursive copy, so today an agent
