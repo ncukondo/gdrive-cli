@@ -64,6 +64,27 @@ describe("handleSheetsCreate", () => {
     expect(calls).toEqual(["create", "move"]);
   });
 
+  /**
+   * A move that fails leaves the spreadsheet in My Drive's root under a name
+   * nothing has printed, so the failure names it (decision 0031 §4). `parent_id`
+   * says where the file *is*, so it is absent here.
+   */
+  it("names the spreadsheet a failed move left in My Drive", async () => {
+    const d = baseDeps();
+    await expect(
+      handleSheetsCreate({
+        ...d,
+        parent: "Reports",
+        moveFile: async () => {
+          throw new Error("Drive said no");
+        },
+      }),
+    ).rejects.toMatchObject({
+      message: "Drive said no",
+      data: { payload: { id: "NEW", title: "Budget" }, quiet: "NEW" },
+    });
+  });
+
   it("prints the new id in quiet mode", async () => {
     const out = collect();
     await handleSheetsCreate({ ...baseDeps(), quiet: true, write: out.write });
