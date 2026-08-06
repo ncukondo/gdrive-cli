@@ -194,7 +194,10 @@ export function registerSheets(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      // A move that fails leaves the spreadsheet in My Drive, and the failure
+      // is the only place its id is printed (decision 0031 §4) — so `-q` is
+      // passed on, and gets that id on stdout.
+      handleError(error, opts.format, opts.quiet);
     }
   });
   sheets.addCommand(create);

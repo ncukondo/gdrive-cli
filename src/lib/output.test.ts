@@ -53,34 +53,50 @@ describe("a failure that changed something", () => {
       "success",
       "error",
     ]);
-    expect(Object.keys(JSON.parse(renderError("NOT_FOUND", "missing", "json")))).toEqual([
+    expect(Object.keys(JSON.parse(renderError("NOT_FOUND", "missing", "json").stderr))).toEqual([
       "success",
       "error",
     ]);
   });
 
   it("prints the failure and then the summary in text mode", () => {
-    expect(renderError("PERMISSION_DENIED", "denied", "text", false, data)).toBe(
-      "Error: denied\nCopied 1 folder and 2 files.\n",
-    );
+    expect(renderError("PERMISSION_DENIED", "denied", "text", false, data)).toEqual({
+      stderr: "Error: denied\nCopied 1 folder and 2 files.\n",
+      stdout: "",
+    });
   });
 
-  it("prints the ids one per line instead of the summary when quiet", () => {
-    expect(renderError("PERMISSION_DENIED", "denied", "text", true, data)).toBe(
-      "Error: denied\n1Z\n1X\n1Y\n",
-    );
+  /**
+   * The ids go to **stdout**, which is the difference between a value a shell
+   * can capture and one it cannot: `-q` is "minimal text for piping"
+   * (decision 0007) read by `$(…)` or by a pipe (0038 §1), and both take
+   * stdout. The reason still goes to stderr, in every mode, because a caller
+   * reading stderr is owed it.
+   */
+  it("prints the ids one per line on stdout when quiet, and the reason on stderr", () => {
+    expect(renderError("PERMISSION_DENIED", "denied", "text", true, data)).toEqual({
+      stderr: "Error: denied\n",
+      stdout: "1Z\n1X\n1Y\n",
+    });
   });
 
   it("prints the failure alone when the data has no text for this mode", () => {
     const bare = { payload: { plan: [] } };
-    expect(renderError("PRUNE_REQUIRED", "refused", "text", false, bare)).toBe("Error: refused\n");
-    expect(renderError("PRUNE_REQUIRED", "refused", "text", true, bare)).toBe("Error: refused\n");
+    expect(renderError("PRUNE_REQUIRED", "refused", "text", false, bare)).toEqual({
+      stderr: "Error: refused\n",
+      stdout: "",
+    });
+    expect(renderError("PRUNE_REQUIRED", "refused", "text", true, bare)).toEqual({
+      stderr: "Error: refused\n",
+      stdout: "",
+    });
   });
 
   it("ignores --quiet in json mode, as every other envelope does", () => {
-    expect(renderError("PERMISSION_DENIED", "denied", "json", true, data)).toBe(
+    expect(renderError("PERMISSION_DENIED", "denied", "json", true, data)).toEqual(
       renderError("PERMISSION_DENIED", "denied", "json", false, data),
     );
+    expect(renderError("PERMISSION_DENIED", "denied", "json", true, data).stdout).toBe("");
   });
 });
 
@@ -180,12 +196,15 @@ describe("renderSuccess", () => {
 });
 
 describe("renderError", () => {
-  it("returns a text line in text mode", () => {
-    expect(renderError("API_ERROR", "boom", "text")).toBe("Error: boom\n");
+  it("returns a text line in text mode, and nothing for stdout", () => {
+    expect(renderError("API_ERROR", "boom", "text")).toEqual({
+      stderr: "Error: boom\n",
+      stdout: "",
+    });
   });
 
   it("returns a JSON envelope in json mode", () => {
-    expect(JSON.parse(renderError("AUTH_REQUIRED", "login", "json"))).toEqual({
+    expect(JSON.parse(renderError("AUTH_REQUIRED", "login", "json").stderr)).toEqual({
       success: false,
       error: { code: "AUTH_REQUIRED", message: "login" },
     });

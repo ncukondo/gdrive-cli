@@ -105,7 +105,10 @@ export function registerDocs(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      // A `create` can fail after the document exists, and then the failure is
+      // the only place its id is printed at all (decision 0031 §4) — so `-q`
+      // is passed on, and gets that id on stdout.
+      handleError(error, opts.format, opts.quiet);
     }
   });
   docs.addCommand(create);
