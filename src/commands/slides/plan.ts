@@ -160,6 +160,11 @@ function titleOf(slide: SlideDocumentSlide): string {
   return slide.title ?? "";
 }
 
+/** How a refusal names a slide a reader has to go find: a blank one has an id. */
+function describe(title: string, id: string): string {
+  return title === "" ? `an untitled slide (${id})` : `"${title}" (${id})`;
+}
+
 function classify(
   current: SlideDocument,
   document: SlideDocument,
@@ -357,13 +362,18 @@ export function planSlideWrite(
     skipped.push({ title: document.title, kind: "presentation.title" });
   }
 
-  // Deletions. A slide the deck has and the document does not.
-  const deletions = current.slides
-    .map((slide, index) => ({ slide, index }))
-    .filter(({ slide }) => slide.id !== undefined && !matched.has(slide.id));
+  // Deletions. A slide the deck has and the document does not — and one the
+  // deck gave no id is not among them: `deleteObject` addresses a slide by id,
+  // so there is nothing to send, and no document could have named it either.
+  const deletions: { id: string; slide: SlideDocumentSlide; index: number }[] = [];
+  for (const [index, slide] of current.slides.entries()) {
+    const { id } = slide;
+    if (id === undefined || matched.has(id)) continue;
+    deletions.push({ id, slide, index });
+  }
 
   if (deletions.length > 0 && !options.prune) {
-    const what = deletions.map(({ slide }) => slide.id).join(", ");
+    const what = deletions.map(({ slide, id }) => describe(titleOf(slide), id)).join(", ");
     const count = deletions.length === 1 ? "1 slide" : `${deletions.length} slides`;
     throw new AppError(
       "PRUNE_REQUIRED",
@@ -371,16 +381,9 @@ export function planSlideWrite(
     );
   }
 
-  for (const { slide, index } of deletions) {
-    entries.push({
-      action: "delete",
-      ...(slide.id ? { id: slide.id } : {}),
-      title: titleOf(slide),
-      index,
-    });
-  }
-  for (const { slide } of deletions) {
-    if (slide.id) requests.push({ deleteObject: { objectId: slide.id } });
+  for (const { id, slide, index } of deletions) {
+    entries.push({ action: "delete", id, title: titleOf(slide), index });
+    requests.push({ deleteObject: { objectId: id } });
   }
 
   // Moves, over what the deletions left.
