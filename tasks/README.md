@@ -84,6 +84,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0031 `slides read`](archive/0031-slides-read.md) | 0029 | E | done |
 | [0032 `slides write` / `slides create`](0032-slides-write.md) | 0031, 0030 | E | todo |
 | [0033 `cp -r` copies a folder tree](0033-recursive-copy.md) | 0027 | — | todo |
+| [0034 `gdrive rename`](0034-rename.md) | — | — | todo |
 | [0034 What the live verification found](archive/0034-live-verification-fixes.md) | 0027, 0029 | — | done |
 | [0035 The release notes carry the breaking changes](archive/0035-release-notes.md) | — | F | done |
 | [0036 The table stays a table](archive/0036-renderer-properties.md) | 0034 | F | closed unmerged |
@@ -225,6 +226,19 @@ one being unfixable after the fact, since nothing here renames a file. 0031's
 half was cheaper but the same kind: a real deck showed the second `BODY` of
 `TITLE_AND_TWO_COLUMNS` landing among the elements, which is what
 [`decisions/0051`](../decisions/0051-elements-holds-placeholders-too.md) answers.
+
+0034 came out of that same stretch, and out of a claim that turned out to be too
+strong. The `Untitled form` defect was called unrepairable, which is why it was
+fixed before the merge rather than after — and the reason given was that nothing
+here renames a file. That much was true; the conclusion was not. Measuring
+afterwards showed a Drive rename repairs the part this CLI resolves paths by, and
+that only a form's `documentTitle` is genuinely frozen, because for a Doc, a
+Sheet and a deck the Drive name and the in-document title are one field.
+`decisions/0052` records the four measurements and settles the two things they
+raise: renaming is its own verb rather than a second meaning for `mv`, since
+Drive permits two files with one name and `mv` would have to guess; and a form
+rename reports the title it did not reach, through the channel that already
+exists rather than a new one.
 
 Two things followed from it. `decisions/0043` gave the live suite a cadence but
 `tests/e2e/` still covers only Drive, Docs and Sheets — issue #30 — and until it
