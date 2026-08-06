@@ -37,7 +37,8 @@ when it cannot finish, says exactly how far it got.
   existing caller starts retrying.
 - `src/lib/copy-tree.ts` — the walk itself. New file: it is the piece worth
   testing without a command around it.
-- `src/commands/cp.ts` — `-r`, the destination-ancestor check, the folder hint.
+- `src/commands/cp.ts` — `-r`, the destination-ancestor check, the folder hint,
+  and [`0054`](../decisions/0054-a-copy-keeps-its-name.md)'s naming rule.
 
 ## Out of scope
 
@@ -94,6 +95,31 @@ when it cannot finish, says exactly how far it got.
    - `docs/commands.md` — `cp -r`, the partial-result envelope, and the fact
      that a stopped run leaves a valid partial subtree.
    - `README.md` — the Drive highlight line.
+
+### Naming, added mid-branch
+
+[`0054`](../decisions/0054-a-copy-keeps-its-name.md) was written while this
+branch was in review, because the branch is what found the problem: the walk
+named each level explicitly and that made plain `cp` visibly disagree with
+`cp -r` about the same file. It is committed here rather than annotated onto the
+plan ([`0041`](../decisions/0041-the-task-is-current-during-review.md)).
+
+- **Red** — `cp <file> <folder>` sends `files.copy` with the source's `name` in
+  the request body; `cp -r <file> <folder>` sends the same; the nested case
+  already asserted stays. Pin the **request body**, not the resulting tree — the
+  fake builds the tree, so a tree assertion is only ever as truthful as the fake.
+- **Red** — copying a file into the folder it already sits in, with no `--name`,
+  is `INVALID_ARGS` naming `--name`, and issues no `files.copy` at all. With
+  `--name` it succeeds. Same for a folder with `-r`, which is a *sibling* check
+  and not the ancestor check already there — assert both errors separately, since
+  they fire on different inputs and say different things.
+- **Green** — implement.
+- **Docs** — `docs/commands.md`'s `cp` section states the rule once and does not
+  restate it per type. `CHANGELOG.md` is **not** touched here: it is written at
+  release time (root `CLAUDE.md`), and the breaking change 0054 records is
+  `cp <file> <folder>` no longer producing `Copy of <name>`, with `--name`
+  reproducing the old name exactly. Say that in the pull request so whoever
+  writes the release notes has it.
 
 ## Acceptance criteria
 
