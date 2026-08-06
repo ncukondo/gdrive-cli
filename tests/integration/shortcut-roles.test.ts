@@ -485,6 +485,14 @@ describe("content arguments follow a shortcut (decision 0025 §1)", () => {
     expect(firstArg(forms.list)).toMatchObject({ formId: "frm1" });
   });
 
+  it("`forms write <link>` writes to the target form", async () => {
+    const document = join(workDir, "form.yaml");
+    writeFileSync(document, "title: Renamed\nitems: []\n");
+    await run(["forms", "write", "Reports/link-to-form", "--file", document]);
+    expect(firstArg(forms.get)).toMatchObject({ formId: "frm1" });
+    expect(firstArg(forms.batchUpdate)).toMatchObject({ formId: "frm1" });
+  });
+
   it("`slides read <link>` reads the target presentation", async () => {
     await run(["slides", "read", "Reports/link-to-deck"]);
     expect(firstArg(slides.get)).toMatchObject({ presentationId: "prs1" });
