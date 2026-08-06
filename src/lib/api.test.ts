@@ -15,6 +15,7 @@ import {
   mimeToType,
   moveFile,
   normalizeFile,
+  renameFile,
   searchFiles,
   SHORTCUT_MIME,
   trashFile,
@@ -427,6 +428,35 @@ describe("metadata & mutations", () => {
     expect(callArgs(update)[0].requestBody).toEqual({ trashed: true });
   });
 
+  it("renameFile sends the new name and nothing else, and returns the renamed file", async () => {
+    const update = vi.fn(async (_params: UpdateParam) => ({
+      data: raw({ id: "r", name: "Notes 2026" }),
+    }));
+    const renamed = await renameFile(mockDrive({ update }), "r", "Notes 2026");
+    const call = callArgs(update)[0];
+    // Only `name`: a rename that also carried `trashed` or `parents` would be a
+    // different operation wearing this one's name.
+    expect(call.requestBody).toEqual({ name: "Notes 2026" });
+    expect(call).toMatchObject({
+      fileId: "r",
+      fields: FILE_FIELDS,
+      supportsAllDrives: true,
+    });
+    expect(renamed).toMatchObject({ id: "r", name: "Notes 2026" });
+  });
+
+  it("renameFile lets a Drive refusal travel as PERMISSION_DENIED, in Drive's words", async () => {
+    const update = vi.fn(async (_params: UpdateParam) => {
+      throw Object.assign(new Error("The user does not have sufficient permissions for this file"), {
+        code: 403,
+      });
+    });
+    await expect(renameFile(mockDrive({ update }), "r", "Notes 2026")).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      message: "The user does not have sufficient permissions for this file",
+    });
+  });
+
   it("deleteFile calls delete", async () => {
     const del = vi.fn(async (_params: DeleteParam) => ({}));
     await deleteFile(mockDrive({ delete: del }), "d");
@@ -487,6 +517,7 @@ describe("supportsAllDrives", () => {
     await createShortcut(drive, "t", "P", "n");
     await moveFile(drive, "f", "P");
     await trashFile(drive, "f");
+    await renameFile(drive, "f", "n");
     await deleteFile(drive, "f");
     await uploadMedia(drive, { name: "n.txt", mimeType: "text/plain", body: "x" });
     await downloadMedia(drive, "f");

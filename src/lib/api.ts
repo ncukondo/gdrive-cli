@@ -698,6 +698,32 @@ export async function trashFile(client: DriveClient, fileId: string): Promise<Dr
   }
 }
 
+/**
+ * Changes a file's Drive name (decision 0052).
+ *
+ * `name` is the only field in the body: for a Doc, a Sheet and a deck Drive
+ * carries it into the in-document title, and for a form it does not — which the
+ * caller reports from the `mimeType` on the response rather than asking again
+ * (§3).
+ */
+export async function renameFile(
+  client: DriveClient,
+  fileId: string,
+  name: string,
+): Promise<DriveFile> {
+  try {
+    const res = await client.files.update({
+      fileId,
+      requestBody: { name },
+      fields: FILE_FIELDS,
+      supportsAllDrives: true,
+    });
+    return normalizeFile(res.data);
+  } catch (error) {
+    mapDriveError(error);
+  }
+}
+
 /** Permanently deletes a file. */
 export async function deleteFile(client: DriveClient, fileId: string): Promise<void> {
   try {
