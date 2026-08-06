@@ -1,8 +1,9 @@
 # gdrive-cli
 
-A command-line tool for **Google Drive, Docs, Sheets, and Forms** — listing and
-managing files, reading and making simple edits to Documents and Spreadsheets,
-reading Forms and their responses — with **multiple-account switching**. A sibling of
+A command-line tool for **Google Drive, Docs, Sheets, Forms, and Slides** —
+listing and managing files, reading and making simple edits to Documents and
+Spreadsheets, reading Forms and their responses, reading Slides decks — with
+**multiple-account switching**. A sibling of
 [`gcal-cli`](https://github.com/ncukondo/gcal-cli), designed for both human and
 AI-agent use.
 
@@ -30,13 +31,17 @@ AI-agent use.
   all; `forms responses` tabulates the answers with the question titles as
   column headers (table/CSV/JSON), with or without a linked spreadsheet. A form
   reports `type: form`, so `ls --type form` finds one.
+- **Slides** — `slides read` prints a deck as one YAML document: each slide's
+  layout, its placeholder text and its speaker notes, with everything else —
+  hand-placed shapes, images, tables, charts — listed read-only under
+  `elements`. No coordinates in it, in either direction.
 - **Sharing** — `share list / add / remove / link` to manage permissions.
 - **Agent-first** — the primary consumer is an AI agent, so **JSON is what a
   command emits when it is not told otherwise**, except where the output already
-  *is* a document (`docs read` prints Markdown, `forms read` prints YAML).
-  `-f text` asks for the human-facing layer: one record per line, tab-separated,
-  padded nowhere. `-q` prints the bare value whatever the default is, and exit
-  codes are stable.
+  *is* a document (`docs read` prints Markdown, `forms read` and `slides read`
+  print YAML). `-f text` asks for the human-facing layer: one record per line,
+  tab-separated, padded nowhere. `-q` prints the bare value whatever the default
+  is, and exit codes are stable.
 
 ## Install
 
@@ -64,9 +69,10 @@ package manager instead. See [`decisions/0003`](decisions/0003-distribution.md).
 ## Google Cloud setup
 
 `gdrive` uses **your own** OAuth client. Create a Google Cloud project, enable
-the **Drive**, **Docs**, **Sheets**, and **Forms** APIs, create **OAuth 2.0 Desktop app**
-credentials, and provide the Client ID / Secret when `gdrive auth` prompts (or
-via `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`). Step-by-step:
+the **Drive**, **Docs**, **Sheets**, **Forms**, and **Slides** APIs, create
+**OAuth 2.0 Desktop app** credentials, and provide the Client ID / Secret when
+`gdrive auth` prompts (or via `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`).
+Step-by-step:
 [`docs/authentication.md`](docs/authentication.md).
 
 ## Quick start
@@ -95,6 +101,7 @@ gdrive sheets read "Reports/2026/Budget" "Sheet1!A1:C10" --as csv
 gdrive ls Surveys --type form        # the files `forms read` can take
 gdrive forms read "Surveys/2026" > form.yaml          # the whole form as YAML
 gdrive forms responses "Surveys/2026" --as csv        # answers, by question title
+gdrive slides read "Decks/Q3" > deck.yaml             # the whole deck as YAML
 gdrive share link "Reports/2026/Budget"
 ```
 

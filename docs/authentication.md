@@ -10,10 +10,11 @@ project and its quota.
 
 1. Open the [Google Cloud Console](https://console.cloud.google.com/) and create
    (or pick) a project.
-2. Enable four APIs: **Google Drive API**, **Google Docs API**,
-   **Google Sheets API**, and — for `gdrive forms` — **Google Forms API**.
-   Forms needs no extra OAuth scope (the `drive` scope already covers it), so
-   enabling the API is the only step; an existing login keeps working.
+2. Enable five APIs: **Google Drive API**, **Google Docs API**,
+   **Google Sheets API**, and — for `gdrive forms` and `gdrive slides` —
+   **Google Forms API** and **Google Slides API**. Neither of the last two needs
+   an extra OAuth scope (the `drive` scope already covers both), so enabling the
+   API is the only step; an existing login keeps working.
 3. Configure the **OAuth consent screen**. For personal use pick *External* and
    add your own address under *Test users* — a testing app does not need
    verification.
