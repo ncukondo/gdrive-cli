@@ -94,6 +94,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0041 The rules that can be checked become scripts](archive/0041-rules-are-executed.md) | — | G | done |
 | [0042 The rules a script cannot check move to where they are read](archive/0042-rules-are-read-where-they-apply.md) | — | G | done |
 | [0043 `gdrive rename`](0043-rename.md) | — | — | todo |
+| [0044 A name this CLI cannot address is refused](0044-addressable-names.md) | 0033, 0043 | — | todo |
 
 ## Parallelism notes
 
@@ -247,6 +248,18 @@ A form is not the exception the table made it, and the closing section of 0053 i
 the part worth carrying forward: a measurement of a *negative* needs a second
 observation before it becomes a record, since one read cannot tell "never" from
 "not yet".
+
+0044 is the class 0054 §3 turned out to be one member of. Reviewing the `cp -r`
+and `rename` branches found that `rename` can give a file a name a sibling
+already holds, after which `resolve-path.ts` answers `INVALID_ARGS` for *both*
+files and neither is reachable by path — and that `mkdir`, `upload`, `ln`,
+`cp --name` and every `create` can do the same. A second finding was the same
+defect in different clothes: a name with a leading space is stored with it and
+then never matches, because path resolution trims each segment. `decisions/0055`
+states the shape both share — this CLI hands a file a name and then cannot find
+it by that name — and refuses it everywhere rather than at the two places a
+review happened to look. That framing is `decisions/0050`'s, and 0054 §3 was the
+round it describes.
 
 Two things followed from it. `decisions/0043` gave the live suite a cadence but
 `tests/e2e/` still covers only Drive, Docs and Sheets — issue #30 — and until it
