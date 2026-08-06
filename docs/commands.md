@@ -57,10 +57,14 @@ The `data` shapes below are what goes in that envelope.
 
 A failure may carry a **`data` of its own**, and then `success: false` does not
 mean nothing happened — it means the command stopped part-way, and this is how
-far it got. Only [`cp -r`](#gdrive-cp--r-folder-folder) does that today; every
-other failure is the two-key object above, and a reader that ignores the field
-sees exactly what it always saw. In `-f text` the extra arrives as a summary
-line under the error, and under `-q` as the IDs created so far, one per line
+far it got. Two kinds of command do that today:
+[`cp -r`](#gdrive-cp--r-folder-folder), which names every folder and file it
+copied before it stopped, and the four `create`s — `docs`, `sheets`, `forms`
+and `slides` — which name the file they made when something after the create
+failed. Every other failure is the two-key object above, and a reader that
+ignores the field sees exactly what it always saw. In `-f text` the extra
+arrives as a summary line under the error, and under `-q` as the IDs created so
+far, one per line
 ([`../decisions/0031`](../decisions/0031-recursive-copy.md) §4).
 
 **Most `console` transcripts on this page pass `-f text`**, because a
@@ -1015,11 +1019,17 @@ Discussed the **budget** and [the plan](https://example.com).
 | `--parent <folder>` | Parent folder ID or path |
 | `--as <format>` | `markdown` (default) \| `text` |
 
-The Docs API always creates in My Drive, so `--parent` is applied as a move
-right after creation. `--parent` is resolved and `<title>` checked *before* the
-create, though: a title that folder already holds is
-[refused](#a-name-has-to-be-addressable) and no document is made, so there is
-never an empty document to go and delete.
+The Docs API always creates in My Drive, so `--parent` is applied as a move —
+issued **before** the content goes in, so an insert that fails leaves the
+document inside the folder you named rather than loose in My Drive. When
+anything after the create fails, the error names the new document in its
+[`data`](#output-modes) (`id`, `title`, and `parent_id` when it got there),
+because no success envelope arrived to name it: `gdrive rm <id>` is what removes
+it.
+
+`--parent` is resolved and `<title>` checked *before* the create, though: a
+title that folder already holds is [refused](#a-name-has-to-be-addressable) and
+no document is made, so there is never an empty document to go and delete.
 
 ```console
 $ gdrive docs create -f text "Meeting notes" --content @agenda.md --parent Notes
@@ -1228,7 +1238,9 @@ Quiet: prints nothing.
 `--parent <folder>` places the spreadsheet in a folder (created in My Drive
 first, then moved). The folder is resolved and `<title>` checked before the
 create, so a title it already holds is
-[refused](#a-name-has-to-be-addressable) with nothing left behind.
+[refused](#a-name-has-to-be-addressable) with nothing left behind. A move that
+fails leaves the spreadsheet in My Drive, and the error names it in its
+[`data`](#output-modes) so `gdrive rm <id>` can remove it.
 
 ```console
 $ gdrive sheets create -f text Budget --parent "Reports/2026"
@@ -1641,9 +1653,17 @@ Creates a form. With `--file`, the new form is filled from a document; without
 one, it is an empty form with that title.
 
 The Forms API creates a form with a title and nothing else, so this is up to
-three calls: create, then one `batchUpdate` carrying the whole document, then a
-Drive move when `--parent` is given. `docs create` and `sheets create` have the
-same shape for the same reason.
+three calls: create, then a Drive move when `--parent` is given, then one
+`batchUpdate` carrying the whole document. `docs create` and `sheets create`
+have the same shape for the same reason.
+
+The move goes before the `batchUpdate` because that batch is all-or-nothing: one
+item the API refuses fails the whole fill, and the form exists by then. Moving
+first means the form that failure leaves behind is in the folder you named
+rather than in My Drive, and the error names it in its
+[`data`](#output-modes) — `id`, `title`, and `parent_id` — so `gdrive rm <id>`
+removes it. Nothing else prints that id, because the create never reported
+success.
 
 `--parent` is resolved and `<title>` checked *first*, alongside the document
 parse: a title that folder already holds is
@@ -2060,10 +2080,18 @@ without one, it is what Slides itself makes: a deck with that title and one
 empty slide.
 
 `presentations.create` takes a title and nothing else, so this is up to three
-calls: create, then one `batchUpdate` carrying the whole document, then a Drive
-move when `--parent` is given. That one batch **also deletes the slide the
-create came with** ([`../decisions/0030`](../decisions/0030-slides-write.md)
-§4), so `--file` leaves no blank first slide ahead of the document's own.
+calls: create, then a Drive move when `--parent` is given, then one
+`batchUpdate` carrying the whole document. That one batch **also deletes the
+slide the create came with**
+([`../decisions/0030`](../decisions/0030-slides-write.md) §4), so `--file`
+leaves no blank first slide ahead of the document's own.
+
+The move goes first for the same reason as
+[`forms create`](#gdrive-forms-create-title---file-path---parent-folder):
+the batch is all-or-nothing, and a deck naming a layout its new theme does not
+have is only found out once the deck exists. Either failure leaves a deck — in
+the folder you named, and named itself in the error's [`data`](#output-modes),
+so `gdrive rm <id>` removes it.
 
 The `<title>` argument names the deck and **wins over the document's `title`**.
 Every slide `id` in the document is ignored, because a new deck has none of
