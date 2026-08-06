@@ -330,7 +330,8 @@ export async function withRetry<T>(call: () => Promise<T>, options: RetryOptions
  */
 export const SHARED_DRIVE_ROOT_ID = /^0A[A-Za-z0-9_-]{17}$/;
 
-const FOLDER_MIME = "application/vnd.google-apps.folder";
+/** What Drive calls a folder — the one MIME `files.copy` refuses (decision 0031). */
+export const FOLDER_MIME = "application/vnd.google-apps.folder";
 const DOC_MIME = "application/vnd.google-apps.document";
 const SHEET_MIME = "application/vnd.google-apps.spreadsheet";
 const SLIDES_MIME = "application/vnd.google-apps.presentation";
