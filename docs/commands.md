@@ -1621,8 +1621,8 @@ matters: a displaced `BODY` is a box the Slides API would rewrite as readily as
 the `body` above it, while a hand-placed text box is outside every layout and
 nothing can put it back under one.
 
-**Editing an `elements` entry will not change the deck, and `slides write` will
-refuse the document rather than report success for an edit that did not
+**Editing an `elements` entry does not change the deck, and `slides write`
+refuses the document rather than report success for an edit that did not
 happen**
 ([`../decisions/0030`](../decisions/0030-slides-write.md) §3). Both sorts of
 entry are refused, for different reasons: for a shape outside the layout there
@@ -1633,6 +1633,10 @@ simply not implemented the write yet
 refusing to write them is the honest half of the trade — text outside a named
 field is how a large share of real decks are built, and hiding it would make the
 common deck read as empty, the one outcome worse than reading it partially.
+
+Leaving the key out entirely is not an edit: a document that never mentions a
+slide's `elements` is accepted, and only a key that is *there* is compared with
+what `read` emitted.
 
 So a deck built without a template reads as `BLANK` slides full of `elements`.
 That is accurate, and it is also the signal that very little of it will be
@@ -1657,8 +1661,176 @@ $ gdrive slides read "Decks/Q3" > deck.yaml
 
 Quiet: the presentation ID.
 
-Not implemented: writing a deck (`slides write` / `slides create`), a Markdown
-rendering, thumbnails, and a table's contents.
+Not implemented: a Markdown rendering, thumbnails, and a table's contents.
+
+### `gdrive slides write <presentation> [--file <path>] [--prune] [--dry-run]`
+
+Applies a document to a presentation. Slides are matched **by `id` alone** —
+nothing compares titles — so the edits an agent actually makes are exactly
+expressible, on the same terms as
+[`forms write`](#gdrive-forms-write-form---file-path---prune---dry-run):
+
+| In the document | In the deck | What happens |
+|---|---|---|
+| `id` present, matches | yes | The slide is updated in place |
+| no `id` | — | A slide is created at the position it holds, from its `layout` |
+| — | `id` not in the document | The slide is deleted, and **only** with `--prune` |
+| the order differs | — | The slide is moved |
+
+An `id` the deck does not have is an `INVALID_ARGS` error, not a create: it
+means the document was written against a different deck. Drop the `id` to add
+the slide as new.
+
+`--file` names a path; `@path` and `-` (stdin) work as they do everywhere else,
+and with no `--file` at all the document is read from stdin — so
+`gdrive slides read D | gdrive slides write D` is a round trip that changes
+nothing, `elements` and all.
+
+A new slide is built from its `layout` and nothing else: a `createSlide` naming
+that layout, then the text inserted into the placeholders the layout provides.
+There are no coordinates in either direction
+([`../decisions/0029`](../decisions/0029-slides-document.md) §2), so a slide
+this CLI creates is laid out by the template rather than by the document. The
+`layout` must be one the deck has (by name or by object ID) or one of the
+[eleven predefined layouts](#layouts); anything else is an error rather than a
+silent `BLANK`.
+
+```console
+$ gdrive slides read "Decks/Q3" > deck.yaml
+$ $EDITOR deck.yaml
+$ gdrive slides write -f text "Decks/Q3" --file deck.yaml
+action	position	id	title	fields
+update	0	g2a1b3c	The quarter in a sentence	title
+create	3	gdrive_slide_1	One more thing	title,body
+Applied 2 changes to 1PrEs...
+```
+
+#### Rewriting a placeholder loses its formatting
+
+**The Slides API has no request that sets a shape's text.** Changing a title
+means deleting what is there and inserting the replacement, and the inline
+styling of what was deleted — bold, links, colour, per-run styling — goes with
+it ([`../decisions/0030`](../decisions/0030-slides-write.md) §2).
+
+The cost is paid narrowly and stated loudly:
+
+- **narrowly** — a placeholder whose text is unchanged produces no request at
+  all, so a one-word fix to a title cannot strip the formatting from the body;
+- **loudly** — the plan carries `formatting_loss` on every rewritten
+  placeholder that had more than one text run, which is every one with styling
+  to lose, and `--dry-run` shows it before anything is written.
+
+```console
+$ gdrive slides write -f text "Decks/Q3" --file deck.yaml --dry-run
+action	position	id	title	fields
+update	0	g2a1b3c	The quarter in one slide	body
+Rewriting body on slide g2a1b3c drops the inline formatting it had — bold, links, colour.
+Planned 1 change to 1PrEs...; --dry-run wrote nothing
+```
+
+A placeholder split into several runs by paragraphs alone is warned about too:
+the count is the API's own, and a paragraph break can carry a bullet.
+
+#### Deleting a slide needs `--prune`
+
+A slide in the deck and not in the document is **not** deleted by default;
+`write` refuses the whole thing with `PRUNE_REQUIRED` (exit 3), names the
+slides and names the flag, and writes nothing at all. The plan is built whole
+or not at all, exactly as
+[`forms write`](#deleting-a-question-needs---prune) builds it, and `--dry-run`
+refuses on the same terms.
+
+#### The plan
+
+Every `write` reports what it did, or would do, as `data.plan`: one entry per
+slide changed.
+
+```json
+{ "id": "1PrEs...", "applied": true,
+  "plan": [ { "action": "update", "id": "g2a1b3c", "title": "The quarter in one slide",
+              "index": 0, "fields": ["body"], "formatting_loss": ["body"] } ] }
+```
+
+- `action` is `create`, `update`, `move` or `delete`.
+- `id` is the slide's object ID — **present on a create too**, unlike a form's:
+  this CLI supplies the ID a new slide gets, because the `insertText` that
+  fills it travels in the same batch as the `createSlide` that makes it. The
+  IDs it generates are prefixed `gdrive_`.
+- `fields` names what the entry writes: `title`, `subtitle`, `body`, `notes`,
+  `skipped`. An entry is one slide, so it may stand for several requests.
+- `formatting_loss` names the fields whose rewrite costs their formatting.
+- **`index` is a position at the moment that request runs.** A `delete`'s is
+  where the slide sat in the deck as it was read; a `move`'s `from` and `index`
+  count the deck *after* the deletions and *before* the creations; a `create`'s
+  and an `update`'s is the position in the document. Read the plan as a report
+  of what was sent, not as coordinates to look slides up by afterwards.
+- `applied` is `false` for a `--dry-run` and for an empty plan, and `dry_run`
+  is `true` on a dry run.
+- In text mode the plan is a table: `action`, `position`, `id`, `title`,
+  `fields`, with `position` reading `3->1` for a move.
+- Quiet: the number of changes.
+
+#### What a write leaves out
+
+Reported through the `unsupported` channel — one line on stderr in text mode, a
+`data.unsupported` array in JSON — rather than silently succeeding:
+
+| What | Why |
+|---|---|
+| `title`, `subtitle` or `body` on a slide whose layout has no such placeholder | The layout decides what a slide has, and this CLI adds no shapes |
+| `layout` changed on an existing slide | No request re-applies a layout; create a new slide instead |
+| `notes` on a **new** slide | A slide's notes page has no ID until the slide exists |
+| `elements` on a **new** slide | `elements` is read-only, and a create cannot reproduce one |
+| the deck's own `title`, changed | A deck's title is its Drive name, which no `batchUpdate` request changes |
+
+Editing an [`elements`](#elements-what-the-document-has-no-field-for) entry of
+an **existing** slide is the one thing that fails the write instead:
+`INVALID_ARGS`, naming the element and saying which of the two reasons applies.
+An `elements` key the document does not carry at all is not an edit — a
+hand-authored slide that never mentions the deck's text boxes is accepted — but
+a key that is there must match what `read` emitted, entry for entry.
+
+```console
+$ gdrive slides write "Decks/Q3" --file deck.yaml
+Error: Slide g7h8i9j: the text of an element changed, but `elements` is read-only — g1k2l3m is a shape outside every layout, which this document does not model well enough to write. Nothing was written; restore the slide's `elements` as `slides read` emitted them and edit the fields above them instead.
+```
+
+#### A browser edit between `read` and `write`
+
+When the document carries the `revision_id` that `read` emitted, `write` sends
+it as the revision the deck must still be at, exactly as
+[`forms write`](#a-browser-edit-between-read-and-write) does. A deck edited
+elsewhere in the meantime makes the write fail before anything is written.
+Deleting the `revision_id` line writes unconditionally.
+
+### `gdrive slides create <title> [--file <path>] [--parent <folder>]`
+
+Creates a presentation. With `--file`, the new deck is built from a document;
+without one, it is what Slides itself makes: a deck with that title and one
+empty slide.
+
+`presentations.create` takes a title and nothing else, so this is up to three
+calls: create, then one `batchUpdate` carrying the whole document, then a Drive
+move when `--parent` is given. That one batch **also deletes the slide the
+create came with** ([`../decisions/0030`](../decisions/0030-slides-write.md)
+§4), so `--file` leaves no blank first slide ahead of the document's own.
+
+The `<title>` argument names the deck and **wins over the document's `title`**.
+Every slide `id` in the document is ignored, because a new deck has none of
+them — which is what makes reading one deck and creating another a copy.
+
+```console
+$ gdrive slides create -f text "Q4 review" --file deck.yaml --parent Decks
+Created Q4 review (1NeWdEcK...)
+```
+
+Quiet: the new presentation ID.
+
+A copy is a copy of the *text*, not of the deck. What
+[a write leaves out](#what-a-write-leaves-out-1) a create leaves out too, and
+on a create that includes every slide's `notes` and every `elements` entry —
+each named in `data.unsupported`, so the diff between the two decks is never a
+surprise.
 
 ---
 
@@ -1725,8 +1897,10 @@ the cases `gdrive auth` really does fix, including a token minted before a
 scope was added. See
 [`../decisions/0017`](../decisions/0017-permission-denied-error-code.md).
 
-`PRUNE_REQUIRED` is raised by [`gdrive forms write`](#gdrive-forms-write-form---file-path---prune---dry-run)
-alone, and shares exit **3** with `INVALID_ARGS` while staying a separate code,
+`PRUNE_REQUIRED` is raised by
+[`gdrive forms write`](#gdrive-forms-write-form---file-path---prune---dry-run)
+and [`gdrive slides write`](#gdrive-slides-write-presentation---file-path---prune---dry-run),
+and shares exit **3** with `INVALID_ARGS` while staying a separate code,
 because the two ask for different next actions: `INVALID_ARGS` means fix the
-document, `PRUNE_REQUIRED` means confirm you meant to delete a question and
-re-run with `--prune`. Nothing was written either way.
+document, `PRUNE_REQUIRED` means confirm you meant to delete a question or a
+slide and re-run with `--prune`. Nothing was written either way.
