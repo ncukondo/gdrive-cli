@@ -161,7 +161,7 @@ same reason: `cat link` should read the target, `rm link` should not delete it.
 |------|---------|-----------|
 | **Container** — "look inside this" | always | every intermediate path segment; `ls [folder]`; `--parent` on `mkdir`, `upload`, `docs create`, `sheets create`, `forms create`; the destination of `mv`, `cp` and `ln` |
 | **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear`; `forms read/responses/write`; `slides read`; `ln <target>` |
-| **Entry** — "this file, as an entry in a folder" | never | `rm`; `mv <file>`; `cp <file>`; `share list/add/remove/link`; `info` |
+| **Entry** — "this file, as an entry in a folder" | never | `rm`; `mv <file>`; `cp <file>`; `rename <file>`; `share list/add/remove/link`; `info` |
 
 The two arguments of `mv link Other` play different roles in one command: the
 source is an entry and moves the pointer, the destination is a container and
@@ -222,9 +222,9 @@ points at rather than the shortcut. See
 
 ## The file object
 
-`ls`, `search`, `info`, `upload`, `mkdir`, `mv`, `cp`, `ln`, and `rm` all report
-files in one normalized shape. `size` is `null` for Google-native files (Docs, Sheets,
-Slides, folders):
+`ls`, `search`, `info`, `upload`, `mkdir`, `mv`, `cp`, `ln`, `rename`, and `rm`
+all report files in one normalized shape. `size` is `null` for Google-native
+files (Docs, Sheets, Slides, folders):
 
 ```json
 {
@@ -487,6 +487,32 @@ Moved Budget to 1FoLdEr...
 
 $ gdrive cp -f text "Reports/2026/Budget" Archive --name "Budget (2026)"
 Copied to Budget (2026) (1CoPy...)
+```
+
+```json
+{ "file": { /* file object */ } }
+```
+
+Quiet: the file ID.
+
+`mv` moves and only moves: its `<folder>` is contractually a folder, so there is
+no second argument that could mean a new name.
+[`rename`](#gdrive-rename-file-name) is the verb for that.
+
+### `gdrive rename <file> <name>`
+
+Changes the file's Drive name — the name `ls` prints and paths resolve. Nothing
+moves, and `<file>` is an entry, so renaming a shortcut renames the shortcut and
+leaves its target alone. An empty or whitespace-only `<name>` is `INVALID_ARGS`
+before anything is asked of Drive.
+
+```console
+$ gdrive rename -f text "Reports/Notes" "Notes 2026"
+Renamed to Notes 2026 (1NoTeS...)
+
+$ gdrive ls -f text Reports
+Type	Modified	Name	ID
+doc	2026-08-06 11:02	Notes 2026	1NoTeS...
 ```
 
 ```json
@@ -1064,11 +1090,12 @@ form	2026-07-11 16:20	Untitled form	1OtHeR...
 A **path** does not: every command taking a `<form>` resolves it by Drive name,
 so `gdrive forms read "Onboarding feedback"` is `NOT_FOUND` for the very form
 `search` just returned. Take the ID from `search`, or the name in its `Name`
-column.
+column — or give the form the name you want with
+[`gdrive rename`](#gdrive-rename-file-name), which is the Drive name a path
+resolves by.
 
 `gdrive forms create` sets both names to its `<title>`, so a form made here is
-reachable by path from the start. It is the only chance to: the Drive name of a
-form can be set when the form is created and never again through this API.
+reachable by path from the start.
 
 ### The document
 
@@ -1425,9 +1452,10 @@ everything else — the description and the items — comes from the document.
 
 `<title>` becomes **both** of a form's [two names](#finding-a-form): the title
 responders see and the Drive name that `ls`, `search` and `info` report and that
-a path resolves by. That is only possible here — no `batchUpdate` can change the
-Drive name, and this CLI has no rename — so a form created any other way stays
-`Untitled form` in Drive and cannot be addressed by path afterwards.
+a path resolves by. No `batchUpdate` can set the Drive name, so this is the only
+place the two are written together; a form created any other way starts out
+`Untitled form` in Drive, and [`gdrive rename`](#gdrive-rename-file-name) is what
+makes it addressable by path.
 
 Every **id** in the document is ignored, because a new form has none of them:
 `id`, `question_id`, and the `go_to_section_id` of an option, which names a
