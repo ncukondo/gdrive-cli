@@ -231,6 +231,8 @@ export function registerDriveWrite(program: Command): void {
         // entry: renaming a link renames the link (decision 0052 §2)
         resolvePath: (arg) => resolvePath(drive, arg),
         renameFile: (id, newName) => renameFile(drive, id, newName),
+        getFile: (id) => getFile(drive, id),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         file,
         name,
         format: opts.format,

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleRename } from "./rename.ts";
+import { handleRename, type RenameDeps } from "./rename.ts";
+import { childrenNamed } from "../lib/resolve-path.ts";
 import { FILE_TYPES, type DriveFile, type FileType } from "../types/index.ts";
+import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
 
 const MIME_BY_TYPE: Record<FileType, string> = {
   folder: "application/vnd.google-apps.folder",
@@ -48,6 +50,8 @@ function collect() {
   };
 }
 
+const none = async () => [];
+
 describe("handleRename", () => {
   it("renames the file the argument resolves to, by id or by path", async () => {
     for (const arg of ["R1", "Reports/Notes"]) {
@@ -56,6 +60,8 @@ describe("handleRename", () => {
       await handleRename({
         resolvePath,
         renameFile,
+        getFile: async () => file(),
+        findSiblings: none,
         file: arg,
         name: "Notes 2026",
         format: "text",
@@ -71,6 +77,8 @@ describe("handleRename", () => {
     const deps = {
       resolvePath: async () => "R1",
       renameFile: async () => file(),
+      getFile: async () => file(),
+      findSiblings: none,
       file: "Reports/Notes",
       name: "Notes 2026",
     };
@@ -99,6 +107,8 @@ describe("handleRename", () => {
         handleRename({
           resolvePath,
           renameFile,
+          getFile: async () => file(),
+          findSiblings: none,
           file: "Reports/Notes",
           name,
           format: "text",
@@ -129,6 +139,14 @@ describe("handleRename", () => {
           calls.push("renameFile");
           return file({ type });
         },
+        getFile: async () => {
+          calls.push("getFile");
+          return file({ type });
+        },
+        findSiblings: async () => {
+          calls.push("findSiblings");
+          return [];
+        },
         file: "Reports/Notes",
         name: "Notes 2026",
         quiet: false,
@@ -138,9 +156,11 @@ describe("handleRename", () => {
       const result = await handleRename({ ...deps, format: "text", write: text.write });
       expect(result.exitCode).toBe(0);
       expect(text.output).toBe("Renamed to Notes 2026 (R1)");
-      // Two calls whatever the type: the walk, then the rename. A type that
-      // needed asking about would show up here as a third.
-      expect(calls).toEqual(["resolvePath", "renameFile"]);
+      // The same four calls whatever the type: the walk, the file's own parent,
+      // the check against that folder (decision 0055 §2, which says `rename`
+      // pays two round trips for it), then the rename. A type that needed asking
+      // about would show up here as a fifth.
+      expect(calls).toEqual(["resolvePath", "getFile", "findSiblings", "renameFile"]);
 
       const json = collect();
       await handleRename({ ...deps, format: "json", write: json.write });
@@ -151,5 +171,78 @@ describe("handleRename", () => {
         data: { file: file({ type }) },
       });
     }
+  });
+
+  /**
+   * Decision 0055 §1, and the case that produced it: `rename` reaching a name a
+   * sibling already holds leaves **neither** file reachable by path, because
+   * `resolve-path.ts` answers *Ambiguous path segment* for both. Drive accepts
+   * it without a word.
+   *
+   * `rename` is the one command whose destination folder it does not already
+   * know, so §2 has it pay a second round trip to learn it.
+   */
+  describe("a new name that would not address the file", () => {
+    const against = (nodes: DriveNode[], overrides: Partial<RenameDeps> = {}): RenameDeps => {
+      const { client } = createWritableTreeDrive(nodes);
+      return {
+        resolvePath: async () => "R1",
+        renameFile: async () => file(),
+        getFile: async () => file({ id: "R1", parents: ["rep1"] }),
+        findSiblings: (parentId, name) => childrenNamed(client, parentId, name),
+        file: "Reports/Notes",
+        name: "Budget",
+        format: "text",
+        quiet: false,
+        write: () => {},
+        ...overrides,
+      };
+    };
+
+    it("refuses a name a sibling holds, and renames nothing", async () => {
+      const renameFile = vi.fn(async () => file());
+      await expect(
+        handleRename(against([{ id: "B1", name: "Budget", parents: ["rep1"] }], { renameFile })),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS", message: expect.stringContaining("B1") });
+      expect(renameFile).not.toHaveBeenCalled();
+    });
+
+    it("looks in the file's own folder, which it had to ask Drive for", async () => {
+      const findSiblings = vi.fn(async () => []);
+      await handleRename(against([], { findSiblings }));
+      expect(findSiblings).toHaveBeenCalledWith("rep1", "Budget");
+    });
+
+    /** Renaming a file to the name it already has is a no-op, not a collision. */
+    it("does not see the file itself as the collision", async () => {
+      const renameFile = vi.fn(async () => file());
+      await handleRename(
+        against([{ id: "R1", name: "Budget", parents: ["rep1"] }], { renameFile }),
+      );
+      expect(renameFile).toHaveBeenCalledWith("R1", "Budget");
+    });
+
+    it("renames when nothing in the folder holds the name", async () => {
+      const renameFile = vi.fn(async () => file());
+      await handleRename(against([{ id: "N1", name: "Notes", parents: ["rep1"] }], { renameFile }));
+      expect(renameFile).toHaveBeenCalledWith("R1", "Budget");
+    });
+
+    /**
+     * The walk is itself a Drive call, so a name that cannot survive a path is
+     * decided before it: nothing about the file changes the answer.
+     */
+    it.each([" Budget", "Budget ", "Q1/Q2"])(
+      "refuses %j before resolving anything",
+      async (name) => {
+        const resolvePath = vi.fn(async () => "R1");
+        const renameFile = vi.fn(async () => file());
+        await expect(
+          handleRename(against([], { name, resolvePath, renameFile })),
+        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(resolvePath).not.toHaveBeenCalled();
+        expect(renameFile).not.toHaveBeenCalled();
+      },
+    );
   });
 });
