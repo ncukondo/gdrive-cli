@@ -4,16 +4,20 @@
  * together (decisions 0032 and 0047).
  *
  * `decisions/0032` made every record frozen and dated, and paid for that with a
- * reader who walks the directory from the highest number down. Three small
- * obligations keep that walk possible, and each is invisible when it is missed:
- * a committed file that gets edited reads as current, a new record with no index
- * row is a relationship nobody can see, and a `Status` line that does not name
- * `revises` or `extends` breaks the only signal the walk has. §5 adds a fourth:
- * a task whose status says done while its file is still in `tasks/` is a second
- * answer to a question the code already settles.
+ * reader who walks the directory from the highest number down. Two obligations
+ * keep that walk possible, and each is invisible when it is missed: a committed
+ * file that gets edited reads as current, and a `Status` line that does not name
+ * a relationship breaks the only signal the walk has. §5 adds a third: a task
+ * whose status says done while its file is still in `tasks/` is a second answer
+ * to a question the code already settles.
  *
- * None of the four is hard to notice once it has gone wrong months later, and
+ * None of the three is hard to notice once it has gone wrong months later, and
  * that is exactly the problem `decisions/0047` §1 exists to end.
+ *
+ * There was a fourth — every new record needed a row in `decisions/README.md`.
+ * [0049](../decisions/0049-the-directory-is-the-index.md) deleted that index, on
+ * the ground that `ls` and `grep -h '^Status:' decisions/*.md` already produce
+ * it from the records, so the check went with its subject.
  *
  * Usage: `bun scripts/lint-records.ts` — reads the staged diff and exits 1 with
  * what to do about each finding.
@@ -21,7 +25,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
-/** A record file: four digits, a slug, `.md`. `README.md` is not one. */
+/** A record file: four digits, a slug, `.md`. A `CLAUDE.md` is not one. */
 const DECISION_FILE = /^decisions\/(\d{4}-[^/]+\.md)$/;
 
 /**
@@ -89,26 +93,6 @@ export function checkDecisionEdits(staged: StagedFile[]): RecordFinding[] {
         `    naming the relationship: "accepted — revises [NNNN](NNNN-slug.md)".\n` +
         `    A typo or a broken link is the only exception, and it is a person's\n` +
         `    call to make with "git commit --no-verify" (decision 0047 §2).`,
-    }));
-}
-
-/**
- * 0032 §4: the index is "the map for that walk", and its Consequences make it
- * load-bearing — "a new decision is not finished until its row is there".
- */
-export function checkIndexRow(addedDecisions: string[], indexSource: string): RecordFinding[] {
-  return addedDecisions
-    .map((path) => DECISION_FILE.exec(path))
-    .filter((match) => match !== null)
-    .filter((match) => !indexSource.includes(`(${match[1]})`))
-    .map((match) => ({
-      path: `decisions/${match[1]}`,
-      message:
-        `decisions/README.md has no row linking ${match[1]}.\n` +
-        `    Reading down from the highest number is the only way to find the\n` +
-        `    current position on a topic, and the index is where a "revises" or\n` +
-        `    "extends" is visible without opening either file. Add the row in this\n` +
-        `    commit (0032 §4).`,
     }));
 }
 
@@ -248,7 +232,6 @@ if (import.meta.main) {
 
   const findings = [
     ...checkDecisionEdits(staged),
-    ...(added.length > 0 ? checkIndexRow(added, stagedContent("decisions/README.md")) : []),
     ...added.flatMap((path) => checkStatusLine(path, stagedContent(path))),
     ...(staged.some((file) => file.path === "tasks/README.md")
       ? checkArchivedTasks(stagedContent("tasks/README.md"))

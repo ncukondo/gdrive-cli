@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   checkArchivedTasks,
   checkDecisionEdits,
-  checkIndexRow,
   checkStatusLine,
   isDecisionRecord,
 } from "./lint-records.js";
@@ -43,35 +42,13 @@ describe("checkDecisionEdits", () => {
     expect(checkDecisionEdits([{ status: "A", path: "decisions/0046-something.md" }])).toEqual([]);
   });
 
-  it("allows the index, which 0032 §4 requires to be edited", () => {
-    expect(checkDecisionEdits([{ status: "M", path: "decisions/README.md" }])).toEqual([]);
+  it("allows a directory guide, which is not a record", () => {
+    expect(checkDecisionEdits([{ status: "M", path: "decisions/CLAUDE.md" }])).toEqual([]);
   });
 
   it("says nothing about a task file or a directory CLAUDE.md", () => {
     expect(checkDecisionEdits([{ status: "M", path: "tasks/0040-x.md" }])).toEqual([]);
     expect(checkDecisionEdits([{ status: "M", path: "decisions/CLAUDE.md" }])).toEqual([]);
-  });
-});
-
-describe("checkIndexRow", () => {
-  const readme = "| [0047](0047-rules-are-executed.md) | A checkable rule is a script |\n";
-
-  it("passes when the added decision has its row", () => {
-    expect(checkIndexRow(["decisions/0047-rules-are-executed.md"], readme)).toEqual([]);
-  });
-
-  it("fails when the row is missing", () => {
-    const found = checkIndexRow(["decisions/0046-later.md"], readme);
-    expect(found).toHaveLength(1);
-    expect(found[0]?.message).toContain("0046-later.md");
-  });
-
-  it("does not accept a row that links a different file", () => {
-    expect(checkIndexRow(["decisions/0047-rules.md"], readme)).toHaveLength(1);
-  });
-
-  it("checks every added decision", () => {
-    expect(checkIndexRow(["decisions/0046-a.md", "decisions/0047-b.md"], readme)).toHaveLength(2);
   });
 });
 

@@ -17,7 +17,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkArchivedTasks, checkIndexRow, checkStatusLine } from "./lint-records.js";
+import { checkArchivedTasks, checkStatusLine } from "./lint-records.js";
 
 const DECISIONS = "decisions";
 
@@ -52,12 +52,6 @@ describe("the records this repository actually has", () => {
         expect(checkStatusLine(`${DECISIONS}/${name}`, source), name).not.toEqual([]);
       }
     });
-  });
-
-  it("checkIndexRow finds a row for every decision in the directory", () => {
-    const index = readFileSync(join(DECISIONS, "README.md"), "utf8");
-    const paths = decisionFiles.map((name) => `${DECISIONS}/${name}`);
-    expect(checkIndexRow(paths, index)).toEqual([]);
   });
 
   it("checkArchivedTasks passes the live plan table", () => {
