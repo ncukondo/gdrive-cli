@@ -22,6 +22,13 @@ export interface TextRunRaw {
 
 export interface TextElementRaw {
   textRun?: TextRunRaw;
+  /**
+   * Where a paragraph starts. Declared but never read: what it carries — the
+   * bullet, the alignment — is styling, and it is here so that counting the
+   * runs of a shape's text cannot mistake a paragraph break for one.
+   */
+  paragraphMarker?: unknown;
+  autoText?: unknown;
 }
 
 export interface TextContentRaw {
@@ -193,7 +200,7 @@ const ELEMENT_META = new Set(["objectId", "size", "transform", "title", "descrip
  * slide's title and `TITLE` every other layout's, and a caller editing a deck
  * should not have to know which layout it landed on to find the heading.
  */
-type NamedField = "title" | "subtitle" | "body";
+export type NamedField = "title" | "subtitle" | "body";
 
 const FIELD_BY_PLACEHOLDER: Record<string, NamedField> = {
   TITLE: "title",
@@ -369,6 +376,124 @@ export function toSlideDocument(presentation: PresentationRaw): SlideDocument {
     ...(revisionId ? { revision_id: revisionId } : {}),
     slides: (presentation.slides ?? []).map((slide) => toSlide(slide, layoutName)),
   };
+}
+
+// --- Document → API (decision 0030) -----------------------------------------
+
+/**
+ * The shape a field's text lives in, and what a rewrite of it would cost.
+ *
+ * `runs` is how many text runs the shape's text is made of. There is no request
+ * that sets a shape's text, so a change deletes the text and inserts the
+ * replacement, and the per-run styling goes with it — 0030 §2 warns on every
+ * rewritten placeholder that had more than one run. That over-reports slightly:
+ * two plain paragraphs are two runs with no styling between them. It is the
+ * count the API's own representation offers, and warning about a paragraph
+ * break that carried a bullet is the failure this is meant to catch.
+ */
+export interface TextTarget {
+  objectId: string;
+  text: string;
+  runs: number;
+}
+
+export type SlideTextTargets = Partial<Record<NamedField | "notes", TextTarget>>;
+
+function runsOf(shape: ShapeRaw | undefined): number {
+  return (shape?.text?.textElements ?? []).filter((element) => element.textRun !== undefined)
+    .length;
+}
+
+/** The notes shape's own text target, or nothing when the slide has no notes page. */
+function notesTarget(slideProperties: SlidePropertiesRaw | undefined): TextTarget | undefined {
+  const page = slideProperties?.notesPage;
+  if (page === undefined) return undefined;
+  const elements = page.pageElements ?? [];
+  const speakerNotesObjectId = page.notesProperties?.speakerNotesObjectId;
+  const byId = speakerNotesObjectId
+    ? elements.find((element) => element.objectId === speakerNotesObjectId)
+    : undefined;
+  const notes = byId ?? elements.find((element) => element.shape?.placeholder?.type === "BODY");
+  // The page's own id wins over the shape's: the API documents it as the notes
+  // shape's address whether or not the shape exists yet, and inserting text
+  // through it creates one.
+  const objectId = speakerNotesObjectId ?? notes?.objectId;
+  if (!objectId) return undefined;
+  return { objectId, text: textOf(notes?.shape), runs: runsOf(notes?.shape) };
+}
+
+/**
+ * Which shape each of a slide's named fields is written to (0030 §2).
+ *
+ * The mirror of {@link fieldWinners}, and it has to agree with it: the shape a
+ * field is written to must be the one its text was read from, or an edit to
+ * `body` rewrites a column the caller never saw. It differs in one way only —
+ * an empty placeholder is a target here, though it is not projected — because
+ * filling in a field the deck left blank is an ordinary edit, and the read side
+ * omits an empty placeholder rather than emitting `""`.
+ */
+export function slideTextTargets(slide: PageRaw): SlideTextTargets {
+  const best = new Map<NamedField, { target: TextTarget; index: number }>();
+
+  for (const element of slide.pageElements ?? []) {
+    const { objectId, shape } = element;
+    const type = shape?.placeholder?.type;
+    if (!objectId || !type) continue;
+    const field = FIELD_BY_PLACEHOLDER[type];
+    if (field === undefined) continue;
+
+    const text = textOf(shape);
+    const index = shape?.placeholder?.index ?? 0;
+    const current = best.get(field);
+    // A placeholder with text wins whatever its index — it is the one the
+    // projection named — and between two of a kind the lowest index wins, as
+    // it does there.
+    const wins =
+      current === undefined ||
+      (current.target.text === "" && text !== "") ||
+      ((current.target.text === "") === (text === "") && index < current.index);
+    if (wins) best.set(field, { target: { objectId, text, runs: runsOf(shape) }, index });
+  }
+
+  const targets: SlideTextTargets = {};
+  for (const [field, { target }] of best) targets[field] = target;
+  const notes = notesTarget(slide.slideProperties);
+  if (notes !== undefined) targets.notes = notes;
+  return targets;
+}
+
+/** A layout's placeholder, as `createSlide` names it: only the type and index. */
+export interface LayoutPlaceholder {
+  type: string;
+  index: number;
+}
+
+/**
+ * Which placeholder of a layout each named field comes from, so a new slide's
+ * text has somewhere to go (0030 §1).
+ *
+ * The types are read off the layout rather than assumed: a `TITLE` layout's
+ * heading is a `CENTERED_TITLE`, and a `createSlide` naming a placeholder the
+ * layout does not have creates nothing for the `insertText` after it to
+ * address. Where a layout repeats a type — `TITLE_AND_TWO_COLUMNS` has two
+ * `BODY`s — the lowest index wins, which is the rule the read side applies to
+ * a slide.
+ */
+export function layoutFieldPlaceholders(
+  layout: PageRaw,
+): Partial<Record<NamedField, LayoutPlaceholder>> {
+  const found: Partial<Record<NamedField, LayoutPlaceholder>> = {};
+  for (const element of layout.pageElements ?? []) {
+    const placeholder = element.shape?.placeholder;
+    const type = placeholder?.type;
+    if (!type) continue;
+    const field = FIELD_BY_PLACEHOLDER[type];
+    if (field === undefined) continue;
+    const index = placeholder?.index ?? 0;
+    const current = found[field];
+    if (current === undefined || index < current.index) found[field] = { type, index };
+  }
+  return found;
 }
 
 // --- Document ⇄ YAML --------------------------------------------------------
