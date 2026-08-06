@@ -36,10 +36,15 @@ AI-agent use.
   a form from a document. `forms responses` tabulates the answers with the
   question titles as column headers (table/CSV/JSON), with or without a linked
   spreadsheet. A form reports `type: form`, so `ls --type form` finds one.
-- **Slides** — `slides read` prints a deck as one YAML document: each slide's
-  layout, its placeholder text and its speaker notes, with everything else —
-  hand-placed shapes, images, tables, charts — listed read-only under
-  `elements`. No coordinates in it, in either direction.
+- **Slides** — one YAML document in both directions: `read` prints a deck —
+  each slide's layout, its placeholder text and its speaker notes, with
+  everything else (hand-placed shapes, images, tables, charts) listed read-only
+  under `elements` — and `write` applies an edited one back, matching slides
+  **by id** and rewriting only the placeholders whose text changed. There is no
+  request that sets a shape's text, so a rewritten placeholder loses its inline
+  formatting; the plan warns on each one, and `--dry-run` shows the warning
+  before anything is written. `create` builds a deck from a document. No
+  coordinates in it, in either direction.
 - **Sharing** — `share list / add / remove / link` to manage permissions.
 - **Agent-first** — the primary consumer is an AI agent, so **JSON is what a
   command emits when it is not told otherwise**, except where the output already
@@ -110,6 +115,7 @@ gdrive forms read "Surveys/2026" > form.yaml          # the whole form as YAML
 gdrive forms write "Surveys/2026" --file form.yaml    # …and the edited one back
 gdrive forms responses "Surveys/2026" --as csv        # answers, by question title
 gdrive slides read "Decks/Q3" > deck.yaml             # the whole deck as YAML
+gdrive slides write "Decks/Q3" --file deck.yaml --dry-run   # what it would change
 gdrive share link "Reports/2026/Budget"
 ```
 
