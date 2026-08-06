@@ -234,11 +234,19 @@ here renames a file. That much was true; the conclusion was not. Measuring
 afterwards showed a Drive rename repairs the part this CLI resolves paths by, and
 that only a form's `documentTitle` is genuinely frozen, because for a Doc, a
 Sheet and a deck the Drive name and the in-document title are one field.
-`decisions/0052` records the four measurements and settles the two things they
-raise: renaming is its own verb rather than a second meaning for `mv`, since
-Drive permits two files with one name and `mv` would have to guess; and a form
-rename reports the title it did not reach, through the channel that already
-exists rather than a new one.
+`decisions/0052` records the four measurements and settles what they raise:
+renaming is its own verb rather than a second meaning for `mv`, since Drive
+permits two files with one name and `mv` would have to guess, and its argument
+takes the entry role so renaming a shortcut renames the shortcut.
+
+Its third section did not survive the day. It had `rename` report, on a form,
+that the title in the Forms editor was out of its reach — and `decisions/0053`
+withdrew that, because the measurement under it read `documentTitle` the instant
+after the Drive rename returned. Read again three seconds later, it has followed.
+A form is not the exception the table made it, and the closing section of 0053 is
+the part worth carrying forward: a measurement of a *negative* needs a second
+observation before it becomes a record, since one read cannot tell "never" from
+"not yet".
 
 Two things followed from it. `decisions/0043` gave the live suite a cadence but
 `tests/e2e/` still covers only Drive, Docs and Sheets — issue #30 — and until it
