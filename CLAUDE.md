@@ -5,7 +5,9 @@ multi-account switching. Sibling of `gcal-cli`, designed for AI-agent use.
 
 ## Getting Started
 
-- Read `decisions/README.md` for the design (source of truth for *why*).
+- `decisions/` holds the design, one record per topic, and is the source of truth
+  for *why*. Read it from the highest number down; `head -1 decisions/*.md` is
+  the table of contents and `decisions/CLAUDE.md` the conventions.
 - Read `tasks/README.md` for the current plan; pick a task, follow its TDD plan.
 - User-facing behavior lives in `docs/` and `README.md`.
 - The conventions that govern a directory sit in its own `CLAUDE.md` —
@@ -108,6 +110,6 @@ Preview what the release will say with `bun run changelog <version>`.
 - **A rule a script can decide is a script, not a sentence** (`0047` §1). The
   ones above that are checkable are checked by `.husky/pre-commit` and by
   `.claude/`; the conventions that govern a directory live in its own
-  `CLAUDE.md`. Read `decisions/README.md` from the highest number down for
-  anything not covered here — including the append-only rule, which
-  `decisions/CLAUDE.md` states where it applies.
+  `CLAUDE.md`. Read `decisions/` from the highest number down for anything not
+  covered here — including the append-only rule, which `decisions/CLAUDE.md`
+  states where it applies.
