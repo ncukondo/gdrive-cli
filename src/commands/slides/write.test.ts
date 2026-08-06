@@ -274,6 +274,18 @@ describe("the plan handleSlidesWrite reports (0028 §4, 0030 §2)", () => {
     expect(result.output).not.toContain("formatting");
   });
 
+  /**
+   * A deck's title is its Drive name, and `gdrive rename` changes that in one
+   * call — so a report that only said no request could carry it would send a
+   * caller away from a command they already have.
+   */
+  it("names the command that can rename the deck, which this one cannot", async () => {
+    const result = await run({ ...document, title: "Q4 review" }, { format: "text" });
+    expect(result.batches).toEqual([]);
+    expect(result.warnings[0]).toContain("Q4 review");
+    expect(result.warnings[0]).toContain("gdrive rename");
+  });
+
   it("reports a field it could not write through the unsupported channel", async () => {
     const withSubtitle = {
       ...document,
