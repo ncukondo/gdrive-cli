@@ -123,6 +123,8 @@ export function registerDriveWrite(program: Command): void {
         // container
         resolveFolder: (arg) => resolveTargetId(drive, arg),
         moveFile: (id, parentId) => moveFile(drive, id, parentId),
+        getFile: (id) => getFile(drive, id),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         file,
         dest: folder,
         format: opts.format,

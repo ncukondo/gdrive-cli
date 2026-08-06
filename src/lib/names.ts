@@ -39,6 +39,12 @@ export interface NameCheck {
   /** The flag that carries a name, on the commands that have one. */
   flag?: string;
   /**
+   * What to do instead, spelled out, for a command that takes no name at all —
+   * `mv` carries a name rather than giving one, so "pass a different name" is
+   * advice it cannot follow.
+   */
+  remedy?: string;
+  /**
    * The file already carrying the name, on the commands that move or rename one
    * rather than create one. It is not its own collision: `mv` into the folder a
    * file is already in, and `rename` to the name it already has, are no-ops.
@@ -100,9 +106,10 @@ export async function refuseTakenName(check: NameCheck): Promise<void> {
 
   const where = check.where === undefined ? "That folder" : `"${check.where}"`;
   const ids = taken.map((sibling) => sibling.id).join(", ");
+  const remedy = check.remedy ?? instead(`${check.name} (2)`, check.flag);
   throw new AppError(
     "INVALID_ARGS",
-    `${where} already holds a file called "${check.name}" (${ids}), and a path naming it would then match both. ${instead(`${check.name} (2)`, check.flag)}`,
+    `${where} already holds a file called "${check.name}" (${ids}), and a path naming it would then match both. ${remedy}`,
   );
 }
 
