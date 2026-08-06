@@ -96,7 +96,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0043 `gdrive rename`](archive/0043-rename.md) | — | — | done |
 | [0044 A name this CLI cannot address is refused](archive/0044-addressable-names.md) | 0033, 0043 | H | done |
 | [0045 The live suite reaches the write paths](archive/0045-e2e-write-paths.md) | — | H | done |
-| [0046 A `create` that fails leaves nothing in My Drive's root](0046-create-lands-in-its-parent.md) | 0045 | — | todo |
+| [0046 A `create` that fails leaves nothing in My Drive's root](archive/0046-create-lands-in-its-parent.md) | 0045 | — | done |
 
 ## Parallelism notes
 
@@ -309,7 +309,8 @@ be told apart from an id, so the choice is a false accept at My Drive's root,
 where files are lost, or a false refusal at a shared drive's root, narrow and
 visible. Measuring beat the instruction.
 
-0046 came out of 0045's review rather than from the survey. Writing live tests
+0046 came out of 0045's review rather than from the survey, and it is where the
+two-stage check paid for itself twice over. Writing live tests
 for the write paths exposed that all four `create` commands are create-fill-move,
 so a fill that fails leaves the file in My Drive's root — outside every sandbox,
 with its id lost, on the one path the tests exist for. `tests/e2e/forms.test.ts`
