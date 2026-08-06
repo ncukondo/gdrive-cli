@@ -32,6 +32,17 @@ import {
  * `drive.test.ts` but a temporary directory, so they are a file of their own:
  * one sandbox per file means vitest runs them beside it rather than after it,
  * and `pre-push` pays the longer of the two instead of the sum.
+ *
+ * **One case here names a path outside the sandbox, on purpose.** Everything
+ * else in the live suite addresses ids inside it, and `shortcuts.test.ts`
+ * drops a whole case rather than name an ancestor. The root refusal earns the
+ * exception because the thing it checks *is* the boundary: `resolvePath`
+ * answers the alias `root` while a `parents` list carries My Drive's real id,
+ * and no fake can tell those apart — it is handed whichever one its author
+ * wrote down. The cost is stated rather than hidden: if `refuseCycle`
+ * regresses, `cp -r` starts reproducing the account into this sandbox and runs
+ * until the timeout, and the sandbox is kept holding whatever it got through.
+ * That is why it is **one** spelling and not three (below).
  */
 
 const documentSchema = z.object({ id: z.string(), title: z.string() });
@@ -41,6 +52,16 @@ const reportSchema = z.object({
   folders: z.array(entrySchema),
   copied: z.array(entrySchema),
 });
+
+/**
+ * The fixture is eight sequential Drive calls and then a whole `cp -r` over
+ * what they built, which is more than the per-call budget `LIVE_TIMEOUT` was
+ * sized for. This file is the suite's long pole, so a slow account day would
+ * otherwise stop a push with a timeout that is not a regression — and keep a
+ * sandbox for nothing (0043 §2 keeps the evidence of *failures*, and this
+ * would not be one).
+ */
+const SETUP_TIMEOUT = 4 * LIVE_TIMEOUT;
 
 const TREE = "the folder that gets copied";
 const SUBFOLDER = "a subfolder inside it";
@@ -80,7 +101,7 @@ describeLive("Copying and renaming against a real account", () => {
     destination = (await file("mkdir", "where the copy lands", "--parent", sandbox.id)).id;
     report = await gdriveAs(reportSchema, "cp", "-r", source, destination);
     copies = await list(report.file.id);
-  }, LIVE_TIMEOUT);
+  }, SETUP_TIMEOUT);
 
   afterAll(() => {
     if (local !== "") rmSync(local, { recursive: true, force: true });
@@ -92,7 +113,11 @@ describeLive("Copying and renaming against a real account", () => {
       // With no name in the request, the document below comes back as
       // "Copy of …" and the binary beside it does not, so a suite with one
       // file in the tree can pass either way. Both are here for that reason.
-      expect(report.file.name).toBe(TREE);
+      //
+      // The top-level folder is not: `copyTree` reaches it through
+      // `createFolder`, which names every folder it makes, so Drive is never
+      // offered the chance to prepend anything and asserting its name would
+      // read as coverage it is not. The three below are the whole case.
       expect(copies.map((child) => child.name).sort()).toEqual(
         [SUBFOLDER, TREE_BINARY, TREE_DOC, TREE_LINK].sort(),
       );
@@ -122,17 +147,23 @@ describeLive("Copying and renaming against a real account", () => {
   );
 
   it(
-    "refuses cp -r on every spelling of the root, and copies nothing",
+    "refuses cp -r on the root, and copies nothing",
     async () => {
-      // `resolvePath` answers the literal alias `root` for all three, while a
-      // `parents` list carries My Drive's real id — so the cycle guard used to
-      // compare an alias with an id, find no match, and start copying My Drive
-      // into a folder inside My Drive, where it kept finding the copy it had
-      // just made. The guard resolves the alias now; this is what says so.
+      // `resolvePath` answers the literal alias `root`, while a `parents` list
+      // carries My Drive's real id — so the cycle guard used to compare an
+      // alias with an id, find no match, and start copying My Drive into a
+      // folder inside My Drive, where it kept finding the copy it had just
+      // made. The guard resolves the alias now; this is what says so, and only
+      // Drive can, because the mismatch is between what it returns in two
+      // different fields.
+      //
+      // One spelling, not the three `walk()` maps to the root. They converge on
+      // its first branch before anything Drive-side differs, and that mapping
+      // is already covered at `resolve-path.test.ts` and `cp.test.ts`. Running
+      // all three here would triple the blast radius of the regression above
+      // for no boundary this one does not already reach.
       const empty = await file("mkdir", "where nothing should land", "--parent", sandbox.id);
-      for (const spelling of ["/", "root", ""]) {
-        expect(await gdriveError("cp", "-r", spelling, empty.id)).toBe("INVALID_ARGS");
-      }
+      expect(await gdriveError("cp", "-r", "root", empty.id)).toBe("INVALID_ARGS");
       expect(await list(empty.id)).toEqual([]);
     },
     LIVE_TIMEOUT,
