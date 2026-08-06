@@ -39,4 +39,14 @@ describe("errorToExit", () => {
   it("keeps PERMISSION_DENIED out of the re-authenticate family (decision 0017)", () => {
     expect(errorToExit("PERMISSION_DENIED")).toBe(ExitCode.GENERAL);
   });
+
+  /**
+   * A refused deletion is an argument problem — confirm the intent and re-run
+   * with a flag — not a malformed document, so 0028 §3 gives it its own code in
+   * the same exit bucket as `INVALID_ARGS` rather than overloading that one.
+   */
+  it("puts PRUNE_REQUIRED in the argument bucket, distinct from INVALID_ARGS", () => {
+    expect(errorToExit("PRUNE_REQUIRED")).toBe(ExitCode.ARGUMENT);
+    expect(errorToCode(new AppError("PRUNE_REQUIRED", "x"))).toBe("PRUNE_REQUIRED");
+  });
 });

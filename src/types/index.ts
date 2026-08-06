@@ -11,6 +11,13 @@ const ERROR_CODES = [
   "PERMISSION_DENIED",
   "NOT_FOUND",
   "INVALID_ARGS",
+  /**
+   * `forms write` would delete an item and `--prune` was not given
+   * (decision 0028 §3). Distinct from `INVALID_ARGS` because the next action
+   * differs: confirm the intent and re-run with the flag, rather than fix the
+   * document.
+   */
+  "PRUNE_REQUIRED",
   "API_ERROR",
   "CONFIG_ERROR",
   "IO_ERROR",
@@ -135,6 +142,7 @@ const ERROR_CODE_EXIT_MAP: Record<ErrorCode, number> = {
   PERMISSION_DENIED: ExitCode.GENERAL,
   NOT_FOUND: ExitCode.GENERAL,
   INVALID_ARGS: ExitCode.ARGUMENT,
+  PRUNE_REQUIRED: ExitCode.ARGUMENT,
   API_ERROR: ExitCode.GENERAL,
   CONFIG_ERROR: ExitCode.GENERAL,
   IO_ERROR: ExitCode.GENERAL,
