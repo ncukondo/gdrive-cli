@@ -1,6 +1,6 @@
 # Task 0042: The rules a script cannot check move to where they are read
 
-Status: todo
+Status: done
 Depends on: —
 Parallel: yes — alongside 0041, which owns the executable half of the same
 decision. Disjoint scopes: this task writes only `CLAUDE.md` files and touches no
@@ -207,3 +207,30 @@ part it never ran ([`decisions/0043`](../decisions/0043-e2e-runs-before-push.md)
      in the outcome notes whether anything was in the prose that was not in the
      manifest. The expectation is that `lint:casts` was the only difference and it
      ran the wrong way.
+
+## Outcome
+
+Merged as #24 after **three review rounds**. The plan was corrected six times
+mid-branch ([`0041`](../../decisions/0041-the-task-is-current-during-review.md)
+§1), and the corrections are the useful record: each named an instance, the
+instance got fixed, and another member of the same class survived — twice inside
+the very file the correction was written about.
+
+Three tests were added to the plan by review rather than by the author. *Is this
+list a set some dated record froze?* — four lines were, and one was wrong the day
+it was typed. *Where does this rule load?* — the files were split by directory
+name while the mechanism splits by ancestor path, so eight testing rules reached
+5 of 54 test files. *Does the code do what the sentence says?* — three of the
+last round's four findings were one such pass, including a helper the text said
+trashes a folder it deletes permanently, sourced from
+[`0043`](../../decisions/0043-e2e-runs-before-push.md) §2 rather than from
+`sandbox.ts`. That is the failure this repository's own release rule exists to
+prevent.
+
+`decisions/CLAUDE.md` grew beyond the plan when
+[`0049`](../../decisions/0049-the-directory-is-the-index.md) deleted
+`decisions/README.md` mid-branch and its conventions needed a home.
+
+**Not done at merge**: confirming in a live session that a directory `CLAUDE.md`
+is actually loaded when a file there is edited. Nothing in the repository can
+test it, and the files are worthless if the mechanism does not fire.

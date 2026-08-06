@@ -1,6 +1,6 @@
 # Task 0041: The rules that can be checked become scripts, and two hooks run them
 
-Status: todo
+Status: done
 Depends on: —
 Parallel: yes — alongside 0042, which owns the prose half of the same decision.
 Their file scopes are disjoint: this task writes `scripts/`, `.husky/` and
@@ -334,3 +334,41 @@ part it never ran ([`decisions/0043`](../decisions/0043-e2e-runs-before-push.md)
      the harness ever calls one without stdin, every edit blocks and an agent has
      no bypass (0047 §2). Nothing in the repository can test this; confirm it in
      a live session before trusting the default.
+
+## Outcome
+
+Merged as #23 after **four review rounds**, every one of which found the same
+shape: the round before had fixed the instance it named and left another member
+of the same class. 0001's two spellings answered literally; then two independent
+places to stop looking; then nine more ways past including `git add -- .`, whose
+exit was written in a comment two lines above the check; then a heredoc body
+parsed as a list of commands, which refused *writing prose about staging* — the
+material this repository's records are made of.
+
+Two decisions came out of it rather than out of the plan.
+[`0048`](../../decisions/0048-staging-refuses-a-class.md) states the staging rule
+as a class and says out loud that the matcher is an approximation.
+[`0050`](../../decisions/0050-the-index-is-what-is-guarded.md) widens it from
+"add to the index" to "put a change into the index" after `git rm -r --cached .`
+was measured staging a deletion of every tracked file, and adds §3: a false
+refusal is a defect of the same weight as a hole, because 0047 §2 leaves an agent
+no bypass. Three rounds found holes because they were asked for holes; the false
+refusals surfaced only when a reviewer thought to look.
+
+[`0049`](../../decisions/0049-the-directory-is-the-index.md) landed mid-branch
+and deleted `decisions/README.md`, so `checkIndexRow` was removed — a guard whose
+subject is deleted goes with it.
+
+**Measured** (2026-08-06): `pre-commit` 11.6 s before, +0.24 s for the four
+guards. Nothing here is a candidate for cutting.
+
+**Deferred, and not filed** ([`0042`](../../decisions/0042-deferred-work-is-an-issue.md) §2):
+`git apply --index`, `git update-index --add`, `git checkout HEAD -- .` and
+`git mv` all put a change into the index and are not asked about. 0048 §2 and
+0050's `Out of scope` both say a new spelling is a commit rather than a decision,
+so this is a defect in the script whenever someone hits it, not a gap in the
+rule. Nobody has hit it.
+
+**Not done at merge**: the live-session pass on both `PreToolUse` hooks. Every
+payload shape was exercised by hand and refuses or passes correctly, but the
+harness's own calling convention is only observable from inside a session.

@@ -91,8 +91,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0038 `bun run test` runs the suite once](archive/0038-test-runs-once.md) | — | — | done |
 | [0039 The first E2E suite, and the hook that runs it](archive/0039-e2e-suite.md) | 0038 | — | done |
 | [0040 An insert stops inheriting the formatting next to it](archive/0040-inserted-content-is-default-styled.md) | — | — | done |
-| [0041 The rules that can be checked become scripts](0041-rules-are-executed.md) | — | G | todo |
-| [0042 The rules a script cannot check move to where they are read](0042-rules-are-read-where-they-apply.md) | — | G | todo |
+| [0041 The rules that can be checked become scripts](archive/0041-rules-are-executed.md) | — | G | done |
+| [0042 The rules a script cannot check move to where they are read](archive/0042-rules-are-read-where-they-apply.md) | — | G | done |
 
 ## Parallelism notes
 
@@ -244,7 +244,8 @@ survives for what needs a tty or a person. 0039 depends on 0038 because until th
 scripts excluded `tests/e2e/**`, the first file placed there broke CI and the
 release job.
 
-0041 and 0042 split decision 0047 along the line it draws. The failure it
+0041 and 0042 split decision 0047 along the line it draws, and both are now
+**done**. The failure it
 answers had happened four times: 0027 and 0029 merged with the manual pass marked
 `NOT DONE`, task 0037's `runFlow` deferral was archived eight minutes after it
 was written, and #16's reviewer measured a five-file branch against a three-file
@@ -258,6 +259,13 @@ hook and a Claude Code hook both run; 0042 moves the rest into the directory
 where they are read and deletes the blocks that copy `package.json`. The split is
 not cosmetic — a git hook binds every contributor and a directory `CLAUDE.md`
 binds only an agent, so which half a rule lands in decides who it reaches.
+
+Seven review rounds across the two produced four more records — 0048, 0049, 0050
+and the corrections carried back into both plans — and every round found the same
+shape: the previous one had fixed the instance it named and left another member
+of the same class. Executing a rule is what shows where its sentence stopped, and
+that is an argument for executing rules early rather than for writing them more
+carefully (0050 Consequences).
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
