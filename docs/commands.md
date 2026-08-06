@@ -158,8 +158,8 @@ same reason: `cat link` should read the target, `rm link` should not delete it.
 
 | Role | Follows | Arguments |
 |------|---------|-----------|
-| **Container** — "look inside this" | always | every intermediate path segment; `ls [folder]`; `--parent` on `mkdir`, `upload`, `docs create`, `sheets create`; the destination of `mv` and `cp` |
-| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear`; `forms read/responses` |
+| **Container** — "look inside this" | always | every intermediate path segment; `ls [folder]`; `--parent` on `mkdir`, `upload`, `docs create`, `sheets create`; the destination of `mv`, `cp` and `ln` |
+| **Content** — "read or edit what is in this" | yes | `download <file>`; `docs read/append/insert/replace`; `sheets tabs/read/write/append/clear`; `forms read/responses`; `ln <target>` |
 | **Entry** — "this file, as an entry in a folder" | never | `rm`; `mv <file>`; `cp <file>`; `share list/add/remove/link`; `info` |
 
 The two arguments of `mv link Other` play different roles in one command: the
@@ -213,13 +213,16 @@ accessible (target 1DocXyZ...).
 ```
 
 and a shortcut to a shortcut is `API_ERROR` — Drive does not create those, so
-the chain is not followed a second time. Creating shortcuts is not supported
-yet. See [`../decisions/0025`](../decisions/0025-shortcuts.md).
+the chain is not followed a second time. [`gdrive ln`](#gdrive-ln-target-folder)
+is how you make one, and for the same reason it links what a shortcut target
+points at rather than the shortcut. See
+[`../decisions/0025`](../decisions/0025-shortcuts.md) and
+[`0026`](../decisions/0026-ln.md).
 
 ## The file object
 
-`ls`, `search`, `info`, `upload`, `mkdir`, `mv`, `cp`, and `rm` all report files
-in one normalized shape. `size` is `null` for Google-native files (Docs, Sheets,
+`ls`, `search`, `info`, `upload`, `mkdir`, `mv`, `cp`, `ln`, and `rm` all report
+files in one normalized shape. `size` is `null` for Google-native files (Docs, Sheets,
 Slides, folders):
 
 ```json
@@ -490,6 +493,42 @@ Copied to Budget (2026) (1CoPy...)
 ```
 
 Quiet: the file ID.
+
+### `gdrive ln <target> <folder>`
+
+Creates a shortcut in `<folder>` pointing at `<target>`, named after the target
+unless `--name` says otherwise.
+
+`<target>` follows a shortcut and `<folder>` follows one too, so
+`gdrive ln Inbox/link-to-doc Archive` files a second link to the *document* —
+Drive refuses to store a shortcut to a shortcut.
+
+The default name means `ln` has to know what the target is called. An ID-shaped
+`<target>`, or one that is itself a shortcut, was already looked up while
+resolving; only a path to an ordinary file costs one extra Drive call, and
+`--name` skips it.
+
+```console
+$ gdrive ln -f text "Reports/2026 Budget" "Shared/Links"
+Created shortcut 2026 Budget (1Lnk...) -> 2026 Budget (1AbC...)
+
+$ gdrive ln -f text "Reports/2026 Budget" "Shared/Links" --name "Budget (2026)"
+Created shortcut Budget (2026) (1Lnk...) -> 1AbC...
+```
+
+```json
+{ "file": { /* file object, with target_id and target_type */ } }
+```
+
+Quiet: the new shortcut's ID.
+
+Which links a drive will hold is Drive's rule — a shared drive will not keep a
+shortcut to a file outside it, and the rules vary with its sharing settings.
+`ln` does not pre-check any of them, so a refusal arrives worded by Drive rather
+than paraphrased here. Retargeting an existing shortcut is not supported:
+`rm` the link and make a new one. Nothing stops two shortcuts sharing a name in
+one folder, and a path segment that then matches both is `INVALID_ARGS` listing
+the candidate IDs — `--name` is the way out.
 
 ### `gdrive rm <file>`
 
