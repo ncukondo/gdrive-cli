@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "../types/index.ts";
 import {
+  layoutFieldPlaceholders,
   parseSlideDocument,
   slideDocumentToYaml,
+  slideTextTargets,
   toSlideDocument,
   type PageElementRaw,
   type PresentationRaw,
@@ -412,6 +414,141 @@ describe("toSlideDocument, on what the document has no field for (0051 §1)", ()
       ],
     });
     expect(document.slides[0]).toEqual({ id: "s1", layout: "BLANK" });
+  });
+});
+
+/**
+ * The write direction's half of the projection (0030): which shape a field's
+ * text has to be written to, and which placeholder of a layout a new slide's
+ * field comes from. Both mirror the read side above, and the first test of each
+ * ties them together — a target that disagreed with what `read` projected would
+ * rewrite a box the caller never saw.
+ */
+describe("slideTextTargets", () => {
+  const twoColumns = {
+    objectId: "s1",
+    slideProperties: {
+      layoutObjectId: "L_2C",
+      notesPage: notesPage("n_1", "Say this"),
+    },
+    pageElements: [
+      placeholderAt("b2", "BODY", 1, "Right column"),
+      placeholderAt("b1", "BODY", 0, "Left column"),
+      placeholder("t1", "TITLE", "A title"),
+    ],
+  };
+
+  it("names the shape each field's text was projected from", () => {
+    const projected = toSlideDocument({
+      title: "Deck",
+      layouts: [{ objectId: "L_2C", layoutProperties: { name: "TITLE_AND_TWO_COLUMNS" } }],
+      slides: [twoColumns],
+    }).slides[0];
+    const targets = slideTextTargets(twoColumns);
+    expect(targets.title?.objectId).toBe("t1");
+    expect(targets.title?.text).toBe(projected?.title);
+    // Not "b2", which is first in z-order: the lowest placeholder index wins in
+    // both directions, or a write would rewrite the other column.
+    expect(targets.body?.objectId).toBe("b1");
+    expect(targets.body?.text).toBe(projected?.body);
+    expect(targets.notes?.objectId).toBe("n_1");
+    expect(targets.notes?.text).toBe(projected?.notes);
+  });
+
+  it("offers an empty placeholder as the target, so a field can be filled in", () => {
+    const targets = slideTextTargets({
+      objectId: "s1",
+      pageElements: [placeholder("t1", "TITLE", ""), placeholder("b1", "BODY", "Only this")],
+    });
+    expect(targets.title).toMatchObject({ objectId: "t1", text: "" });
+  });
+
+  it("prefers the placeholder that has the text over an empty one with a lower index", () => {
+    const targets = slideTextTargets({
+      objectId: "s1",
+      pageElements: [placeholderAt("b0", "BODY", 0, ""), placeholderAt("b1", "BODY", 1, "Here")],
+    });
+    expect(targets.body?.objectId).toBe("b1");
+  });
+
+  it("names no target for a field the slide has no placeholder for", () => {
+    const targets = slideTextTargets({ objectId: "s1", pageElements: [] });
+    expect(targets.title).toBeUndefined();
+    expect(targets.notes).toBeUndefined();
+  });
+
+  it("takes the notes shape from the page's own id even when the shape is not there yet", () => {
+    // "Inserting text using this object ID will automatically create the
+    // shape", says the generated type, so the id alone is a usable target.
+    const targets = slideTextTargets({
+      objectId: "s1",
+      slideProperties: {
+        notesPage: { objectId: "n1", notesProperties: { speakerNotesObjectId: "n_1" } },
+      },
+    });
+    expect(targets.notes).toEqual({ objectId: "n_1", text: "", runs: 0 });
+  });
+
+  it("counts the runs a shape's text is made of, which is what a rewrite loses", () => {
+    const bolded = {
+      objectId: "s1",
+      pageElements: [
+        {
+          objectId: "t1",
+          shape: {
+            placeholder: { type: "TITLE", index: 0 },
+            text: {
+              textElements: [
+                { paragraphMarker: {} },
+                { textRun: { content: "One " } },
+                { textRun: { content: "bold\n" } },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    expect(slideTextTargets(bolded).title).toEqual({
+      objectId: "t1",
+      text: "One bold",
+      runs: 2,
+    });
+  });
+});
+
+describe("layoutFieldPlaceholders", () => {
+  it("names the placeholder each field comes from, by the layout's own type", () => {
+    // A title slide's heading is `CENTERED_TITLE`, not `TITLE`, and a request
+    // naming the wrong type creates no placeholder to insert text into.
+    expect(
+      layoutFieldPlaceholders({
+        objectId: "L_T",
+        pageElements: [
+          placeholder("lt", "CENTERED_TITLE", ""),
+          placeholder("ls", "SUBTITLE", "Click to add subtitle"),
+        ],
+      }),
+    ).toEqual({
+      title: { type: "CENTERED_TITLE", index: 0 },
+      subtitle: { type: "SUBTITLE", index: 0 },
+    });
+  });
+
+  it("takes the lowest index where the layout repeats a type", () => {
+    expect(
+      layoutFieldPlaceholders({
+        objectId: "L_2C",
+        pageElements: [
+          placeholderAt("lb2", "BODY", 1, ""),
+          placeholderAt("lb1", "BODY", 0, ""),
+          placeholder("lt", "TITLE", ""),
+        ],
+      }).body,
+    ).toEqual({ type: "BODY", index: 0 });
+  });
+
+  it("names nothing for a layout that offers no such placeholder", () => {
+    expect(layoutFieldPlaceholders({ objectId: "L_BLANK", pageElements: [] })).toEqual({});
   });
 });
 
