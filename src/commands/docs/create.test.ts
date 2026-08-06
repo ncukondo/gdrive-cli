@@ -19,17 +19,31 @@ function collect() {
  * index 1 is — so the content it is given is the whole of it (0045 §2). */
 const EMPTY: ParagraphBoundary = { atParagraphStart: true, atParagraphEnd: true };
 
-const baseDeps = () => ({
+/**
+ * `calls` records the order the Drive and Docs calls go out in, which is the
+ * subject of the cases below: a document is moved into `--parent` before
+ * anything is written into it, so a write that fails leaves it there rather
+ * than in My Drive's root (issue #36).
+ */
+const baseDeps = (calls: string[] = []) => ({
   resolvePath: vi.fn(async () => "PID"),
-  createDocument: vi.fn(async (title: string) => ({ id: "NEW", title })),
-  insertText: vi.fn(
-    async (_id: string, _index: number, _text: string, _b: ParagraphBoundary) => {},
-  ),
+  createDocument: vi.fn(async (title: string) => {
+    calls.push("create");
+    return { id: "NEW", title };
+  }),
+  insertText: vi.fn(async (_id: string, _index: number, _text: string, _b: ParagraphBoundary) => {
+    calls.push("insert");
+  }),
   insertMarkdown: vi.fn(
-    async (_id: string, _index: number, _source: string, _o: { boundary: ParagraphBoundary }) => [],
+    async (_id: string, _index: number, _source: string, _o: { boundary: ParagraphBoundary }) => {
+      calls.push("insert");
+      return [];
+    },
   ),
   warn: vi.fn(),
-  moveFile: vi.fn(async (_id: string, _parentId: string) => {}),
+  moveFile: vi.fn(async (_id: string, _parentId: string) => {
+    calls.push("move");
+  }),
   findSiblings: vi.fn(async (_p: string, _n: string) => []),
   readInput: vi.fn(async (arg: string) => `<${arg}>`),
   title: "Plan",
@@ -90,6 +104,44 @@ describe("handleDocsCreate", () => {
       success: true,
       data: { id: "NEW", title: "Plan", parent_id: "PID" },
     });
+  });
+
+  /**
+   * Issue #36. The Docs API ignores a parent, so a document exists in My Drive's
+   * root from the moment it is created; the move is the only thing that takes it
+   * out. Doing that *before* the content goes in is what keeps a failed write
+   * from leaving a document outside the folder the caller named — and outside
+   * the sandbox the live suite writes inside (0043 §2).
+   */
+  it("moves the document into --parent before it writes any content", async () => {
+    const calls: string[] = [];
+    const d = baseDeps(calls);
+    await handleDocsCreate({ ...d, parent: "Reports", content: "@notes.md" });
+    expect(calls).toEqual(["create", "move", "insert"]);
+  });
+
+  it("leaves a document whose content failed inside --parent", async () => {
+    const calls: string[] = [];
+    const d = baseDeps(calls);
+    await expect(
+      handleDocsCreate({
+        ...d,
+        parent: "Reports",
+        content: "@notes.md",
+        insertMarkdown: async () => {
+          throw new Error("Docs said no");
+        },
+      }),
+    ).rejects.toThrow("Docs said no");
+    expect(d.moveFile).toHaveBeenCalledWith("NEW", "PID");
+    expect(calls).toEqual(["create", "move"]);
+  });
+
+  it("issues no move at all without --parent", async () => {
+    const calls: string[] = [];
+    const d = baseDeps(calls);
+    await handleDocsCreate({ ...d, content: "@notes.md" });
+    expect(calls).toEqual(["create", "insert"]);
   });
 
   it("prints the new id in quiet mode", async () => {

@@ -35,18 +35,21 @@ export interface SlidesCreateDeps {
 }
 
 /**
- * Creates, then reconciles, then moves (decision 0030 §4) — `forms create`'s
- * shape plus the one step the other creates do not need: `presentations.create`
- * always returns a deck holding one slide, and `--file` must not leave it
- * stranded ahead of the document's own first slide, so the same `batchUpdate`
- * that builds the document deletes it.
+ * Creates, moves, then reconciles — the calls decision 0030 §4 records, in the
+ * order [#36](https://github.com/ncukondo/gdrive-cli/issues/36) put them; and
+ * `forms create`'s shape plus the one step the other creates do not need:
+ * `presentations.create` always returns a deck holding one slide, and `--file`
+ * must not leave it stranded ahead of the document's own first slide, so the
+ * same `batchUpdate` that builds the document deletes it.
  *
  * The document is parsed before the deck exists, so a document that does not
  * parse leaves no empty deck behind to clean up. Parsing is as far as that goes:
  * a document naming a layout the new deck's theme does not have is only found
  * out once the deck exists to be matched against, so that one fails with an
  * empty deck left over. Nothing can move it earlier — the layouts belong to the
- * deck the create just made.
+ * deck the create just made. What the move can do is decide *where* that deck
+ * is left, which is why it goes ahead of everything the document can fail on
+ * rather than last (0043 §2).
  *
  * Decision 0055 §2's name check goes in the same place, which is what moves
  * `--parent`'s resolution ahead of the create: it was resolved either way, and
@@ -69,6 +72,7 @@ export async function handleSlidesCreate(deps: SlidesCreateDeps): Promise<Comman
   const created = await deps.createPresentation(deps.title);
   const presentationId = created.presentationId ?? "";
   const title = created.title ?? deps.title;
+  if (parentId !== undefined) await deps.moveFile(presentationId, parentId);
 
   // A new slide's text goes into the placeholders its layout offers, and their
   // types are read off the layout itself. The created deck carries its theme's
@@ -84,8 +88,6 @@ export async function handleSlidesCreate(deps: SlidesCreateDeps): Promise<Comman
   if (plan !== undefined && plan.requests.length > 0) {
     await deps.batchUpdate(presentationId, plan.requests);
   }
-
-  if (parentId !== undefined) await deps.moveFile(presentationId, parentId);
 
   deps.write(
     renderSuccess(

@@ -29,8 +29,16 @@ export interface FormsCreateDeps {
 }
 
 /**
- * Creates, then fills, then moves (decision 0028 §7) — `docs create`'s shape,
- * for the same reason and with the same comment on `moveFile`.
+ * Creates, moves, then fills — the three calls decision 0028 §7 records, in the
+ * order [#36](https://github.com/ncukondo/gdrive-cli/issues/36) put them.
+ * `forms.create` takes a title and nothing else, so the form is in My Drive's
+ * root until the Drive move takes it out; and the fill is one `batchUpdate`,
+ * which is atomic, so a single item the API refuses fails it with the form
+ * already made. Moving first is what keeps that form inside the folder the
+ * caller named instead of loose in the root (0043 §2). §7's own wording is
+ * "creates, then fills, then moves", which is what this did before; the record
+ * gives no reason for that half of the order, and the code is the source of
+ * truth for what happens.
  *
  * The document is parsed before the form exists, so a document that does not
  * parse leaves no empty form behind to clean up. Decision 0055 §2 puts the name
@@ -53,12 +61,12 @@ export async function handleFormsCreate(deps: FormsCreateDeps): Promise<CommandR
   });
 
   const created = await deps.createForm(deps.title);
+  if (parentId !== undefined) await deps.moveFile(created.id, parentId);
+
   const plan = document === undefined ? undefined : planFormCreate(document, created.title);
   if (plan !== undefined && plan.requests.length > 0) {
     await deps.batchUpdate(created.id, plan.requests);
   }
-
-  if (parentId !== undefined) await deps.moveFile(created.id, parentId);
 
   deps.write(
     renderSuccess(
