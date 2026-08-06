@@ -104,7 +104,20 @@ describe("createForm", () => {
       id: "1NeW",
       title: "New survey",
     });
-    expect(fake.created).toEqual(["New survey"]);
+    expect(fake.created[0]?.title).toBe("New survey");
+  });
+
+  /**
+   * A form has two names: the title responders see, and the Drive name that
+   * `ls`, `search` and `info` report — and that a path resolves by.
+   * `documentTitle` can be set **on create and never again**: no `batchUpdate`
+   * can change it, and this CLI has no rename. A form created without one is
+   * called `Untitled form` in Drive for good, and is unreachable by path.
+   */
+  it("names the form in Drive too, which only a create can do", async () => {
+    const fake = createFakeForms({ createdId: "1NeW" });
+    await createForm(fake.client, "New survey");
+    expect(fake.created).toEqual([{ title: "New survey", documentTitle: "New survey" }]);
   });
 
   it("maps a refusal the same way every other call does", async () => {

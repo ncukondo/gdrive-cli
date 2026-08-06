@@ -31,8 +31,8 @@ export interface FakeForms {
   pageTokens: (string | undefined)[];
   /** Every `forms.batchUpdate` body, so a test can assert what was sent. */
   batches: BatchUpdateParams[];
-  /** Every title `forms.create` was given. */
-  created: string[];
+  /** The `info` of every `forms.create` — a form has two titles, not one. */
+  created: { title: string; documentTitle: string }[];
 }
 
 /**
@@ -43,7 +43,7 @@ export function createFakeForms(options: FakeFormsOptions = {}): FakeForms {
   const calls: string[] = [];
   const pageTokens: (string | undefined)[] = [];
   const batches: BatchUpdateParams[] = [];
-  const created: string[] = [];
+  const created: { title: string; documentTitle: string }[] = [];
   const pages = options.pages ?? [[]];
 
   const client: FormsClient = {
@@ -61,11 +61,11 @@ export function createFakeForms(options: FakeFormsOptions = {}): FakeForms {
       create: async ({ requestBody }) => {
         calls.push("forms.create");
         if (options.error !== undefined) throw options.error;
-        created.push(requestBody.info.title);
+        created.push(requestBody.info);
         return {
           data: {
             formId: options.createdId ?? "1NeWfOrM",
-            info: { title: requestBody.info.title },
+            info: requestBody.info,
           },
         };
       },
