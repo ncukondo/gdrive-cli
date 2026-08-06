@@ -145,12 +145,18 @@ export function resolveGlobalOptions(program: Command): GlobalOptions {
  * `quiet` is optional because only a command that reports a partial result
  * (decision 0031 §4) has anything to vary with it; every other registrar leaves
  * it out and gets exactly the error line it got before.
+ *
+ * The reason goes to stderr and the values `-q` asked for go to stdout, which
+ * is the only stream `$(…)` and a pipe read — {@link renderError} decides the
+ * split and says why.
  */
 export function handleError(error: unknown, format: OutputFormat, quiet = false): void {
   const code = errorToCode(error);
   const message = error instanceof Error ? error.message : String(error);
   const data = error instanceof AppError ? error.data : undefined;
-  process.stderr.write(renderError(code, message, format, quiet, data));
+  const rendered = renderError(code, message, format, quiet, data);
+  process.stderr.write(rendered.stderr);
+  if (rendered.stdout !== "") process.stdout.write(rendered.stdout);
   process.exit(errorToExit(code));
 }
 

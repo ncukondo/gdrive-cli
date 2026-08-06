@@ -365,7 +365,36 @@ describe("handleError", () => {
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.GENERAL);
 
     stderrSpy.mockClear();
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     expect(() => handleError(error, "text", true)).toThrow(ExitSignal);
-    expect(stderrSpy.mock.calls.map((c) => c[0]).join("")).toBe("Error: denied\n1X\n");
+    expect(stderrSpy.mock.calls.map((c) => c[0]).join("")).toBe("Error: denied\n");
+    expect(stdoutSpy.mock.calls.map((c) => c[0]).join("")).toBe("1X\n");
+  });
+
+  /**
+   * `-q` exists to hand a shell a value, and `$(…)` reads stdout. A failure
+   * that made a file is where that matters most: no success envelope arrived,
+   * so the error is the only place the id is printed at all
+   * (decisions 0007, 0031 §4, 0038 §1).
+   */
+  it("puts a failure's quiet values on stdout, where a shell can read them", () => {
+    mockProcessExit();
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const error = new AppError("API_ERROR", "Forms said no", {
+      data: { payload: { id: "1NeW" }, text: "Created it and left it there.", quiet: "1NeW" },
+    });
+
+    expect(() => handleError(error, "text", true)).toThrow(ExitSignal);
+    expect(stdoutSpy.mock.calls.map((c) => c[0]).join("")).toBe("1NeW\n");
+  });
+
+  it("writes nothing to stdout when the failure left nothing to name", () => {
+    mockProcessExit();
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    expect(() => handleError(new AppError("NOT_FOUND", "gone"), "text", true)).toThrow(ExitSignal);
+    expect(stdoutSpy).not.toHaveBeenCalled();
   });
 });

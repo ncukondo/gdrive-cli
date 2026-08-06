@@ -125,7 +125,11 @@ export function registerSlides(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      // A `create` can fail after the deck exists — the batch is atomic, and a
+      // layout the new theme lacks is only found out once there is a deck to
+      // match against — and then the failure is the only place its id is
+      // printed (decision 0031 §4). `-q` is passed on so it lands on stdout.
+      handleError(error, opts.format, opts.quiet);
     }
   });
   slides.addCommand(create);

@@ -136,14 +136,34 @@ export function reportUnsupported<T>(
 }
 
 /**
- * Renders an error for stderr in the active format (decision 0007), with what
- * the command changed before it failed when there is any (decision 0031 §4).
+ * A rendered failure, split by the stream each half belongs on.
  *
- * The failure line is printed in every mode: a caller reading stderr is owed
- * the reason whatever else follows it. What `data` varies is only what comes
- * *under* it — a summary in text mode, and in `--quiet` the ids themselves, one
- * per line, which is what a shell retry loop reads. JSON mode ignores `--quiet`
- * as every other envelope does (decision 0007).
+ * The split is why this is an object rather than a string: the two halves answer
+ * different questions, and a caller that has to remember to write the second one
+ * will one day not. Both keys are always present; either may be empty.
+ */
+export interface RenderedError {
+  /** The reason, and any prose about it. Always stderr, in every mode. */
+  stderr: string;
+  /** The values `--quiet` asked for, one per line. Empty unless there are any. */
+  stdout: string;
+}
+
+/**
+ * Renders an error in the active format (decision 0007), with what the command
+ * changed before it failed when there is any (decision 0031 §4).
+ *
+ * The failure line goes to stderr in every mode: a caller reading stderr is owed
+ * the reason whatever else happens. What `data` varies is what accompanies it —
+ * a summary under it in text mode, and in `--quiet` the ids themselves, one per
+ * line. JSON mode ignores `--quiet` as every other envelope does.
+ *
+ * **`--quiet`'s values go to stdout, not to stderr.** `-q` is "minimal text for
+ * piping" (decision 0007) and exists to hand a shell a value it can capture
+ * (decision 0038 §1); `$(…)` and a pipe both read stdout, so an id printed on
+ * stderr is a value no caller can take. That matters most on exactly this path:
+ * a `create` that failed after making the file printed no success envelope, so
+ * the failure is the only place its id appears at all.
  */
 export function renderError(
   code: ErrorCode,
@@ -151,12 +171,14 @@ export function renderError(
   format: OutputFormat,
   quiet = false,
   data?: ErrorData,
-): string {
+): RenderedError {
   if (format === "json") {
-    return formatJsonError(code, message, data);
+    return { stderr: formatJsonError(code, message, data), stdout: "" };
   }
-  const under = quiet ? data?.quiet : data?.text;
-  return under === undefined || under === ""
-    ? `Error: ${message}\n`
-    : `Error: ${message}\n${under}\n`;
+  const values = quiet ? (data?.quiet ?? "") : "";
+  const under = quiet ? "" : (data?.text ?? "");
+  return {
+    stderr: under === "" ? `Error: ${message}\n` : `Error: ${message}\n${under}\n`,
+    stdout: values === "" ? "" : `${values}\n`,
+  };
 }

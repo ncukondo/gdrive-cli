@@ -62,9 +62,18 @@ far it got. Two kinds of command do that today:
 copied before it stopped, and the four `create`s — `docs`, `sheets`, `forms`
 and `slides` — which name the file they made when something after the create
 failed. Every other failure is the two-key object above, and a reader that
-ignores the field sees exactly what it always saw. In `-f text` the extra
-arrives as a summary line under the error, and under `-q` as the IDs created so
-far, one per line
+ignores the field sees exactly what it always saw.
+
+Where each half is printed matters, because the point of it is to be picked up:
+
+| Mode | stdout | stderr |
+|------|--------|--------|
+| `-f json` | nothing | the whole envelope, `data` included |
+| `-f text` | nothing | the error, and a summary line under it |
+| `-q` | the IDs, one per line | the error |
+
+So `ID=$(gdrive forms create … -q)` gets the id of the form a failed create left
+behind, and the reason is still on the terminal
 ([`../decisions/0031`](../decisions/0031-recursive-copy.md) §4).
 
 **Most `console` transcripts on this page pass `-f text`**, because a
@@ -703,8 +712,9 @@ Four things are worth knowing before you run it on something large:
   again would make a second folder rather than fill the one that is there.
 
   The exit code and `error.code` are the underlying failure's. Under `-q` the
-  same failure prints the new IDs one per line, the top folder first — enough
-  for a shell to delete the half-copy and start again. There is no resume, and
+  same failure prints the new IDs **on stdout**, one per line, the top folder
+  first — enough for a shell to delete the half-copy and start again, with the
+  reason still on stderr where it always was. There is no resume, and
   re-running is now refused rather than silently copying the tree a second time:
   the top-level folder the first run created already holds the name
   ([above](#a-name-has-to-be-addressable)). Remove the partial copy — or give the

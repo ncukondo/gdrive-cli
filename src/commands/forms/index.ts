@@ -154,7 +154,11 @@ export function registerForms(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      // A `create` can fail after the form exists — one item the API refuses
+      // takes the whole atomic batch down — and then the failure is the only
+      // place its id is printed (decision 0031 §4). `-q` is passed on so that
+      // id lands on stdout, where a shell can take it.
+      handleError(error, opts.format, opts.quiet);
     }
   });
   forms.addCommand(create);
