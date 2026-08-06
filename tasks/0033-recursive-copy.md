@@ -126,7 +126,13 @@ plan ([`0041`](../decisions/0041-the-task-is-current-during-review.md)).
 - [ ] `gdrive cp -r "Reports/2026" Archive` produces `Archive/2026` with the
       whole tree, and quiet prints the new top folder id
 - [ ] `gdrive cp "Reports/2026" Archive` (no `-r`) fails naming the folder and
-      `-r`, and an ordinary file copy still costs one API call
+      `-r`. It costs an ordinary file copy a second call: this line asked for one,
+      and [`0054`](../decisions/0054-a-copy-keeps-its-name.md) made that
+      impossible — §1 needs the source's name and §3 its parents, so `cp` cannot
+      decide anything without a `files.get` first. Once that is paid, the refusal
+      is pre-flight and [`0031`](../decisions/0031-recursive-copy.md) §1's reason
+      for deferring it ("a pre-flight `files.get` would cost every ordinary `cp` a
+      round trip") no longer holds. What a caller sees is unchanged
 - [ ] A shortcut inside the tree is copied as a shortcut; the folder it points
       at is not copied
 - [ ] A copy that fails part-way exits non-zero and its JSON carries `data`
