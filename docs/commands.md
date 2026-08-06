@@ -516,16 +516,21 @@ $ gdrive ln -f text "Reports/2026 Budget" "Shared/Links" --name "Budget (2026)"
 Created shortcut Budget (2026) (1Lnk...) -> 1AbC...
 ```
 
+The second line names the target by ID alone because nothing ever looked it up:
+`--name` skipped the call a path target would have paid for. The same command
+with an ID `<target>` prints the target's name too, since resolving it fetched
+that anyway.
+
 ```json
 { "file": { /* file object, with target_id and target_type */ } }
 ```
 
 Quiet: the new shortcut's ID.
 
-Which links a drive will hold is Drive's rule — a shared drive will not keep a
-shortcut to a file outside it, and the rules vary with its sharing settings.
-`ln` does not pre-check any of them, so a refusal arrives worded by Drive rather
-than paraphrased here. Retargeting an existing shortcut is not supported:
+Which links a drive will hold is Drive's rule, and it varies with the drives
+involved and their sharing settings. `ln` pre-checks none of it: it issues the
+create and hands back whatever Drive answers, in Drive's own words rather than
+paraphrased here. Retargeting an existing shortcut is not supported:
 `rm` the link and make a new one. Nothing stops two shortcuts sharing a name in
 one folder, and a path segment that then matches both is `INVALID_ARGS` listing
 the candidate IDs — `--name` is the way out.

@@ -461,12 +461,17 @@ describe("content arguments follow a shortcut (decision 0025 §1)", () => {
 });
 
 describe("`gdrive ln` (decision 0026)", () => {
-  it("names the shortcut after its target", async () => {
+  it("names the shortcut after its target, at the cost of one lookup", async () => {
     await run(["ln", "Reports/Notes", "Other"]);
     expect(firstArg(drive.create).requestBody).toMatchObject({
       name: "Notes",
       shortcutDetails: { targetId: "doc1" },
     });
+    // The walk finds the name and then discards it: `resolveTarget` answers
+    // `file: null` for a path naming an ordinary file, so the default name is
+    // bought with a `files.get` (decision 0026 §3). This is the call the next
+    // test shows `--name` saving.
+    expect(drive.get).toHaveBeenCalledTimes(1);
   });
 
   it("names it after what a shortcut target points at, not after the link", async () => {
@@ -477,8 +482,8 @@ describe("`gdrive ln` (decision 0026)", () => {
   it("takes --name instead, and then asks Drive nothing about the target", async () => {
     await run(["ln", "Reports/Notes", "Other", "--name", "Notes (linked)"]);
     expect(firstArg(drive.create).requestBody).toMatchObject({ name: "Notes (linked)" });
-    // A path target is named by the walk's own listing, so nothing here needs
-    // `files.get` (decisions 0026 §3, 0025 §4).
+    // `--name` is what saves the lookup, not the walk: the same command without
+    // it fetches the target above, purely to learn what it is called.
     expect(drive.get).not.toHaveBeenCalled();
   });
 });
