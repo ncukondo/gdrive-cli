@@ -38,7 +38,11 @@ export interface SlidesCreateDeps {
  * that builds the document deletes it.
  *
  * The document is parsed before the deck exists, so a document that does not
- * parse leaves no empty deck behind to clean up.
+ * parse leaves no empty deck behind to clean up. Parsing is as far as that goes:
+ * a document naming a layout the new deck's theme does not have is only found
+ * out once the deck exists to be matched against, so that one fails with an
+ * empty deck left over. Nothing can move it earlier — the layouts belong to the
+ * deck the create just made.
  */
 export async function handleSlidesCreate(deps: SlidesCreateDeps): Promise<CommandResult> {
   let document: SlideDocument | undefined;

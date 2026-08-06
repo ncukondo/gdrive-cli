@@ -15,10 +15,14 @@ import type { SkippedField, SlidePlanEntry } from "./plan.ts";
  * would send a caller away from a command they already have.
  */
 const SKIPPED_REASON: Record<string, string> = {
-  title: "the slide's layout has no placeholder for it",
-  subtitle: "the slide's layout has no placeholder for it",
-  body: "the slide's layout has no placeholder for it",
-  notes: "a new slide's notes page has no id until the slide exists",
+  // Each of the first four is reported from two places — a slide being created,
+  // whose layout offers no such placeholder, and one being updated, which has
+  // none on it — so each says both rather than the one case its author had in
+  // mind while writing it.
+  title: "neither the slide nor its layout has a placeholder for it",
+  subtitle: "neither the slide nor its layout has a placeholder for it",
+  body: "neither the slide nor its layout has a placeholder for it",
+  notes: "the slide has no notes shape to write through, and a new one has none until it exists",
   layout: "no request changes the layout an existing slide is built on",
   elements: "`elements` is read-only, and a new slide cannot be given any",
   "presentation.title":

@@ -102,7 +102,17 @@ export interface SlidePlanOptions {
 
 // --- Ids for what the batch creates -----------------------------------------
 
-/** Every object id the presentation already uses, so a generated one is free. */
+/**
+ * Every object id the presentation already uses, so a generated one is free.
+ *
+ * A subset of what the API's uniqueness rule covers: the masters and the notes
+ * master are not in `PresentationRaw` at all, because nothing here reads them.
+ * That is safe for the ids below rather than in general — the collision that
+ * can realistically happen is with an id a previous run of this command left in
+ * the deck, and those are all in `slides`, while Google's own ids look nothing
+ * like a `gdrive_` prefix. Anything that starts generating ids of another shape
+ * has to widen this first.
+ */
 function takenIds(presentation: PresentationRaw): Set<string> {
   const taken = new Set<string>();
   const walk = (page: PageRaw | undefined): void => {
@@ -247,10 +257,28 @@ function sameElement(a: SlideElement, b: SlideElement): boolean {
  * document does not describe well enough to write at all.
  */
 function whyUnwritable(element: SlideElement): string {
-  const id = element.id ?? "with no id";
+  // A hand-authored entry can arrive without an id, and "with no id is a shape
+  // outside every layout" is not a sentence.
+  const id = element.id === undefined ? "an entry with no id" : `${element.id}`;
   return element.placeholder === undefined
     ? `${id} is a shape outside every layout, which this document does not model well enough to write`
     : `${id} is a displaced ${element.placeholder} placeholder, and writing one is not implemented yet (https://github.com/ncukondo/gdrive-cli/issues/28)`;
+}
+
+/**
+ * What differs, in the only terms this comparison can honestly report.
+ *
+ * It is positional, not a diff: at the first entry that does not match there is
+ * no way to tell an edit from an insertion that shifted everything after it. So
+ * a difference in *count* is reported as one — prepending an entry says the
+ * document lists more than the slide has, rather than claiming a text changed
+ * that did not.
+ */
+function elementMismatch(wanted: number, actual: number): string {
+  if (wanted === actual) return "the text of an element changed";
+  const listed = wanted === 1 ? "1 element" : `${wanted} elements`;
+  const has = actual === 1 ? "1" : String(actual);
+  return `the document lists ${listed} where the slide has ${has}`;
 }
 
 /**
@@ -267,11 +295,11 @@ function checkElements(slideId: string, document: SlideDocumentSlide, deck: Slid
   if (wanted === undefined) return;
   const actual = deck.elements ?? [];
 
+  const what = elementMismatch(wanted.length, actual.length);
+
   for (const [index, element] of wanted.entries()) {
     const other = actual[index];
     if (other !== undefined && sameElement(element, other)) continue;
-    const what =
-      other === undefined ? "the document adds an element" : "the text of an element changed";
     throw new AppError(
       "INVALID_ARGS",
       `Slide ${slideId}: ${what}, but \`elements\` is read-only — ${whyUnwritable(element)}. Nothing was written; restore the slide's \`elements\` as \`slides read\` emitted them and edit the fields above them instead.`,
@@ -281,7 +309,7 @@ function checkElements(slideId: string, document: SlideDocumentSlide, deck: Slid
   if (dropped !== undefined) {
     throw new AppError(
       "INVALID_ARGS",
-      `Slide ${slideId}: the document drops an element, but \`elements\` is read-only — ${whyUnwritable(dropped)}. Nothing was written; restore the slide's \`elements\` as \`slides read\` emitted them and edit the fields above them instead.`,
+      `Slide ${slideId}: ${what}, but \`elements\` is read-only — ${whyUnwritable(dropped)}. Nothing was written; restore the slide's \`elements\` as \`slides read\` emitted them and edit the fields above them instead.`,
     );
   }
 }
@@ -306,11 +334,17 @@ function layoutIndex(presentation: PresentationRaw): Map<string, PageRaw> {
  * Which layout a new slide is built from, and the layout page to read its
  * placeholders off.
  *
- * A layout of *this* deck is named by id: `createSlide` resolves a
- * `predefinedLayout` against the current master and answers 400 when the theme
- * has no such layout, while an id that came out of this deck cannot miss. The
- * predefined name is the fallback for a deck that reported no layouts at all,
- * and a name that is neither is an error — building the slide on `BLANK`
+ * A layout of *this* deck is named by id, which is the more precise of the two
+ * spellings and the only one that can also yield the placeholder types below.
+ * It is not a guarantee: `createSlide` resolves **either** spelling against the
+ * *current master* — the master of the slide before the insertion point — and
+ * answers 400 when the layout is not one of that master's. A deck carrying two
+ * themes can therefore refuse a layout this deck really has, and neither
+ * spelling avoids it, because the master a new slide belongs to is decided by
+ * where it lands rather than by what the document says.
+ *
+ * The predefined name is the fallback for a deck that reported no layouts at
+ * all, and a name that is neither is an error — building the slide on `BLANK`
  * instead would silently produce a deck nobody asked for.
  */
 function resolveLayout(
