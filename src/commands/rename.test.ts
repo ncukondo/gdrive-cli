@@ -3,7 +3,7 @@ import { handleRename, type RenameDeps } from "./rename.ts";
 import { childrenNamed } from "../lib/resolve-path.ts";
 import { FILE_TYPES, type DriveFile, type FileType } from "../types/index.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
-import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
+import { UNPATHABLE_ANYWHERE, UNPATHABLE_AT_A_DRIVE_ROOT } from "../../tests/helpers/names.ts";
 
 const MIME_BY_TYPE: Record<FileType, string> = {
   folder: "application/vnd.google-apps.folder",
@@ -233,7 +233,7 @@ describe("handleRename", () => {
      * The walk is itself a Drive call, so a name that cannot survive a path is
      * decided before it: nothing about the file changes the answer.
      */
-    it.each(UNPATHABLE_NAMES)("refuses %j before resolving anything", async (name) => {
+    it.each(UNPATHABLE_ANYWHERE)("refuses %j before resolving anything", async (name) => {
       const resolvePath = vi.fn(async () => "R1");
       const renameFile = vi.fn(async () => file());
       await expect(
@@ -242,5 +242,41 @@ describe("handleRename", () => {
       expect(resolvePath).not.toHaveBeenCalled();
       expect(renameFile).not.toHaveBeenCalled();
     });
+
+    /**
+     * The readings that bite only at a drive root cannot be decided before the
+     * walk, because the walk is what says which folder the file is in. So they
+     * cost the round trip the blanket refusal above avoids — and they are worth
+     * it, because a top-level file's parent arrives as a real `0A`-shaped id.
+     */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "refuses %j for a file whose parent is a drive root, after the walk",
+      async (name) => {
+        const resolvePath = vi.fn(async () => "R1");
+        const renameFile = vi.fn(async () => file());
+        await expect(
+          handleRename(
+            against([], {
+              name,
+              resolvePath,
+              renameFile,
+              getFile: async () => file({ id: "R1", parents: ["0ABCDEFGHIJKLMNOPQR"] }),
+            }),
+          ),
+        ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(resolvePath).toHaveBeenCalled();
+        expect(renameFile).not.toHaveBeenCalled();
+      },
+    );
+
+    /** Decision 0056 §2's other half: in an ordinary folder every one works. */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "renames a file in an ordinary folder to %j",
+      async (name) => {
+        const renameFile = vi.fn(async () => file());
+        await handleRename(against([], { name, renameFile }));
+        expect(renameFile).toHaveBeenCalledWith("R1", name);
+      },
+    );
   });
 });

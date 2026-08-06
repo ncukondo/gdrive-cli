@@ -3,7 +3,7 @@ import { createLnCommand, handleLn } from "./ln.ts";
 import { childrenNamed } from "../lib/resolve-path.ts";
 import { AppError, type DriveFile } from "../types/index.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
-import { UNPATHABLE_NAMES } from "../../tests/helpers/names.ts";
+import { UNPATHABLE_ANYWHERE, UNPATHABLE_AT_A_DRIVE_ROOT } from "../../tests/helpers/names.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -210,12 +210,34 @@ describe("handleLn", () => {
       expect(d.createShortcut).toHaveBeenCalledWith("T1", "DEST", "2026 Budget");
     });
 
-    it.each(UNPATHABLE_NAMES)("refuses --name %j without asking Drive anything", async (name) => {
-      const d = deps({ name });
-      await expect(handleLn(d)).rejects.toMatchObject({ code: "INVALID_ARGS" });
-      expect(d.findSiblings).not.toHaveBeenCalled();
-      expect(d.createShortcut).not.toHaveBeenCalled();
-    });
+    it.each(UNPATHABLE_ANYWHERE)(
+      "refuses --name %j without asking Drive anything",
+      async (name) => {
+        const d = deps({ name });
+        await expect(handleLn(d)).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(d.findSiblings).not.toHaveBeenCalled();
+        expect(d.createShortcut).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "refuses --name %j when the folder is a drive root",
+      async (name) => {
+        const d = deps({ name, dest: "/", resolveFolder: vi.fn(async (_a: string) => "root") });
+        await expect(handleLn(d)).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(d.createShortcut).not.toHaveBeenCalled();
+      },
+    );
+
+    /** Decision 0056 §2's other half: below a root every one of them works. */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "links as --name %j in an ordinary folder",
+      async (name) => {
+        const d = deps({ name });
+        await handleLn(d);
+        expect(d.createShortcut).toHaveBeenCalledWith("T1", "DEST", name);
+      },
+    );
   });
 });
 

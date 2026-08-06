@@ -18,12 +18,12 @@ AI-agent use.
   Drive has no request that does — and a run that cannot finish reports every
   file it already copied.
 - **A name you can address afterwards** — every command that gives a file a name
-  refuses one you could not then pass back as a path: one the folder already
-  holds, one with a space at either end, one containing `/`, one spelled like the
-  root or like an ID, one starting with `drive:`. Drive allows every one of them
-  and leaves you a file no path can reach; this says so at the moment it happens,
-  and names a replacement it has checked
-  ([details](docs/commands.md#a-name-has-to-be-addressable)).
+  refuses one the path to it would not bring back: one the folder already holds,
+  one ending in a space, one containing `/`, and — at the top of a drive, where
+  the name is the whole path — one spelled like the root, like an ID, or with a
+  `drive:` prefix. Drive allows every one of them and leaves you a file no path
+  can reach; this says so at the moment it happens, and names a replacement it
+  has checked ([details](docs/commands.md#a-name-has-to-be-addressable)).
 - **Shared drives** — any shared-drive ID works in any command that takes one,
   with no flag, and `drive:<name>/<path>` addresses one by path; `gdrive drives`
   lists the drives and their IDs. Only `search` stays on My Drive by default,

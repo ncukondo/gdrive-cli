@@ -102,7 +102,7 @@ export async function childrenNamed(
 export type Reading =
   | { kind: "root" }
   | { kind: "id"; id: string }
-  | { kind: "drive"; rest: string }
+  | { kind: "drive"; drive: string; segments: string[] }
   | { kind: "path"; segments: string[] };
 
 /** Reads an argument the way {@link walk} does, without looking anything up. */
@@ -114,9 +114,38 @@ export function readArgument(arg: string): Reading {
   if (trimmed === "" || trimmed === "/" || trimmed === ROOT_ID) return { kind: "root" };
   if (looksLikeId(trimmed)) return { kind: "id", id: trimmed };
   if (trimmed.startsWith(DRIVE_PREFIX)) {
-    return { kind: "drive", rest: trimmed.slice(DRIVE_PREFIX.length) };
+    // The drive name is the first segment *unfiltered*: `drive:/2026` names no
+    // drive, it does not name the drive `2026`.
+    const [drive = "", ...tail] = trimmed.slice(DRIVE_PREFIX.length).split("/");
+    return { kind: "drive", drive, segments: tail.filter((s) => s !== "") };
   }
   return { kind: "path", segments: trimmed.split("/").filter((s) => s !== "") };
+}
+
+/**
+ * The segments an argument is looked up *by name* under — empty for one that
+ * names a root or is handed over as an id, because neither looks anything up.
+ *
+ * The `drive:` prefix's own first segment is already gone: it names the drive,
+ * not a child of it. So the last element here is the entry the argument names,
+ * whichever spelling reached it, which is what decision 0056 §2's refusal asks
+ * about.
+ */
+export function lookupSegments(arg: string): string[] {
+  const reading = readArgument(arg);
+  return reading.kind === "root" || reading.kind === "id" ? [] : reading.segments;
+}
+
+/**
+ * True for the one kind of parent that has no path segment ahead of its
+ * children: a My Drive root or a shared drive's root.
+ *
+ * The two cannot be told apart by their ids — `files.get('root')` answers with a
+ * `0A`-shaped id of exactly the form a shared drive root has — so one predicate
+ * covers both, and every caller has to be right for both.
+ */
+export function isDriveRoot(id: string): boolean {
+  return id === ROOT_ID || SHARED_DRIVE_ROOT_ID.test(id);
 }
 
 interface Start {
@@ -129,14 +158,16 @@ interface Start {
 }
 
 /**
- * Splits `drive:<name>/<segments>` into its drive root and the rest, resolving
- * the name through the same lookup `--drive` uses (decision 0019 §2).
+ * Turns a `drive:` reading into its drive root and the rest, resolving the name
+ * through the same lookup `--drive` uses (decision 0019 §2). The splitting is
+ * {@link readArgument}'s, so a `drive:` path and a plain one reach their last
+ * segment through the same code.
  */
-async function startFromDrive(client: DriveClient, rest: string): Promise<Start> {
-  // The name is the first segment *unfiltered*: `drive:/2026` names no drive,
-  // it does not name the drive `2026`.
-  const [name = "", ...tail] = rest.split("/");
-  const segments = tail.filter((s) => s !== "");
+async function startFromDrive(
+  client: DriveClient,
+  reading: Extract<Reading, { kind: "drive" }>,
+): Promise<Start> {
+  const { drive: name, segments } = reading;
   if (name === "") {
     throw new AppError(
       "INVALID_ARGS",
@@ -187,7 +218,7 @@ async function walk(client: DriveClient, arg: string): Promise<Walked> {
 
   const start: Start =
     reading.kind === "drive"
-      ? await startFromDrive(client, reading.rest)
+      ? await startFromDrive(client, reading)
       : { parentId: ROOT_ID, segments: reading.segments, label: "", hintable: true };
 
   let { parentId } = start;
@@ -325,7 +356,7 @@ export async function resolveTarget(client: DriveClient, arg: string): Promise<R
   }
 
   // A root is a folder by construction, so it is the one id worth not asking about.
-  if (id === ROOT_ID || SHARED_DRIVE_ROOT_ID.test(id)) return { id, file: null };
+  if (isDriveRoot(id)) return { id, file: null };
 
   const file = await getFile(client, id);
   if (file.type !== "shortcut") return { id, file };

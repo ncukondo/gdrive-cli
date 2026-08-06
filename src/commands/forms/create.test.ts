@@ -5,7 +5,7 @@ import type { FormsRequest } from "../../lib/forms-api.ts";
 import { handleFormsCreate, type FormsCreateDeps } from "./create.ts";
 import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
-import { UNPATHABLE_NAMES } from "../../../tests/helpers/names.ts";
+import { UNPATHABLE_ANYWHERE, UNPATHABLE_AT_A_DRIVE_ROOT } from "../../../tests/helpers/names.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -228,12 +228,39 @@ describe("handleFormsCreate", () => {
       expect(result.created).toEqual([]);
     });
 
-    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (title) => {
-      const findSiblings = vi.fn(async () => []);
-      const result = await run({ title, findSiblings });
-      expect(codeOf(result.error)).toBe("INVALID_ARGS");
-      expect(findSiblings).not.toHaveBeenCalled();
-      expect(result.created).toEqual([]);
+    it.each(UNPATHABLE_ANYWHERE)(
+      "refuses %j wherever it would land, without asking Drive anything",
+      async (title) => {
+        for (const parent of [undefined, "Surveys"]) {
+          const findSiblings = vi.fn(async () => []);
+          const result = await run({
+            title,
+            findSiblings,
+            ...(parent === undefined ? {} : { parent }),
+          });
+          expect(codeOf(result.error)).toBe("INVALID_ARGS");
+          expect(findSiblings).not.toHaveBeenCalled();
+          expect(result.created).toEqual([]);
+        }
+      },
+    );
+
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "refuses %j with no --parent, where the title is the whole path argument",
+      async (title) => {
+        const findSiblings = vi.fn(async () => []);
+        const result = await run({ title, findSiblings });
+        expect(codeOf(result.error)).toBe("INVALID_ARGS");
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(result.created).toEqual([]);
+      },
+    );
+
+    /** Decision 0056 §2's other half: below a root every one of them works. */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)("creates %j inside --parent", async (title) => {
+      const result = await run({ title, parent: "Surveys" });
+      expect(result.error).toBeUndefined();
+      expect(result.created).toEqual([title]);
     });
   });
 });

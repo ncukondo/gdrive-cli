@@ -44,7 +44,12 @@ export async function handleMv(deps: MvDeps): Promise<CommandResult> {
     findSiblings: deps.findSiblings,
     where: deps.dest,
     selfId: moving.id,
-    remedy: `Rename one of them first, e.g. \`gdrive rename "${deps.file}" "${moving.name} (2)"\`.`,
+    // The suggestion is handed in already checked, never built from
+    // `moving.name`: `mv` is the one caller that gets here without the
+    // unpathable check having run (decision 0056 §1), so the name it carries may
+    // be one `rename` would itself refuse — `"a/b (2)"` is not advice.
+    remedy: (suggestion) =>
+      `Rename one of them first, e.g. \`gdrive rename "${deps.file}" "${suggestion}"\`.`,
   });
 
   const file = await deps.moveFile(fileId, destId);

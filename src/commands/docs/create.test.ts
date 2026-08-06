@@ -3,7 +3,7 @@ import { handleDocsCreate } from "./create.ts";
 import type { ParagraphBoundary } from "../../lib/docs-api.ts";
 import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
-import { UNPATHABLE_NAMES } from "../../../tests/helpers/names.ts";
+import { UNPATHABLE_ANYWHERE, UNPATHABLE_AT_A_DRIVE_ROOT } from "../../../tests/helpers/names.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -130,13 +130,37 @@ describe("handleDocsCreate", () => {
       expect(d.createDocument).not.toHaveBeenCalled();
     });
 
-    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (title) => {
+    it.each(UNPATHABLE_ANYWHERE)(
+      "refuses %j wherever it would land, without asking Drive anything",
+      async (title) => {
+        for (const parent of [undefined, "Notes"]) {
+          const d = baseDeps();
+          await expect(
+            handleDocsCreate({ ...d, title, ...(parent === undefined ? {} : { parent }) }),
+          ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+          expect(d.findSiblings).not.toHaveBeenCalled();
+          expect(d.createDocument).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "refuses %j with no --parent, where the title is the whole path argument",
+      async (title) => {
+        const d = baseDeps();
+        await expect(handleDocsCreate({ ...d, title })).rejects.toMatchObject({
+          code: "INVALID_ARGS",
+        });
+        expect(d.findSiblings).not.toHaveBeenCalled();
+        expect(d.createDocument).not.toHaveBeenCalled();
+      },
+    );
+
+    /** Decision 0056 §2's other half: below a root every one of them works. */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)("creates %j inside --parent", async (title) => {
       const d = baseDeps();
-      await expect(handleDocsCreate({ ...d, title })).rejects.toMatchObject({
-        code: "INVALID_ARGS",
-      });
-      expect(d.findSiblings).not.toHaveBeenCalled();
-      expect(d.createDocument).not.toHaveBeenCalled();
+      await handleDocsCreate({ ...d, title, parent: "Notes" });
+      expect(d.createDocument).toHaveBeenCalledWith(title);
     });
   });
 });

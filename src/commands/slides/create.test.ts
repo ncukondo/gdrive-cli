@@ -11,7 +11,7 @@ import type { SlidesRequest } from "../../lib/slides-api.ts";
 import { handleSlidesCreate, type SlidesCreateDeps } from "./create.ts";
 import { childrenNamed, ROOT_ID } from "../../lib/resolve-path.ts";
 import { createWritableTreeDrive, type DriveNode } from "../../../tests/helpers/fake-drive.ts";
-import { UNPATHABLE_NAMES } from "../../../tests/helpers/names.ts";
+import { UNPATHABLE_ANYWHERE, UNPATHABLE_AT_A_DRIVE_ROOT } from "../../../tests/helpers/names.ts";
 
 function collect() {
   const lines: string[] = [];
@@ -242,13 +242,43 @@ describe("handleSlidesCreate (decision 0030 §4)", () => {
       expect(createPresentation).not.toHaveBeenCalled();
     });
 
-    it.each(UNPATHABLE_NAMES)("refuses %j without asking Drive anything", async (title) => {
+    it.each(UNPATHABLE_ANYWHERE)(
+      "refuses %j wherever it would land, without asking Drive anything",
+      async (title) => {
+        for (const parent of [undefined, "Decks"]) {
+          const createPresentation = vi.fn(async (t: string) => ({ ...fresh, title: t }));
+          const findSiblings = vi.fn(async () => []);
+          const result = await run({
+            title,
+            createPresentation,
+            findSiblings,
+            ...(parent === undefined ? {} : { parent }),
+          });
+          expect(codeOf(result.error)).toBe("INVALID_ARGS");
+          expect(findSiblings).not.toHaveBeenCalled();
+          expect(createPresentation).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)(
+      "refuses %j with no --parent, where the title is the whole path argument",
+      async (title) => {
+        const createPresentation = vi.fn(async (t: string) => ({ ...fresh, title: t }));
+        const findSiblings = vi.fn(async () => []);
+        const result = await run({ title, createPresentation, findSiblings });
+        expect(codeOf(result.error)).toBe("INVALID_ARGS");
+        expect(findSiblings).not.toHaveBeenCalled();
+        expect(createPresentation).not.toHaveBeenCalled();
+      },
+    );
+
+    /** Decision 0056 §2's other half: below a root every one of them works. */
+    it.each(UNPATHABLE_AT_A_DRIVE_ROOT)("creates %j inside --parent", async (title) => {
       const createPresentation = vi.fn(async (t: string) => ({ ...fresh, title: t }));
-      const findSiblings = vi.fn(async () => []);
-      const result = await run({ title, createPresentation, findSiblings });
-      expect(codeOf(result.error)).toBe("INVALID_ARGS");
-      expect(findSiblings).not.toHaveBeenCalled();
-      expect(createPresentation).not.toHaveBeenCalled();
+      const result = await run({ title, createPresentation, parent: "Decks" });
+      expect(result.error).toBeUndefined();
+      expect(createPresentation).toHaveBeenCalledWith(title);
     });
   });
 });
