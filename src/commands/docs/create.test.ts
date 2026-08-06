@@ -120,7 +120,11 @@ describe("handleDocsCreate", () => {
     expect(calls).toEqual(["create", "move", "insert"]);
   });
 
-  it("leaves a document whose content failed inside --parent", async () => {
+  /**
+   * The document exists and is empty, and the caller never saw a success
+   * envelope naming it — so the failure names it instead (decision 0031 §4).
+   */
+  it("leaves a document whose content failed inside --parent, and names it", async () => {
     const calls: string[] = [];
     const d = baseDeps(calls);
     await expect(
@@ -132,7 +136,10 @@ describe("handleDocsCreate", () => {
           throw new Error("Docs said no");
         },
       }),
-    ).rejects.toThrow("Docs said no");
+    ).rejects.toMatchObject({
+      message: "Docs said no",
+      data: { payload: { id: "NEW", title: "Plan", parent_id: "PID" }, quiet: "NEW" },
+    });
     expect(d.moveFile).toHaveBeenCalledWith("NEW", "PID");
     expect(calls).toEqual(["create", "move"]);
   });

@@ -197,7 +197,11 @@ describe("handleSlidesCreate (decision 0030 §4)", () => {
     expect(result.calls).toEqual(["create", "move", "read back", "fill"]);
   });
 
-  it("leaves a deck naming an unknown layout inside --parent", async () => {
+  /**
+   * The deck exists and holds Slides' own first slide, and the caller never saw
+   * a success envelope naming it — so the failure names it (decision 0031 §4).
+   */
+  it("leaves a deck naming an unknown layout inside --parent, and names it", async () => {
     const unknown: SlideDocument = { title: "x", slides: [{ layout: "NO_SUCH_LAYOUT" }] };
     const result = await run({
       parent: "Decks",
@@ -205,6 +209,12 @@ describe("handleSlidesCreate (decision 0030 §4)", () => {
       readInput: async () => slideDocumentToYaml(unknown),
     });
     expect(codeOf(result.error)).toBe("INVALID_ARGS");
+    expect(result.error).toMatchObject({
+      data: {
+        payload: { id: "1NeWdEcK", title: "Q4 review", parent_id: "1FoLdEr" },
+        quiet: "1NeWdEcK",
+      },
+    });
     expect(result.moves).toEqual([{ id: "1NeWdEcK", parentId: "1FoLdEr" }]);
     expect(result.calls).toEqual(["create", "move"]);
   });

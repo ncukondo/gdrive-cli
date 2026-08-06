@@ -3,6 +3,7 @@ import type { CommandResult, OutputFormat } from "../../types/index.ts";
 import { formatValues, line, renderSuccess } from "../../lib/output.ts";
 import { MY_DRIVE, refuseUnaddressableName, type FindSiblings } from "../../lib/names.ts";
 import { ROOT_ID } from "../../lib/resolve-path.ts";
+import { afterCreate } from "../../lib/after-create.ts";
 
 export interface SheetsCreateDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -34,7 +35,10 @@ export async function handleSheetsCreate(deps: SheetsCreateDeps): Promise<Comman
   });
 
   const created = await deps.createSpreadsheet(deps.title);
-  if (parentId !== undefined) await deps.moveFile(created.id, parentId);
+  // Nothing to fill: `spreadsheets.create` hands back a usable spreadsheet, so
+  // the move is the only call that can fail once one exists. It goes through
+  // `afterCreate` anyway, for the id it puts on that failure.
+  await afterCreate(created, { parentId, moveFile: deps.moveFile }, async () => {});
 
   deps.write(
     renderSuccess(

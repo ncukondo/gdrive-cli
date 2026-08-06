@@ -6,6 +6,7 @@ import type { UnsupportedNote } from "../../lib/markdown-doc.ts";
 import { parseDocsFormat, reportUnsupported } from "./format.ts";
 import { MY_DRIVE, refuseUnaddressableName, type FindSiblings } from "../../lib/names.ts";
 import { ROOT_ID } from "../../lib/resolve-path.ts";
+import { afterCreate } from "../../lib/after-create.ts";
 
 export interface DocsCreateDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -38,13 +39,11 @@ export interface DocsCreateDeps {
 }
 
 /**
- * Creates, moves, then fills. `documents.create` ignores a parent, so a new
- * document is in My Drive's root until the Drive move takes it out, and the
- * move goes **before** the content rather than after it: an insert that fails
- * is the likeliest failure here, and the order is what decides whether the
- * document it leaves behind is inside the folder the caller named or loose in
- * the root ([#36](https://github.com/ncukondo/gdrive-cli/issues/36), and 0043
- * §2 for why a stray write matters more here than the tidiness of it).
+ * Creates, and hands everything after that to {@link afterCreate}: the move
+ * into `--parent` goes ahead of the content, so an insert that fails leaves the
+ * document inside the folder the caller named rather than in My Drive's root,
+ * and the failure names its id
+ * ([#36](https://github.com/ncukondo/gdrive-cli/issues/36)).
  *
  * Decision 0055 §2 is what puts `--parent` ahead of the create: the title is the
  * Drive name, and a refusal after `documents.create` would leave a document the
@@ -63,19 +62,19 @@ export async function handleDocsCreate(deps: DocsCreateDeps): Promise<CommandRes
   });
 
   const created = await deps.createDocument(deps.title);
-  if (parentId !== undefined) await deps.moveFile(created.id, parentId);
 
-  let notes: UnsupportedNote[] = [];
-  if (deps.content !== undefined) {
+  const notes = await afterCreate(created, { parentId, moveFile: deps.moveFile }, async () => {
+    const written: UnsupportedNote[] = [];
+    if (deps.content === undefined) return written;
     const text = await deps.readInput(deps.content);
-    if (text !== "") {
-      // The document was created a moment ago, so index 1 is both edges of the
-      // one empty paragraph it has (decision 0045 §2).
-      const boundary = { atParagraphStart: true, atParagraphEnd: true };
-      if (as === "markdown") notes = await deps.insertMarkdown(created.id, 1, text, { boundary });
-      else await deps.insertText(created.id, 1, text, boundary);
-    }
-  }
+    if (text === "") return written;
+    // The document was created a moment ago, so index 1 is both edges of the
+    // one empty paragraph it has (decision 0045 §2).
+    const boundary = { atParagraphStart: true, atParagraphEnd: true };
+    if (as === "markdown") return deps.insertMarkdown(created.id, 1, text, { boundary });
+    await deps.insertText(created.id, 1, text, boundary);
+    return written;
+  });
 
   deps.write(
     renderSuccess(

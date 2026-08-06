@@ -211,7 +211,11 @@ describe("handleFormsCreate", () => {
     expect(result.calls).toEqual(["create", "move", "fill"]);
   });
 
-  it("leaves a form whose fill failed inside --parent", async () => {
+  /**
+   * The form exists and is empty, and the caller never saw a success envelope
+   * naming it — so the failure names it instead (decision 0031 §4).
+   */
+  it("leaves a form whose fill failed inside --parent, and names it", async () => {
     const result = await run({
       parent: "Surveys",
       source: "form.yaml",
@@ -220,6 +224,12 @@ describe("handleFormsCreate", () => {
       },
     });
     expect(String(result.error)).toContain("Forms said no");
+    expect(result.error).toMatchObject({
+      data: {
+        payload: { id: "1NeW", title: "New survey", parent_id: "1FoLdEr" },
+        quiet: "1NeW",
+      },
+    });
     expect(result.moves).toEqual([{ formId: "1NeW", parentId: "1FoLdEr" }]);
     expect(result.calls).toEqual(["create", "move"]);
   });

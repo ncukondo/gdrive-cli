@@ -12,6 +12,7 @@ import { reportSkippedFields } from "./format.ts";
 import { documentSource } from "./write.ts";
 import { MY_DRIVE, refuseUnaddressableName, type FindSiblings } from "../../lib/names.ts";
 import { ROOT_ID } from "../../lib/resolve-path.ts";
+import { afterCreate } from "../../lib/after-create.ts";
 
 export interface SlidesCreateDeps {
   resolvePath: (arg: string) => Promise<string>;
@@ -35,9 +36,10 @@ export interface SlidesCreateDeps {
 }
 
 /**
- * Creates, moves, then reconciles — the calls decision 0030 §4 records, in the
- * order [#36](https://github.com/ncukondo/gdrive-cli/issues/36) put them; and
- * `forms create`'s shape plus the one step the other creates do not need:
+ * Creates, and hands everything after that to {@link afterCreate}: the calls
+ * decision 0030 §4 records, in the order
+ * [#36](https://github.com/ncukondo/gdrive-cli/issues/36) put them. That is
+ * `forms create`'s shape plus the one step the other creates do not need —
  * `presentations.create` always returns a deck holding one slide, and `--file`
  * must not leave it stranded ahead of the document's own first slide, so the
  * same `batchUpdate` that builds the document deletes it.
@@ -45,11 +47,10 @@ export interface SlidesCreateDeps {
  * The document is parsed before the deck exists, so a document that does not
  * parse leaves no empty deck behind to clean up. Parsing is as far as that goes:
  * a document naming a layout the new deck's theme does not have is only found
- * out once the deck exists to be matched against, so that one fails with an
- * empty deck left over. Nothing can move it earlier — the layouts belong to the
- * deck the create just made. What the move can do is decide *where* that deck
- * is left, which is why it goes ahead of everything the document can fail on
- * rather than last (0043 §2).
+ * out once the deck exists to be matched against, so that one does leave an
+ * empty deck. Nothing can move the check earlier — the layouts belong to the
+ * deck the create just made — so what is left is deciding *where* that deck
+ * sits and saying which one it is, both of which {@link afterCreate} does.
  *
  * Decision 0055 §2's name check goes in the same place, which is what moves
  * `--parent`'s resolution ahead of the create: it was resolved either way, and
@@ -72,22 +73,24 @@ export async function handleSlidesCreate(deps: SlidesCreateDeps): Promise<Comman
   const created = await deps.createPresentation(deps.title);
   const presentationId = created.presentationId ?? "";
   const title = created.title ?? deps.title;
-  if (parentId !== undefined) await deps.moveFile(presentationId, parentId);
 
-  // A new slide's text goes into the placeholders its layout offers, and their
-  // types are read off the layout itself. The created deck carries its theme's
-  // layouts, so one call is normally enough; the read-back is what keeps a
-  // response that ever arrives without them from producing a deck of empty
-  // slides and a pile of warnings.
-  let base = created;
-  if (document !== undefined && (created.layouts ?? []).length === 0) {
-    base = await deps.getPresentation(presentationId);
-  }
-
-  const plan = document === undefined ? undefined : planSlideCreate(base, document, title);
-  if (plan !== undefined && plan.requests.length > 0) {
-    await deps.batchUpdate(presentationId, plan.requests);
-  }
+  const plan = await afterCreate(
+    { id: presentationId, title },
+    { parentId, moveFile: deps.moveFile },
+    async () => {
+      if (document === undefined) return undefined;
+      // A new slide's text goes into the placeholders its layout offers, and
+      // their types are read off the layout itself. The created deck carries its
+      // theme's layouts, so one call is normally enough; the read-back is what
+      // keeps a response that ever arrives without them from producing a deck of
+      // empty slides and a pile of warnings.
+      const base =
+        (created.layouts ?? []).length === 0 ? await deps.getPresentation(presentationId) : created;
+      const planned = planSlideCreate(base, document, title);
+      if (planned.requests.length > 0) await deps.batchUpdate(presentationId, planned.requests);
+      return planned;
+    },
+  );
 
   deps.write(
     renderSuccess(
