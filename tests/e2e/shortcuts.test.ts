@@ -25,12 +25,15 @@ import {
  * **entry** ("this file, as an entry in a folder") — because that table is the
  * whole rule and each of the three is a different call against Drive.
  *
- * **The path form of the walk is not here.** `resolvePath` walks from My
- * Drive's root, so naming a file in this sandbox by path names every folder
- * above the sandbox as well, and 0043 §2 forbids a test that addresses
- * anything outside it. Following a shortcut by id exercises the same
- * `resolveTarget` hop; following one as an *intermediate* path segment is the
- * one branch left to the manual pass (0043 §4).
+ * **The path form of the walk is not here, and cannot be.** `resolvePath`
+ * walks from My Drive's root, so naming a file in this sandbox by path names
+ * every folder above the sandbox as well — and 0043 §2 forbids a test that
+ * addresses anything outside it. That is a permanent consequence of the two
+ * rules together rather than a gap for somebody to close later: no fixture,
+ * no helper and no choice of anchor makes a path rooted at My Drive stay
+ * inside a subtree of it. Following a shortcut **by id** runs the same
+ * `resolveTarget` hop and is what the cases below do; following one as an
+ * *intermediate path segment* stays with the manual pass for good (0043 §4).
  */
 
 const documentSchema = z.object({ id: z.string(), title: z.string(), content: z.string() });
