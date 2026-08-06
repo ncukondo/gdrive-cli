@@ -38,6 +38,14 @@ export interface DocsCreateDeps {
 }
 
 /**
+ * Creates, moves, then fills. `documents.create` ignores a parent, so a new
+ * document is in My Drive's root until the Drive move takes it out, and the
+ * move goes **before** the content rather than after it: an insert that fails
+ * is the likeliest failure here, and the order is what decides whether the
+ * document it leaves behind is inside the folder the caller named or loose in
+ * the root ([#36](https://github.com/ncukondo/gdrive-cli/issues/36), and 0043
+ * §2 for why a stray write matters more here than the tidiness of it).
+ *
  * Decision 0055 §2 is what puts `--parent` ahead of the create: the title is the
  * Drive name, and a refusal after `documents.create` would leave a document the
  * caller has to go and delete. Resolving the folder first costs nothing extra —
@@ -55,6 +63,7 @@ export async function handleDocsCreate(deps: DocsCreateDeps): Promise<CommandRes
   });
 
   const created = await deps.createDocument(deps.title);
+  if (parentId !== undefined) await deps.moveFile(created.id, parentId);
 
   let notes: UnsupportedNote[] = [];
   if (deps.content !== undefined) {
@@ -67,8 +76,6 @@ export async function handleDocsCreate(deps: DocsCreateDeps): Promise<CommandRes
       else await deps.insertText(created.id, 1, text, boundary);
     }
   }
-
-  if (parentId !== undefined) await deps.moveFile(created.id, parentId);
 
   deps.write(
     renderSuccess(

@@ -14,10 +14,16 @@ function collect() {
   };
 }
 
-const baseDeps = () => ({
+/** `calls` records the order the two calls go out in (see `create.ts`). */
+const baseDeps = (calls: string[] = []) => ({
   resolvePath: vi.fn(async () => "PID"),
-  createSpreadsheet: vi.fn(async (title: string) => ({ id: "NEW", title })),
-  moveFile: vi.fn(async (_id: string, _parentId: string) => {}),
+  createSpreadsheet: vi.fn(async (title: string) => {
+    calls.push("create");
+    return { id: "NEW", title };
+  }),
+  moveFile: vi.fn(async (_id: string, _parentId: string) => {
+    calls.push("move");
+  }),
   findSiblings: vi.fn(async (_p: string, _n: string) => []),
   title: "Budget",
   format: "text" as const,
@@ -45,6 +51,17 @@ describe("handleSheetsCreate", () => {
       success: true,
       data: { id: "NEW", title: "Budget", parent_id: "PID" },
     });
+  });
+
+  /**
+   * A spreadsheet is created complete, so the move is the only call that can
+   * fail once it exists — and `sheets create` is the one of the four with
+   * nothing between the two (issue #36).
+   */
+  it("creates and then moves, with nothing in between", async () => {
+    const calls: string[] = [];
+    await handleSheetsCreate({ ...baseDeps(calls), parent: "Reports" });
+    expect(calls).toEqual(["create", "move"]);
   });
 
   it("prints the new id in quiet mode", async () => {

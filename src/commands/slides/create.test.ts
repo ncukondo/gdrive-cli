@@ -57,6 +57,8 @@ interface Run {
   warnings: string[];
   batches: { presentationId: string; requests: SlidesRequest[] }[];
   moves: { id: string; parentId: string }[];
+  /** The order the calls went out in, which is what issue #36 is about. */
+  calls: string[];
   error?: unknown;
 }
 
@@ -65,6 +67,7 @@ async function run(options: Partial<SlidesCreateDeps> = {}): Promise<Run> {
   const warnings: string[] = [];
   const batches: Run["batches"] = [];
   const moves: Run["moves"] = [];
+  const calls: string[] = [];
 
   const deps: SlidesCreateDeps = {
     resolvePath: async () => "1FoLdEr",
@@ -86,12 +89,39 @@ async function run(options: Partial<SlidesCreateDeps> = {}): Promise<Run> {
     ...options,
   };
 
+  // Wrapped after the overrides, so a case that supplies its own
+  // `createPresentation` or `batchUpdate` is recorded like the default one.
+  // Each name is logged once the call *returns*, so `calls` reads as what
+  // reached Slides and Drive before whatever failed.
+  const logged: SlidesCreateDeps = {
+    ...deps,
+    createPresentation: async (title) => {
+      const created = await deps.createPresentation(title);
+      calls.push("create");
+      return created;
+    },
+    getPresentation: async (presentationId) => {
+      const read = await deps.getPresentation(presentationId);
+      calls.push("read back");
+      return read;
+    },
+    batchUpdate: async (presentationId, requests) => {
+      await deps.batchUpdate(presentationId, requests);
+      calls.push("fill");
+    },
+    moveFile: async (presentationId, parentId) => {
+      const moved = await deps.moveFile(presentationId, parentId);
+      calls.push("move");
+      return moved;
+    },
+  };
+
   try {
-    await handleSlidesCreate(deps);
+    await handleSlidesCreate(logged);
   } catch (error) {
-    return { output: out.output, warnings, batches, moves, error };
+    return { output: out.output, warnings, batches, moves, calls, error };
   }
-  return { output: out.output, warnings, batches, moves };
+  return { output: out.output, warnings, batches, moves, calls };
 }
 
 const codeOf = (error: unknown): string =>
@@ -138,6 +168,50 @@ describe("handleSlidesCreate (decision 0030 §4)", () => {
     const result = await run({ source: "deck.yaml", parent: "Decks" });
     expect(result.moves).toEqual([{ id: "1NeWdEcK", parentId: "1FoLdEr" }]);
     expect(JSON.parse(result.output).data.parent_id).toBe("1FoLdEr");
+  });
+
+  /**
+   * Issue #36. The deck exists before its layouts can be matched against the
+   * document, so the two failures below — a batch the API refuses, and a layout
+   * this deck's theme does not have — both arrive with a deck already made.
+   * Moving first is what decides whether it is in the folder the caller named or
+   * loose in My Drive's root, outside the sandbox the live suite writes inside
+   * (0043 §2).
+   */
+  it("moves the deck into --parent before it builds the document's slides", async () => {
+    const result = await run({ parent: "Decks", source: "deck.yaml" });
+    expect(result.calls).toEqual(["create", "move", "fill"]);
+  });
+
+  it("moves the deck before reading it back for its layouts", async () => {
+    const bare: PresentationRaw = {
+      presentationId: "1NeWdEcK",
+      title: "Q4 review",
+      slides: [{ objectId: "p", slideProperties: { layoutObjectId: "L_TB" } }],
+    };
+    const result = await run({
+      parent: "Decks",
+      source: "deck.yaml",
+      createPresentation: async () => bare,
+    });
+    expect(result.calls).toEqual(["create", "move", "read back", "fill"]);
+  });
+
+  it("leaves a deck naming an unknown layout inside --parent", async () => {
+    const unknown: SlideDocument = { title: "x", slides: [{ layout: "NO_SUCH_LAYOUT" }] };
+    const result = await run({
+      parent: "Decks",
+      source: "deck.yaml",
+      readInput: async () => slideDocumentToYaml(unknown),
+    });
+    expect(codeOf(result.error)).toBe("INVALID_ARGS");
+    expect(result.moves).toEqual([{ id: "1NeWdEcK", parentId: "1FoLdEr" }]);
+    expect(result.calls).toEqual(["create", "move"]);
+  });
+
+  it("issues no move at all without --parent", async () => {
+    const result = await run({ source: "deck.yaml" });
+    expect(result.calls).toEqual(["create", "fill"]);
   });
 
   it("prints the new presentation id in quiet mode, and a sentence in text mode", async () => {

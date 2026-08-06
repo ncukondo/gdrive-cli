@@ -55,6 +55,8 @@ interface Run {
   batches: { formId: string; requests: FormsRequest[] }[];
   moves: { formId: string; parentId: string }[];
   created: string[];
+  /** The order the calls went out in, which is what issue #36 is about. */
+  calls: string[];
   error?: unknown;
 }
 
@@ -64,6 +66,7 @@ async function run(options: Partial<FormsCreateDeps> = {}): Promise<Run> {
   const batches: Run["batches"] = [];
   const moves: Run["moves"] = [];
   const created: string[] = [];
+  const calls: string[] = [];
 
   const deps: FormsCreateDeps = {
     resolvePath: async () => "1FoLdEr",
@@ -88,12 +91,34 @@ async function run(options: Partial<FormsCreateDeps> = {}): Promise<Run> {
     ...options,
   };
 
+  // Wrapped after the overrides, so a case that supplies its own `batchUpdate`
+  // is recorded like the default one. Each name is logged once the call
+  // *returns*, so `calls` reads as what reached Forms and Drive before whatever
+  // failed.
+  const logged: FormsCreateDeps = {
+    ...deps,
+    createForm: async (title) => {
+      const form = await deps.createForm(title);
+      calls.push("create");
+      return form;
+    },
+    batchUpdate: async (formId, requests) => {
+      await deps.batchUpdate(formId, requests);
+      calls.push("fill");
+    },
+    moveFile: async (formId, parentId) => {
+      const moved = await deps.moveFile(formId, parentId);
+      calls.push("move");
+      return moved;
+    },
+  };
+
   try {
-    await handleFormsCreate(deps);
+    await handleFormsCreate(logged);
   } catch (error) {
-    return { output: out.output, warnings, batches, moves, created, error };
+    return { output: out.output, warnings, batches, moves, created, calls, error };
   }
-  return { output: out.output, warnings, batches, moves, created };
+  return { output: out.output, warnings, batches, moves, created, calls };
 }
 
 const codeOf = (error: unknown): string =>
@@ -173,6 +198,35 @@ describe("handleFormsCreate", () => {
     expect(resolvePath).toHaveBeenCalledWith("Surveys");
     expect(result.moves).toEqual([{ formId: "1NeW", parentId: "1FoLdEr" }]);
     expect(JSON.parse(result.output).data.parent_id).toBe("1FoLdEr");
+  });
+
+  /**
+   * Issue #36. A `forms.batchUpdate` is atomic, so a single item the API refuses
+   * fails the whole fill — after the form exists. Moving first is what decides
+   * whether that form is in the folder the caller named or loose in My Drive's
+   * root, outside the sandbox the live suite writes inside (0043 §2).
+   */
+  it("moves the form into --parent before it fills it", async () => {
+    const result = await run({ parent: "Surveys", source: "form.yaml" });
+    expect(result.calls).toEqual(["create", "move", "fill"]);
+  });
+
+  it("leaves a form whose fill failed inside --parent", async () => {
+    const result = await run({
+      parent: "Surveys",
+      source: "form.yaml",
+      batchUpdate: async () => {
+        throw new Error("Forms said no");
+      },
+    });
+    expect(String(result.error)).toContain("Forms said no");
+    expect(result.moves).toEqual([{ formId: "1NeW", parentId: "1FoLdEr" }]);
+    expect(result.calls).toEqual(["create", "move"]);
+  });
+
+  it("issues no move at all without --parent", async () => {
+    const result = await run({ source: "form.yaml" });
+    expect(result.calls).toEqual(["create", "fill"]);
   });
 
   it("names the new form in text mode", async () => {
