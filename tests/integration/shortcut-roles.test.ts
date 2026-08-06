@@ -562,6 +562,16 @@ describe("entry arguments never follow a shortcut (decision 0025 §1)", () => {
     expect(drive.update).toHaveBeenCalledTimes(1);
   });
 
+  it("`rename <link> <name>` renames the shortcut itself", async () => {
+    await run(["rename", "Reports/link-to-doc", "link-to-notes"]);
+    expect(firstArg(drive.update)).toMatchObject({
+      fileId: "lnkDoc",
+      requestBody: { name: "link-to-notes" },
+    });
+    // The other half of the promise: the document keeps its own name.
+    expect(drive.update).toHaveBeenCalledTimes(1);
+  });
+
   it("`cp <link> <folder>` copies the shortcut itself", async () => {
     await run(["cp", "Reports/link-to-doc", "Other"]);
     expect(firstArg(drive.copy)).toMatchObject({ fileId: "lnkDoc" });

@@ -13,6 +13,7 @@ import {
   deleteFile,
   getFile,
   moveFile,
+  renameFile,
   trashFile,
   uploadMedia,
   type DriveClient,
@@ -25,6 +26,7 @@ import { createMvCommand, handleMv } from "./mv.ts";
 import { createCpCommand, handleCp } from "./cp.ts";
 import { createLnCommand, handleLn } from "./ln.ts";
 import { createRmCommand, handleRm } from "./rm.ts";
+import { createRenameCommand, handleRename } from "./rename.ts";
 
 async function buildDrive(opts: GlobalOptions): Promise<DriveClient> {
   const config = loadConfig(nodeFs, opts.config);
@@ -45,6 +47,8 @@ function readLocalFile(path: string): LocalFile {
 }
 
 const stdout = (msg: string) => process.stdout.write(msg + "\n");
+/** What a write could not reach goes to stderr, not stdout (decision 0021 §3). */
+const stderr = (msg: string) => process.stderr.write(msg + "\n");
 
 /**
  * Decision 0025 §1's role table, wired argument by argument: `--parent` is a
@@ -208,4 +212,27 @@ export function registerDriveWrite(program: Command): void {
     }
   });
   program.addCommand(rm);
+
+  const rename = createRenameCommand();
+  rename.action(async (file: string, name: string) => {
+    const opts = resolveGlobalOptions(program);
+    try {
+      const drive = await buildDrive(opts);
+      const result = await handleRename({
+        // entry: renaming a link renames the link (decision 0052 §2)
+        resolvePath: (arg) => resolvePath(drive, arg),
+        renameFile: (id, newName) => renameFile(drive, id, newName),
+        file,
+        name,
+        format: opts.format,
+        quiet: opts.quiet,
+        write: stdout,
+        warn: stderr,
+      });
+      process.exit(result.exitCode);
+    } catch (error) {
+      handleError(error, opts.format);
+    }
+  });
+  program.addCommand(rename);
 }
