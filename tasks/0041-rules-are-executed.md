@@ -203,7 +203,10 @@ nothing in the plan would ever have run it against one.*
    `checkBashCommand(command, state): Block | null`.
    - **Any command that adds to the index something the caller did not name as a
      path** → blocked, quoting [`0048`](../decisions/0048-staging-refuses-a-class.md)
-     §1.
+     §1 as [`0050`](../decisions/0050-the-index-is-what-is-guarded.md) §1 restates
+     it — *put into the index a change the caller did not name*, whichever
+     subcommand does it and in whichever direction. Taking a change back out
+     (`git reset`, `git restore --staged`) is not this rule (0050 §2).
 
      **Tokenize, then split, then one normaliser for both rules.** Produce words
      and operator tokens in one pass and split the command on the *operator
@@ -236,8 +239,17 @@ nothing in the plan would ever have run it against one.*
      `git commit -m "refuse git add -A; git add . too"`, and a real file called
      `docs/report [2026].md`.
 
-     **A false refusal is at least as costly as a hole**, because 0047 §2 leaves
-     an agent no bypass. Every round has produced both; test both directions.
+     **A false refusal is a defect of the same weight as a hole**
+     ([`0050`](../decisions/0050-the-index-is-what-is-guarded.md) §3), because
+     0047 §2 leaves an agent no bypass. Every round has produced both, and the
+     false refusals surfaced only once a reviewer thought to look for them. Test
+     both directions.
+
+     `git rm -r .` and `git rm -r --cached .` are in, `git rm src/gone.ts` is not.
+     *Added mid-branch (`decisions/0041` §1): the third review measured
+     `git rm -r --cached .` staging a deletion of every tracked file, and 0048 §1
+     said "add", so the guard let it through. 0050 widens the rule; this is the
+     script following it.*
 
      0048 §2 says the matcher is an approximation and a spelling that gets through
      is a defect in the script, so the header says that rather than implying a
