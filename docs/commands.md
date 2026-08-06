@@ -1124,6 +1124,12 @@ An `options` entry is a plain string, or a mapping when it is more than its
 label: `value` plus `other: true` (the "Other…" write-in) and the section
 navigation `go_to_action` / `go_to_section_id`.
 
+On an `other: true` option, **`value` is read-only**. Google owns the label of
+the write-in choice and the API refuses to be sent one, so `write` drops it the
+way it drops a `question_id`; `{other: true}` on its own is a complete option,
+and that is how `read` prints one Google gave no label. Editing the `value`
+beside `other: true` changes nothing in the form.
+
 ### What is not modelled
 
 An item the schema cannot hold reads as `type: unsupported`, with the API
@@ -1270,9 +1276,10 @@ and with no `--file` at all the document is read from stdin — so
 nothing.
 
 The read-only fields `read` emitted — `id`, `revision_id`, `responder_uri`,
-`linked_sheet_id` and each item's `question_id` — are **ignored**, not rejected,
-so the round trip needs no stripping step. `revision_id` is the one exception
-to "ignored": it is sent back as the revision the write requires (see below).
+`linked_sheet_id`, each item's `question_id`, and the [`value` of an `other:
+true` option](#the-document) — are **ignored**, not rejected, so the round trip
+needs no stripping step. `revision_id` is the one exception to "ignored": it is
+sent back as the revision the write requires (see below).
 
 For the fields the document *does* model, the document is the desired state. A
 form `description` deleted from the document is deleted from the form.
