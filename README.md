@@ -14,7 +14,9 @@ AI-agent use.
 - **Drive** — `ls`, `search`, `info`, `download`, `upload`, `mkdir`, `mv`,
   `cp`, `ln`, `rename`, `rm` (trash by default). Files addressed by ID or
   `Folder/name` path. `mv` only moves and `rename` only renames, so neither has
-  to guess which the second argument meant.
+  to guess which the second argument meant. `cp -r` copies a whole folder tree —
+  Drive has no request that does — and a run that cannot finish reports every
+  file it already copied.
 - **Shared drives** — any shared-drive ID works in any command that takes one,
   with no flag, and `drive:<name>/<path>` addresses one by path; `gdrive drives`
   lists the drives and their IDs. Only `search` stays on My Drive by default,

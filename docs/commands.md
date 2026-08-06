@@ -55,6 +55,14 @@ Three modes, chosen with `-f` and `-q`:
 
 The `data` shapes below are what goes in that envelope.
 
+A failure may carry a **`data` of its own**, and then `success: false` does not
+mean nothing happened — it means the command stopped part-way, and this is how
+far it got. Only [`cp -r`](#gdrive-cp--r-folder-folder) does that today; every
+other failure is the two-key object above, and a reader that ignores the field
+sees exactly what it always saw. In `-f text` the extra arrives as a summary
+line under the error, and under `-q` as the IDs created so far, one per line
+([`../decisions/0031`](../decisions/0031-recursive-copy.md) §4).
+
 **Most `console` transcripts on this page pass `-f text`**, because a
 transcript is only worth showing when it shows the text. Without it — or without
 `default_format = "text"` in your config — those commands print the envelope
@@ -520,6 +528,63 @@ doc	2026-08-06 11:02	Notes 2026	1NoTeS...
 ```
 
 Quiet: the file ID.
+
+Without `-r`, a **folder** source fails: Drive has no request that copies one.
+The error names the folder and `-r`, and costs an ordinary copy nothing — the
+lookup that recognises the folder happens only once the copy has already failed.
+
+### `gdrive cp -r <folder> <folder>`
+
+`-r` reproduces a folder tree: `gdrive cp -r "Reports/2026" Archive` creates
+`Archive/2026` and copies everything under it, `--name` renaming that top-level
+copy. `-r` on an ordinary file just copies it, as POSIX `cp -r` does.
+
+```console
+$ gdrive cp -r -f text "Reports/2026" Archive
+Copied to 2026 (1NeW...): 4 folders, 37 files
+```
+
+```json
+{ "file": { /* the new top-level folder */ },
+  "folders": [{ "src": "1F...", "dst": "1Z...", "name": "2026" }],
+  "copied":  [{ "src": "1A...", "dst": "1X...", "name": "a.pdf" }] }
+```
+
+Quiet: the new top-level folder ID.
+
+Four things are worth knowing before you run it on something large:
+
+- **A shortcut inside the tree is copied as a shortcut**, and the folder it
+  points at is *not* copied. The walk copies what is in the folder, and a
+  shortcut is a pointer, not the thing it points at
+  ([`../decisions/0025`](../decisions/0025-shortcuts.md) §1).
+- **The first real failure stops the run.** Drive has no transaction and this
+  does not pretend otherwise. A rate limit or a server error is waited out and
+  retried; anything else — a file you cannot read, a quota — stops the walk
+  where it stands.
+- **What was copied stays copied, and you are told exactly what it was.** Each
+  folder is created before anything goes into it, so a stopped run leaves a
+  valid partial subtree rather than a scatter of files, and the failure carries
+  the full list:
+
+  ```json
+  { "success": false,
+    "error": { "code": "PERMISSION_DENIED", "message": "..." },
+    "data": { "folders": [{ "src": "1F...", "dst": "1Z...", "name": "2026" }],
+              "copied":  [{ "src": "1A...", "dst": "1X...", "name": "a.pdf" }],
+              "failed":  { "src": "1C...", "name": "c.pdf" } } }
+  ```
+
+  The exit code and `error.code` are the underlying failure's. Under `-q` the
+  same failure prints the new IDs one per line, the top folder first — enough
+  for a shell to delete the half-copy and start again. There is no resume:
+  re-running copies the whole tree a second time, and Drive permits duplicate
+  names, so remove the partial copy first.
+- **Copying a folder into itself is refused** before anything is copied:
+  `gdrive cp -r A A/B` is `INVALID_ARGS`. Permissions, ownership and revision
+  history are not copied — `files.copy` does not carry them.
+
+See [`../decisions/0031`](../decisions/0031-recursive-copy.md).
 
 ### `gdrive ln <target> <folder>`
 
