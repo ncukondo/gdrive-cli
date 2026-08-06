@@ -117,7 +117,11 @@ export interface FormRaw {
  * ([0015](../../decisions/0015-no-type-assertions.md)).
  */
 export interface OptionWrite {
-  value: string;
+  /**
+   * Absent on the write-in option, and only there: the API answers "Cannot set
+   * option.value or option.image when option.isOther is true".
+   */
+  value?: string;
   isOther?: boolean;
   goToAction?: string;
   goToSectionId?: string;
@@ -154,11 +158,15 @@ export interface ItemWrite {
  * A choice. A bare string is the common case; the object form carries the
  * fields that make an option more than its label — `other`, and the section
  * navigation an update would otherwise silently drop.
+ *
+ * `value` is optional because the write-in option may not carry one: the API
+ * refuses `value` beside `isOther`, so the label of that one option is Google's
+ * and `{other: true}` on its own is the whole option.
  */
 const ChoiceOptionSchema = z.union([
   z.string(),
   z.object({
-    value: z.string(),
+    value: z.string().optional(),
     other: z.boolean().optional(),
     go_to_action: z.string().optional(),
     go_to_section_id: z.string().optional(),
@@ -339,7 +347,10 @@ function toOption(option: OptionRaw): z.infer<typeof ChoiceOptionSchema> {
     ...(goToAction ? { go_to_action: goToAction } : {}),
     ...(goToSectionId ? { go_to_section_id: goToSectionId } : {}),
   };
-  return Object.keys(extras).length === 0 ? value : { value, ...extras };
+  if (Object.keys(extras).length === 0) return value;
+  // A label Google did not give is not written as `value: ""`; the write-in
+  // option is the one that may have none, and `{other: true}` says so.
+  return { ...(value === "" ? {} : { value }), ...extras };
 }
 
 /** The first key that is not shared by every item/question — the kind's name. */
@@ -541,15 +552,26 @@ const API_BY_CHOICE_TYPE: Record<ChoiceType, string> = {
   dropdown: "DROP_DOWN",
 };
 
+/**
+ * An option as a request may carry it.
+ *
+ * `value` and `isOther` are mutually exclusive on the way in — the API answers
+ * "Cannot set option.value or option.image when option.isOther is true" — so
+ * the label of the write-in option is dropped here rather than sent. It is the
+ * same treatment `question_id` gets (0028 §6): the document carries it so a
+ * reader can see what the option says, and the write leaves it behind because
+ * it is Google's to decide. Sending the pair made every form with an "Other"
+ * option impossible to create or update.
+ */
 function toApiOption(option: z.infer<typeof ChoiceOptionSchema>): OptionWrite {
   if (typeof option === "string") return { value: option };
   const { value, other, go_to_action, go_to_section_id } = option;
-  return {
-    value,
-    ...(other === true ? { isOther: true } : {}),
+  const navigation = {
     ...(go_to_action !== undefined ? { goToAction: go_to_action } : {}),
     ...(go_to_section_id !== undefined ? { goToSectionId: go_to_section_id } : {}),
   };
+  if (other === true) return { isOther: true, ...navigation };
+  return { value: value ?? "", ...navigation };
 }
 
 /** A question item without its kind — everything a `Question` shares. */

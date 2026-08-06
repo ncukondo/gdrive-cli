@@ -408,6 +408,37 @@ describe("toFormDocument with a field it cannot model inside a question", () => 
     expect(document.items[0]).toMatchObject({ type: "unsupported", question_id: "q-opt" });
   });
 
+  /**
+   * Whether Google returns a label beside `isOther` is Google's business; the
+   * document has to read well either way, and both spellings have to survive a
+   * write.
+   */
+  it("reads an Other option Google labelled, and one it did not, without inventing a label", () => {
+    const withOther: FormRaw = {
+      info: { title: "Survey" },
+      items: [
+        {
+          itemId: "i-other",
+          questionItem: {
+            question: {
+              questionId: "q-other",
+              choiceQuestion: {
+                type: "RADIO",
+                options: [{ value: "Sales" }, { value: "Other", isOther: true }, { isOther: true }],
+              },
+            },
+          },
+        },
+      ],
+    };
+    const [item] = toFormDocument(withOther).document.items;
+    expect(item?.type === "choice" ? item.options : []).toEqual([
+      "Sales",
+      { value: "Other", other: true },
+      { other: true },
+    ]);
+  });
+
   it("names an unknown choice type rather than approximating it", () => {
     const unknownChoice: FormRaw = {
       info: { title: "Survey" },
@@ -572,6 +603,24 @@ describe("formDocumentToYaml", () => {
  * that `type` names exactly one API shape (0027 §2), so these tests are about
  * that correspondence holding in both directions at once.
  */
+/**
+ * The item as it survives a write. An "Other" option's label is Google's — the
+ * API refuses `value` beside `isOther` — so the document carries it for a
+ * reader and a write leaves it behind, the way it leaves a `question_id`
+ * behind. Nothing else in the document is dropped on the way out.
+ */
+function asWritten(item: FormItem): FormItem {
+  if (item.type !== "choice") return item;
+  return {
+    ...item,
+    options: item.options.map((option) => {
+      if (typeof option === "string" || option.other !== true) return option;
+      const { value: _label, ...rest } = option;
+      return rest;
+    }),
+  };
+}
+
 describe("toApiItem", () => {
   const items = toFormDocument(form).document.items;
   const at = (index: number): FormItem => {
@@ -591,15 +640,58 @@ describe("toApiItem", () => {
           required: true,
           choiceQuestion: {
             type: "RADIO",
-            options: [
-              { value: "Sales" },
-              { value: "Engineering" },
-              { value: "Other", isOther: true },
-            ],
+            options: [{ value: "Sales" }, { value: "Engineering" }, { isOther: true }],
           },
         },
       },
     });
+  });
+
+  /**
+   * `isOther` and `value` are mutually exclusive on the way in — the API
+   * answers "Cannot set option.value or option.image when option.isOther is
+   * true" — so the label of the write-in choice belongs to Google, not to the
+   * document. Sending the pair made every real form with an "Other" option
+   * impossible to create or update, and no round-trip test caught it: an
+   * unedited document builds no request at all, so nothing was ever sent.
+   */
+  it("sends an Other option as isOther alone, never beside a label", () => {
+    const [item] = parseFormDocument(
+      [
+        "title: T",
+        "items:",
+        "  - type: choice",
+        "    choice_type: radio",
+        "    title: Which team?",
+        "    options:",
+        "      - Sales",
+        "      - value: Other",
+        "        other: true",
+      ].join("\n"),
+    ).items;
+    if (item === undefined) throw new Error("fixture");
+    expect(toApiItem(item)?.questionItem?.question.choiceQuestion?.options).toEqual([
+      { value: "Sales" },
+      { isOther: true },
+    ]);
+  });
+
+  it("keeps an Other option's section navigation, which is not a label", () => {
+    const [item] = parseFormDocument(
+      [
+        "title: T",
+        "items:",
+        "  - type: choice",
+        "    choice_type: radio",
+        "    options:",
+        "      - other: true",
+        "        go_to_action: SUBMIT_FORM",
+      ].join("\n"),
+    ).items;
+    if (item === undefined) throw new Error("fixture");
+    expect(toApiItem(item)?.questionItem?.question.choiceQuestion?.options).toEqual([
+      { isOther: true, goToAction: "SUBMIT_FORM" },
+    ]);
   });
 
   it("carries an option's shuffle and section navigation back", () => {
@@ -652,12 +744,29 @@ describe("toApiItem", () => {
    * emitted, sending it back and reading it again is the same document. It runs
    * over the whole fixture set, so a kind added to one direction and not the
    * other fails here rather than in a form.
+   *
+   * {@link asWritten} is the one documented exception, and it is named rather
+   * than quietly tolerated: an "Other" option's label cannot be sent, so a
+   * write cannot preserve it and this property must not claim it does.
    */
   it("round-trips every modelled item through the API shape unchanged", () => {
     for (const item of items) {
       const raw = toApiItem(item);
       if (raw === null) throw new Error("the fixture is fully modelled");
-      expect(toDocumentItem(raw)).toEqual(item);
+      expect(toDocumentItem(raw)).toEqual(asWritten(item));
+    }
+  });
+
+  /**
+   * Whatever the first write normalizes away, a second one agrees with: reading
+   * the form back and writing it again sends the same request. That is what
+   * makes the exception above a normalization rather than a slow drift.
+   */
+  it("sends the same request again after a read of what it wrote", () => {
+    for (const item of items) {
+      const once = toApiItem(item);
+      if (once === null) throw new Error("the fixture is fully modelled");
+      expect(toApiItem(toDocumentItem(once))).toEqual(once);
     }
   });
 
