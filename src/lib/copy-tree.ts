@@ -40,7 +40,11 @@ export interface CopyTreeReport {
 }
 
 export interface CopyTreeOptions {
-  /** Renames the top-level copy. Everything below keeps the name it had. */
+  /**
+   * Renames the top-level copy. Everything below keeps the name it had — which
+   * only holds because every level names itself in its request; left to Drive,
+   * some of them would not.
+   */
   name?: string;
   /** Passed to {@link withRetry}; tests inject a `sleep` that does not sleep. */
   retry?: RetryOptions;
@@ -128,7 +132,14 @@ async function fill(
       await fill(client, progress, child, folder.id, options);
       continue;
     }
-    const copy = await attempt(progress, what, options, () => copyFile(client, child.id, dstId));
+    // The name is sent, never left to Drive. Drive's default for an unnamed
+    // copy is not the source's name and is not even uniform: a Google-native
+    // document comes back as `Copy of <name>` while a binary file beside it
+    // keeps its own, so a tree copied without it is a tree half of whose files
+    // were silently renamed.
+    const copy = await attempt(progress, what, options, () =>
+      copyFile(client, child.id, dstId, child.name),
+    );
     progress.copied.push({ src: child.id, dst: copy.id, name: copy.name });
   }
 }

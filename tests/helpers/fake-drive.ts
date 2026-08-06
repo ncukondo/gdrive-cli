@@ -299,7 +299,14 @@ export function createWritableTreeDrive(
           created += 1;
           const node: DriveNode = {
             id: `new${created}`,
-            name: requestBody.name ?? source.name,
+            // Drive's default name for a copy is **not** the source's, and is
+            // not even uniform: a live run watched a Google-native document come
+            // back as `Copy of <name>` while a binary file in the same tree kept
+            // its own. So the fake renames whenever the request names nothing —
+            // a caller that leaves the name out cannot say what the copy will be
+            // called, and a fake that echoed the name back would let it believe
+            // it could. That belief is what hid a real defect here.
+            name: requestBody.name ?? `Copy of ${source.name}`,
             mimeType: mimeOf(source),
             parents: requestBody.parents ?? [],
           };
