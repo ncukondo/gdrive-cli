@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLnCommand, handleLn } from "./ln.ts";
+import { childrenNamed } from "../lib/resolve-path.ts";
 import { AppError, type DriveFile } from "../types/index.ts";
+import { createWritableTreeDrive, type DriveNode } from "../../tests/helpers/fake-drive.ts";
 
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
   return {
@@ -49,6 +51,7 @@ interface Overrides {
   resolveFolder?: (arg: string) => Promise<string>;
   getFile?: (id: string) => Promise<DriveFile>;
   createShortcut?: (targetId: string, parentId: string, name: string) => Promise<DriveFile>;
+  findSiblings?: (parentId: string, name: string) => Promise<{ id: string; name: string }[]>;
   target?: string;
   dest?: string;
   name?: string;
@@ -64,6 +67,7 @@ function deps(overrides: Overrides = {}) {
     resolveFolder: vi.fn(async (_arg: string) => "DEST"),
     getFile: vi.fn(async (_id: string) => file()),
     createShortcut: vi.fn(async (_t: string, _p: string, _n: string) => shortcut()),
+    findSiblings: vi.fn(async (_p: string, _n: string) => []),
     target: "Reports/2026 Budget",
     dest: "Shared/Links",
     format: "text" as const,
@@ -163,6 +167,57 @@ describe("handleLn", () => {
       }),
     });
     await expect(handleLn(d)).rejects.toMatchObject({ code: "PERMISSION_DENIED", message });
+  });
+
+  /**
+   * Decision 0055 §1. A shortcut is an entry in a folder like any other, and
+   * `ln` names it after its target by default — so linking the same file into
+   * one folder twice is the collision, without a flag being involved at all.
+   */
+  describe("a shortcut name the destination cannot address", () => {
+    const against = (nodes: DriveNode[], overrides: Overrides = {}) => {
+      const { client } = createWritableTreeDrive(nodes);
+      return deps({
+        findSiblings: (parentId, name) => childrenNamed(client, parentId, name),
+        ...overrides,
+      });
+    };
+
+    it("refuses the target's own name when the folder already holds it", async () => {
+      const d = against([{ id: "L0", name: "2026 Budget", parents: ["DEST"], target: "T1" }]);
+      await expect(handleLn(d)).rejects.toMatchObject({
+        code: "INVALID_ARGS",
+        message: expect.stringContaining("L0"),
+      });
+      expect(d.createShortcut).not.toHaveBeenCalled();
+    });
+
+    it("refuses --name for the same reason", async () => {
+      const d = against([{ id: "E1", name: "Budget link", parents: ["DEST"] }], {
+        name: "Budget link",
+      });
+      await expect(handleLn(d)).rejects.toMatchObject({
+        code: "INVALID_ARGS",
+        message: expect.stringContaining("--name"),
+      });
+      expect(d.createShortcut).not.toHaveBeenCalled();
+    });
+
+    it("links when the folder holds nothing by that name", async () => {
+      const d = against([{ id: "E1", name: "Something else", parents: ["DEST"] }]);
+      await handleLn(d);
+      expect(d.createShortcut).toHaveBeenCalledWith("T1", "DEST", "2026 Budget");
+    });
+
+    it.each([" Budget", "Budget ", "a/b"])(
+      "refuses --name %j without asking Drive anything",
+      async (name) => {
+        const d = deps({ name });
+        await expect(handleLn(d)).rejects.toMatchObject({ code: "INVALID_ARGS" });
+        expect(d.findSiblings).not.toHaveBeenCalled();
+        expect(d.createShortcut).not.toHaveBeenCalled();
+      },
+    );
   });
 });
 

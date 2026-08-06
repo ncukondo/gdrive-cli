@@ -183,6 +183,7 @@ export function registerDriveWrite(program: Command): void {
         getFile: (id) => getFile(drive, id),
         createShortcut: (targetId, parentId, name) =>
           createShortcut(drive, targetId, parentId, name),
+        findSiblings: (parentId, n) => childrenNamed(drive, parentId, n),
         target,
         dest: folder,
         format: opts.format,
