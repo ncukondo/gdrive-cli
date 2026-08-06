@@ -37,9 +37,9 @@ export interface SlidesCreateDeps {
 
 /**
  * Creates, and hands everything after that to {@link afterCreate}: the calls
- * decision 0030 §4 records, in the order
- * [#36](https://github.com/ncukondo/gdrive-cli/issues/36) put them. That is
- * `forms create`'s shape plus the one step the other creates do not need —
+ * decision 0030 §4 records, in the order decision 0057 §1 corrected them to.
+ * That is `forms create`'s shape plus the one step the other creates do not
+ * need —
  * `presentations.create` always returns a deck holding one slide, and `--file`
  * must not leave it stranded ahead of the document's own first slide, so the
  * same `batchUpdate` that builds the document deletes it.

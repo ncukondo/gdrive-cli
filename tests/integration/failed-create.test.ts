@@ -30,6 +30,13 @@ import { ExitSignal, mockProcessExit } from "../helpers/mock.ts";
  *
  * `-q` is checked on **stdout**, not on stderr. A value on stderr is one `$(…)`
  * cannot take, so it is not a value (decisions 0007 and 0038 §1).
+ *
+ * **What this does not reach.** Three of the four fail without `--parent`, which
+ * is the shortest route to a fill that fails, and the fourth — `sheets`, whose
+ * failure *is* the move — reaches the branch where `parent_id` is absent. So the
+ * `parent_id`-present payload never runs through the real program here.
+ * Placement is decided in `lib/after-create.ts` and asserted there and in each
+ * command's own tests; nothing below is evidence that a file reached a folder.
  */
 
 const clients = vi.hoisted(() => {
