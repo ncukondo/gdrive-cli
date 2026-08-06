@@ -1,13 +1,30 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleRename } from "./rename.ts";
-import { FILE_TYPES, type DriveFile } from "../types/index.ts";
+import { FILE_TYPES, type DriveFile, type FileType } from "../types/index.ts";
 
+const MIME_BY_TYPE: Record<FileType, string> = {
+  folder: "application/vnd.google-apps.folder",
+  doc: "application/vnd.google-apps.document",
+  sheet: "application/vnd.google-apps.spreadsheet",
+  slides: "application/vnd.google-apps.presentation",
+  form: "application/vnd.google-apps.form",
+  shortcut: "application/vnd.google-apps.shortcut",
+  file: "text/plain",
+};
+
+/**
+ * A file whose `type` and `mime_type` agree, because Drive never sends a pair
+ * that does not. Varying the label alone would leave a branch keyed on the MIME
+ * type — the other half of the same fact — passing a test that never presented
+ * it with a form.
+ */
 function file(overrides: Partial<DriveFile> = {}): DriveFile {
+  const type = overrides.type ?? "doc";
   return {
     id: "R1",
     name: "Notes 2026",
-    mime_type: "application/vnd.google-apps.document",
-    type: "doc",
+    mime_type: MIME_BY_TYPE[type],
+    type,
     size: null,
     parents: ["rep1"],
     trashed: false,
