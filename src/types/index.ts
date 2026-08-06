@@ -35,17 +35,56 @@ export const ExitCode = {
 export type ExitCodeValue = (typeof ExitCode)[keyof typeof ExitCode];
 
 /**
+ * What a failed command has to say beyond its message (decision 0031 §4).
+ *
+ * `payload` becomes the error envelope's `data`, so `success: false` stops
+ * implying that nothing happened: a `cp -r` that stopped part-way names the
+ * folders and files it did create, and a `forms write` that refused a deletion
+ * can name the items instead of only describing them in prose.
+ *
+ * The other two mirror `Renderable` in `lib/output.ts`, because a failure
+ * that has something to report has the same three audiences a success does. Both
+ * are optional: a caller with nothing extra to say in a mode says nothing, and
+ * the error message alone is printed.
+ */
+export interface ErrorData {
+  /** The JSON envelope's `data` field. */
+  payload: unknown;
+  /** A summary printed under the error in text mode. */
+  text?: string;
+  /** What `--quiet` prints under the error instead: one value per line. */
+  quiet?: string;
+}
+
+/** Everything an {@link AppError} carries besides its code and message. */
+export interface AppErrorOptions {
+  /** What the command changed, or planned, before it failed (decision 0031 §4). */
+  data?: ErrorData;
+  /**
+   * True when Drive asked for a pause rather than refused the request — a rate
+   * limit or a server error (decision 0031 §5). Only `mapDriveError` sets it,
+   * because only it sees the HTTP status, and only `withRetry` reads it.
+   */
+  transient?: boolean;
+}
+
+/**
  * Application error carrying a stable {@link ErrorCode}. Command handlers throw
  * this instead of calling `process.exit`; the top-level handler maps the code
  * to an exit code and output envelope.
  */
 export class AppError extends Error {
   readonly code: ErrorCode;
+  /** Present only when the failure has something to report (decision 0031 §4). */
+  readonly data?: ErrorData;
+  readonly transient: boolean;
 
-  constructor(code: ErrorCode, message: string) {
+  constructor(code: ErrorCode, message: string, options: AppErrorOptions = {}) {
     super(message);
     this.name = "AppError";
     this.code = code;
+    if (options.data !== undefined) this.data = options.data;
+    this.transient = options.transient === true;
   }
 }
 
@@ -131,6 +170,12 @@ export interface ErrorResponse {
     code: ErrorCode;
     message: string;
   };
+  /**
+   * Present only when the command changed something before it failed
+   * (decision 0031 §4). A consumer that ignores it reads the same two keys it
+   * always did.
+   */
+  data?: unknown;
 }
 
 export type Envelope<T> = SuccessResponse<T> | ErrorResponse;
