@@ -97,6 +97,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0044 A name this CLI cannot address is refused](archive/0044-addressable-names.md) | 0033, 0043 | H | done |
 | [0045 The live suite reaches the write paths](archive/0045-e2e-write-paths.md) | — | H | done |
 | [0046 A `create` that fails leaves nothing in My Drive's root](archive/0046-create-lands-in-its-parent.md) | 0045 | — | done |
+| [0047 The Docs port learns about tabs, and `docs tabs` manages them](0047-docs-tabs-port-and-coordinate.md) | — | I | todo |
+| [0048 A read covers every tab, and a write names the one it means](0048-docs-read-covers-every-tab.md) | 0047 | I | todo |
 
 ## Parallelism notes
 
@@ -129,6 +131,12 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   `ci.yml`; 0042 owns `CLAUDE.md` files and nothing else. Either order of merge
   works: 0042's `decisions/CLAUDE.md` is exempted by name from the landing check
   0041 builds, and until 0041 merges there is no check to satisfy.
+- **Group I** (0047 / 0048): Docs tabs, and *sequential* rather than parallel —
+  the group letter records that they are one piece of work, not that they can run
+  side by side. Both own `lib/docs-api.ts` and `commands/docs/`, and 0048 needs
+  0047's coordinate resolver and its `docs tabs add` to build a multi-tab fixture
+  at all. The order is chosen so the damaging half closes first: 0047 removes the
+  ability to edit an unseen tab, 0048 then widens what a read covers.
 - **Group E** (0031 / 0032): Slides. Same shape as group D and disjoint from it
   (`commands/slides/`, `lib/slides-api.ts`), so D and E can run side by side.
   Sequential within the group. 0031 needs 0029 only for the `yaml` dependency
@@ -319,6 +327,30 @@ and the reviewer's objection is the useful part: a rule that holds exactly when
 the tests are green and fails exactly when they are red is not containment. The
 fix is a reordering, and it is worth the task because `.husky/pre-push` runs that
 suite on every push.
+
+0047 and 0048 open a line of work from a question rather than from an issue: a
+Doc can hold a tree of tabs, and nothing in this repository had ever mentioned
+them. Measuring on 2026-08-08 against a four-tab document found the Docs port
+reading and writing the first tab throughout, silently — and one thing worse than
+silence. **Docs v1's default for an omitted tab differs by request type**: an
+omitted `tabId` on a `Location` or a `Range` meant the first tab, while an
+omitted `tabsCriteria` on `replaceAllText` meant every tab. `docs-api.ts` omitted
+both, so `docs replace` was scoped one way in its Markdown mode and the other
+under `--as text`, and the run that measured it reported *Replaced 3 occurrences*
+after rewriting two sibling tabs and one nested tab — none of which any command
+here could display. `decisions/0058` settles the shape; the split is by layer,
+with the damaging half first.
+
+Two things from that measurement are worth carrying past these tasks. **A
+single-tab fixture cannot tell "the first tab" from "every tab"**, because for
+one tab the two defaults produce the same document — so no fake, and no live test
+written before somebody thought of tabs, could have failed on this. The fixture
+has to contain the distinction before a test can hold it, which is
+`decisions/0012`'s argument arriving at a case it does not name. And
+`download --export-as md` had been returning every tab the whole time, so the CLI
+already disagreed with itself about how much of a document it read, depending on
+which verb was used; a second reader of the same data is where that kind of
+disagreement stays hidden longest.
 
 0044 is the class 0054 §3 turned out to be one member of. Reviewing the `cp -r`
 and `rename` branches found that `rename` can give a file a name a sibling
