@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import type { docs_v1, drive_v3, forms_v1, sheets_v4, slides_v1 } from "googleapis";
-import type { DriveClient } from "./api.ts";
+import type { DriveClient, FileCreateBody, FileUpdateBody, PermissionBody } from "./api.ts";
 import type { DocsClient, DocsRequest } from "./docs-api.ts";
 import type { FormsClient, FormsRequest } from "./forms-api.ts";
 import type { SheetsClient } from "./sheets-api.ts";
@@ -166,14 +166,54 @@ export type GeneratedParamChecks = [
  * `UnknownParams` trick one level down: every member name must still be a key
  * of the API's `Schema$Request`, and every field inside it a key of that
  * member's schema.
+ *
+ * **Both sides need `NonNullable`, and for different reasons.** The generated
+ * schema makes every field nullable, so `keyof Schema[K]` without it is the
+ * keys of `X | null`, which is `never`. Ours makes some fields *optional*, and
+ * `keyof T[K]` on `X | undefined` is `never` for exactly the same reason — so
+ * an optional field's inner keys were checked against nothing and every one of
+ * them passed. `FileCreateBody["shortcutDetails"]` is that shape, and it is
+ * what issue #29 asked for; the missing `NonNullable` is why adding the check
+ * without this line still let a misspelled `targetId` through.
  */
 type UnknownRequestKeys<T, Schema> = T extends unknown
   ? {
       [K in keyof T]-?: K extends keyof Schema
-        ? Exclude<keyof T[K], keyof NonNullable<Schema[K]>>
+        ? Exclude<keyof NonNullable<T[K]>, keyof NonNullable<Schema[K]>>
         : K;
     }[keyof T]
   : never;
+
+/**
+ * The same guard for the three bodies this CLI sends to Drive (issue #29).
+ *
+ * `GeneratedParamChecks` above compares only the top-level keys of a params
+ * object, and `requestBody` is one such key — so everything inside it has been
+ * unchecked since these ports were written. `FileCreateBody` gained
+ * `shortcutDetails.targetId` (decision 0026) and compiled unguarded, which is
+ * the class decision 0015 and task 0016 set these checks up to catch; 0026 §6
+ * says the guard covers it and was wrong, and issue #29 is that correction.
+ *
+ * `UnknownRequestKeys` is reused unchanged. Its name says "request" because
+ * Docs, Forms and Slides send a union of request members, but nothing in it is
+ * union-specific: `T extends unknown` is a no-op distribution over an interface,
+ * and what is left is exactly the two checks a body needs — every key of ours
+ * is a key of the generated schema, and every key one level down is a key of
+ * that field's schema. One level is as far as it goes, which is enough for
+ * every body here and would not be for a deeper one.
+ *
+ * The assignability half is the companion, not a duplicate: the key check
+ * catches a name the schema does not have, and `extends` catches a type that
+ * does not fit the name.
+ */
+export type DriveBodyChecks = [
+  AssertNoUnknownParams<UnknownRequestKeys<FileCreateBody, drive_v3.Schema$File>>,
+  FileCreateBody extends drive_v3.Schema$File ? true : never,
+  AssertNoUnknownParams<UnknownRequestKeys<FileUpdateBody, drive_v3.Schema$File>>,
+  FileUpdateBody extends drive_v3.Schema$File ? true : never,
+  AssertNoUnknownParams<UnknownRequestKeys<PermissionBody, drive_v3.Schema$Permission>>,
+  PermissionBody extends drive_v3.Schema$Permission ? true : never,
+];
 
 export type DocsRequestChecks = [
   AssertNoUnknownParams<UnknownRequestKeys<DocsRequest, docs_v1.Schema$Request>>,
