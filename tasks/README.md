@@ -97,6 +97,10 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0044 A name this CLI cannot address is refused](archive/0044-addressable-names.md) | 0033, 0043 | H | done |
 | [0045 The live suite reaches the write paths](archive/0045-e2e-write-paths.md) | — | H | done |
 | [0046 A `create` that fails leaves nothing in My Drive's root](archive/0046-create-lands-in-its-parent.md) | 0045 | — | done |
+| [0047 `gdrive auth` refuses where nobody can finish the flow](0047-auth-refuses-without-a-person.md) | — | I | todo |
+| [0048 The generated-type guard reaches inside a Drive `requestBody`](0048-the-guard-reaches-inside-a-request-body.md) | — | I | todo |
+| [0049 A `PRUNE_REQUIRED` refusal carries the plan it refused](0049-a-refusal-carries-its-plan.md) | — | I | todo |
+| [0050 The e2e exclusion stops depending on the shell](0050-the-e2e-exclusion-leaves-the-shell.md) | — | I | todo |
 
 ## Parallelism notes
 
@@ -129,6 +133,15 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   `ci.yml`; 0042 owns `CLAUDE.md` files and nothing else. Either order of merge
   works: 0042's `decisions/CLAUDE.md` is exempted by name from the landing check
   0041 builds, and until 0041 merges there is no check to satisfy.
+- **Group I** (0047 / 0048 / 0049 / 0050): the four open issues that needed no
+  new position taken before code. Disjoint by construction — 0047 owns
+  `commands/auth.ts` and `index.ts`, 0048 owns `lib/google-clients.ts`, 0049
+  owns `commands/forms/` and `commands/slides/`, and 0050 owns the two vitest
+  configs, `package.json`'s `scripts` and `.husky/pre-commit`. All four branch
+  from the same commit and merge in any order. The one thing to know: 0050
+  renames what `test:e2e` runs, so a worktree that rebases onto it gets a
+  `pre-push` that exercises the new script — which is the point, not a hazard.
+
 - **Group E** (0031 / 0032): Slides. Same shape as group D and disjoint from it
   (`commands/slides/`, `lib/slides-api.ts`), so D and E can run side by side.
   Sequential within the group. 0031 needs 0029 only for the `yaml` dependency
@@ -396,6 +409,23 @@ shape: the previous one had fixed the instance it named and left another member
 of the same class. Executing a rule is what shows where its sentence stopped, and
 that is an argument for executing rules early rather than for writing them more
 carefully (0050 Consequences).
+
+0047 through 0050 come from the issue tracker rather than from a survey, and
+they are the half of it that needed no new position taken first. The tracker had
+nine open issues when they were written; five of the nine turned on a question
+the records had not answered — what a truncated listing owes its caller, what a
+copy does with a half-navigated option set, how a document addresses a second
+`BODY` — and those wait for a decision. These four did not, and two of them had
+been waiting on something that had already arrived.
+
+That is the part worth keeping. Issue #31 said "there is nothing to build here
+before 0033" and 0033 had been archived for a month; the `data` field it was
+waiting for was sitting in `src/types/index.ts` with two other commands already
+using it. Issue #18 said the quoting bug "does not bite yet" because
+`tests/e2e/` was empty, and tasks 0039 and 0045 had since put seven files there.
+A deferral records the world on the day it was written, and neither issue was
+wrong when filed. Nothing re-reads them when the thing they waited for lands,
+which is an argument for checking a blocked issue's premise before its priority.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
