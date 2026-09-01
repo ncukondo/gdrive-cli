@@ -33,13 +33,20 @@ export GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 export GOOGLE_CLIENT_SECRET="..."
 ```
 
-**The prompt needs a terminal.** With no tty on stdin — a CI job, a cron entry,
-anything piped — a missing client is `AUTH_REQUIRED` and exit 2 rather than a
-process waiting on input nobody will type
-([`../decisions/0005`](../decisions/0005-auth-and-scopes.md) states the purpose
-as preserving automation). `gdrive -f json auth` refuses the same way even at a
-terminal, because that caller asked for a machine answer. A fresh install at a
-terminal, having named no format, is prompted.
+**Logging in needs a terminal** — not just the prompt. With no tty on stdin —
+a CI job, a cron entry, anything piped — `gdrive auth` is `AUTH_REQUIRED` and
+exit 2 rather than a process waiting for input nobody will type or a browser
+nobody will open ([`../decisions/0005`](../decisions/0005-auth-and-scopes.md)
+states the purpose as preserving automation;
+[`../decisions/0058`](../decisions/0058-the-browser-flow-needs-a-person.md)
+extends it to the consent flow). `gdrive -f json auth` refuses the same way even
+at a terminal, because that caller asked for a machine answer; drop the flag and
+it logs in. A fresh install at a terminal, having named no format, is prompted.
+
+The refusal names which of the two applies, because only one of them is fixed by
+dropping a flag. Nothing probes for a browser: a printed URL is finishable from
+a browser on another machine, which is how this command is ordinarily used over
+SSH.
 
 ## 3. Log in
 
@@ -47,11 +54,12 @@ terminal, having named no format, is prompted.
 gdrive auth              # same as `gdrive auth login`
 ```
 
-`gdrive` starts a local HTTP server on a free port, opens your browser to
-Google's consent page, receives the authorization code on the redirect, and
-exchanges it for tokens. It then calls the userinfo endpoint to detect the
-account email and stores the token under that email. The first account
-authenticated becomes the default account.
+`gdrive` starts a local HTTP server on a free port and prints a consent URL —
+**you open it**; nothing here launches a browser, which is why the URL can go to
+one on another machine as long as it can reach `localhost` on this one. It
+receives the authorization code on the redirect, exchanges it for tokens, calls
+the userinfo endpoint to detect the account email, and stores the token under
+that email. The first account authenticated becomes the default account.
 
 ```console
 $ gdrive auth -f text

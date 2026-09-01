@@ -117,7 +117,7 @@ describe("handleAuthLogin", () => {
       fs,
       config,
       format: "text",
-      canPrompt: true,
+      noPerson: undefined,
       quiet: false,
       write: out.write,
       promptFn: async () => "",
@@ -143,7 +143,7 @@ describe("handleAuthLogin", () => {
       fs,
       config,
       format: "text",
-      canPrompt: true,
+      noPerson: undefined,
       quiet: false,
       write: () => {},
       promptFn: async () => "",
@@ -164,7 +164,7 @@ describe("handleAuthLogin", () => {
         fs,
         config: { default_format: "text", accounts: [] },
         format: "json",
-        canPrompt: false,
+        noPerson: "asked_for_json",
         quiet: false,
         write: () => {},
         promptFn,
@@ -174,6 +174,86 @@ describe("handleAuthLogin", () => {
     ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
 
     expect(promptFn).not.toHaveBeenCalled();
+    expect(runFlow).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Issue #17. The credential prompt was guarded and the browser flow under it
+   * was not, so the *configured* machine — the one that gets past the prompt —
+   * is the one that hung. `client_secret.json` present is what makes this
+   * different from the case above, and it is why a test with an empty fake fs
+   * could pass while the command blocked for ever.
+   */
+  it("refuses the browser flow with no terminal, even with credentials in place", async () => {
+    const fs = withClientSecret(createFakeFs());
+    const promptFn = vi.fn(async () => "typed");
+    const runFlow = vi.fn(async () => token("x@x.com"));
+    const out = collect();
+
+    await expect(
+      handleAuthLogin({
+        fs,
+        config: { default_format: "text", accounts: [] },
+        format: "json",
+        noPerson: "no_terminal",
+        quiet: false,
+        write: out.write,
+        promptFn,
+        runFlow,
+        writeConfig: () => {},
+      }),
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+
+    expect(runFlow).not.toHaveBeenCalled();
+    expect(promptFn).not.toHaveBeenCalled();
+    // Nothing reaches stdout ahead of the error envelope: no URL line, no
+    // "No OAuth client configured" notice (decision 0058 §3).
+    expect(out.output).toBe("");
+  });
+
+  it("says a terminal is missing, and says the flag is when that is what refused", async () => {
+    const fs = withClientSecret(createFakeFs());
+    const base = {
+      fs,
+      config: { default_format: "text" as const, accounts: [] },
+      format: "text" as const,
+      quiet: false,
+      write: () => {},
+      promptFn: async () => "",
+      runFlow: async () => token("x@x.com"),
+      writeConfig: () => {},
+    };
+
+    await expect(handleAuthLogin({ ...base, noPerson: "no_terminal" })).rejects.toMatchObject({
+      message: expect.stringContaining("terminal"),
+    });
+    await expect(handleAuthLogin({ ...base, noPerson: "asked_for_json" })).rejects.toMatchObject({
+      message: expect.stringContaining("-f json"),
+    });
+  });
+
+  /**
+   * The path that already worked keeps working: no terminal and no credentials
+   * is still `AUTH_REQUIRED` and still never reaches the flow. What changes is
+   * only which of the two missing things the message names first.
+   */
+  it("still refuses with neither a terminal nor credentials", async () => {
+    const runFlow = vi.fn(async () => token("x@x.com"));
+
+    await expect(
+      handleAuthLogin({
+        fs: createFakeFs(),
+        config: { default_format: "text", accounts: [] },
+        format: "text",
+        noPerson: "no_terminal",
+        quiet: false,
+        write: () => {},
+        promptFn: async () => "",
+        runFlow,
+        writeConfig: () => {},
+      }),
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+
     expect(runFlow).not.toHaveBeenCalled();
   });
 
@@ -194,7 +274,7 @@ describe("handleAuthLogin", () => {
       fs,
       config: { default_format: "text", accounts: [] },
       format: "json",
-      canPrompt: true,
+      noPerson: undefined,
       quiet: false,
       write: out.write,
       promptFn,

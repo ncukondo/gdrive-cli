@@ -39,8 +39,16 @@ export function documentFormat(opts: GlobalOptions): OutputFormat {
   return opts.formatNamed ? opts.format : "text";
 }
 
+/** Why this invocation has nobody who can answer it (decision 0058 §1, §3). */
+export type NoPerson =
+  /** Not attached to a terminal: a cron entry, a CI job, anything piped. */
+  | "no_terminal"
+  /** A caller who named `-f json` and therefore asked for a machine answer. */
+  | "asked_for_json";
+
 /**
- * Whether a command may stop and ask the user something.
+ * Whether somebody is at the other end of this invocation, and if not, why not.
+ * `undefined` means somebody is.
  *
  * Decision 0005 suppresses `gdrive auth`'s credential prompt in JSON mode "to
  * preserve automation", and the format was only ever a proxy for the question
@@ -51,11 +59,24 @@ export function documentFormat(opts: GlobalOptions): OutputFormat {
  * process waiting on a stdin nobody is typing into.
  *
  * A named `-f json` refuses on its own, terminal or not: that caller asked for
- * a machine answer and a prompt is not one.
+ * a machine answer and neither a prompt nor a consent screen is one.
+ *
+ * **One predicate answers both of `gdrive auth`'s waits** (decision 0058 §3).
+ * The credential prompt needs somebody to type; the OAuth flow underneath it
+ * needs somebody to read a URL, open it, and consent. Those are the same
+ * question, and the reason 0058 exists is that they were once guarded as if
+ * only the first were being asked. Growing a second predicate here — one that
+ * agrees with this one today — would rebuild the gap it closed.
+ *
+ * The reason is returned rather than a boolean because only one of the two is
+ * fixed by dropping a flag, and the caller has to be able to say which. The
+ * terminal is checked first for that reason: on a machine with no terminal,
+ * "re-run without `-f json`" is advice that does not work.
  */
-export function canPrompt(opts: GlobalOptions): boolean {
-  if (opts.formatNamed && opts.format === "json") return false;
-  return process.stdin.isTTY === true;
+export function noPerson(opts: GlobalOptions): NoPerson | undefined {
+  if (process.stdin.isTTY !== true) return "no_terminal";
+  if (opts.formatNamed && opts.format === "json") return "asked_for_json";
+  return undefined;
 }
 
 /**

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GlobalOptions } from "./index.ts";
 import {
-  canPrompt,
+  noPerson,
   createProgram,
   documentFormat,
   encodingFormat,
@@ -159,30 +159,37 @@ describe("global options", () => {
     }
   }
 
-  it("allows a prompt only at a terminal, and never when -f json named the format", () => {
+  it("finds somebody at a terminal, and nobody once -f json named the format", () => {
     withStdin(true, () => {
       withNoConfig(() => {
-        expect(canPrompt(parseArgs([]))).toBe(true);
-        expect(canPrompt(parseArgs(["-f", "text"]))).toBe(true);
-        expect(canPrompt(parseArgs(["-q"]))).toBe(true);
-        expect(canPrompt(parseArgs(["-f", "json"]))).toBe(false);
+        expect(noPerson(parseArgs([]))).toBeUndefined();
+        expect(noPerson(parseArgs(["-f", "text"]))).toBeUndefined();
+        expect(noPerson(parseArgs(["-q"]))).toBeUndefined();
+        expect(noPerson(parseArgs(["-f", "json"]))).toBe("asked_for_json");
       });
       // A format the environment named, at a terminal: still a human to ask.
       vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
-      expect(canPrompt(parseArgs([]))).toBe(true);
+      expect(noPerson(parseArgs([]))).toBeUndefined();
       vi.unstubAllEnvs();
     });
   });
 
-  it("refuses to prompt with no terminal, whatever the format is", () => {
+  /**
+   * With no tty the answer is `no_terminal` even when `-f json` is also named,
+   * and that ordering is the whole reason this returns a reason rather than a
+   * boolean: only one of the two is fixed by dropping a flag (decision 0058
+   * §4), and telling somebody to drop `-f json` on a machine that has no
+   * terminal is advice that does not work.
+   */
+  it("names the terminal, not the flag, when both are missing", () => {
     withStdin(undefined, () => {
       withNoConfig(() => {
-        expect(canPrompt(parseArgs([]))).toBe(false);
-        expect(canPrompt(parseArgs(["-f", "text"]))).toBe(false);
-        expect(canPrompt(parseArgs(["-f", "json"]))).toBe(false);
+        expect(noPerson(parseArgs([]))).toBe("no_terminal");
+        expect(noPerson(parseArgs(["-f", "text"]))).toBe("no_terminal");
+        expect(noPerson(parseArgs(["-f", "json"]))).toBe("no_terminal");
       });
       vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
-      expect(canPrompt(parseArgs([]))).toBe(false);
+      expect(noPerson(parseArgs([]))).toBe("no_terminal");
       vi.unstubAllEnvs();
     });
   });
