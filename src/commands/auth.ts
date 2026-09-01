@@ -157,7 +157,7 @@ export interface AuthLoginDeps {
 function refusal(reason: NoPerson): AppError {
   const why =
     reason === "no_terminal"
-      ? "`gdrive auth` needs a terminal. It prints a consent URL for you to open and waits for your browser to come back, and neither half works with nothing attached to stdin. Log in on a machine that has a terminal; the token is stored under ~/.config/gdrive-cli/tokens and can be copied here."
+      ? "`gdrive auth` needs a terminal. It prints a consent URL for you to open and waits for your browser to come back, and neither half works with nothing attached to stdin. Log in on a machine that has a terminal; the token is stored at ~/.config/gdrive-cli/accounts/<email>.json and can be copied here."
       : "`gdrive auth` cannot complete the consent flow for a caller that named `-f json`: logging in means a person opening a URL. Re-run it without `-f json`.";
   return new AppError("AUTH_REQUIRED", why);
 }
