@@ -13,6 +13,17 @@ function codeOf(run: () => unknown): string {
   return "no error";
 }
 
+/** The {@link AppError} itself, for the half of a refusal that is not prose. */
+function errorOf(run: () => unknown): AppError {
+  try {
+    run();
+  } catch (error) {
+    if (error instanceof AppError) return error;
+    throw error;
+  }
+  throw new Error("expected a refusal");
+}
+
 function messageOf(run: () => unknown): string {
   try {
     run();
@@ -189,6 +200,68 @@ describe("planFormWrite", () => {
     expect(message).toContain("Anything else?");
     expect(message).toContain("i3");
     expect(message).toContain("--prune");
+  });
+
+  /**
+   * Issue #31. 0028 §4 puts the three answers a caller has to tell apart — the
+   * deletion was applied, refused, or never asked for — "in one place, in
+   * `data.plan`". A refusal had no `data` at all until 0031 §3–§4 gave the
+   * error envelope one, so the list existed only inside the sentence.
+   *
+   * The ids are asserted off the payload rather than the message on purpose: a
+   * test that read the prose would keep passing if the data went missing, which
+   * is the state this closes.
+   */
+  it("carries the items it refused to delete in the error's data (0028 §4)", () => {
+    const shorter = edited((items) => items.slice(0, 2));
+    const error = errorOf(() => plan(shorter));
+
+    expect(error.code).toBe("PRUNE_REQUIRED");
+    expect(error.data?.payload).toEqual({
+      id: "1FoRm",
+      plan: [{ action: "delete", id: "i3", title: "Anything else?", index: 2 }],
+      applied: false,
+    });
+  });
+
+  /**
+   * The refused plan is the same entries `--prune` would report, so a caller
+   * that already parses a success reads a refusal with the same code. Asserting
+   * it against the applied run is what keeps the two from drifting apart.
+   */
+  it("refuses with the entries --prune would have reported", () => {
+    const shorter = edited((items) => items.slice(0, 1));
+    const refused = errorOf(() => plan(shorter));
+    const applied = plan(shorter, true);
+
+    expect(refused.data?.payload).toMatchObject({
+      plan: applied.entries.filter((entry) => entry.action === "delete"),
+    });
+  });
+
+  it("names an item the form gave no id, which no document could have named", () => {
+    const anonymous: FormRaw = {
+      ...form,
+      items: [...(form.items ?? []), { title: "No id here", textItem: {} }],
+    };
+    const { document: withAnonymous } = toFormDocument(anonymous);
+    const error = errorOf(() =>
+      planFormWrite(
+        anonymous,
+        { ...withAnonymous, items: withAnonymous.items.slice(0, 3) },
+        {
+          prune: false,
+        },
+      ),
+    );
+
+    expect(error.data?.payload).toMatchObject({
+      plan: [{ action: "delete", title: "No id here", index: 3 }],
+    });
+    // No `id` key at all, rather than an empty one: the API addresses this
+    // deletion by position because there is nothing else to address it by.
+    const [entry] = (error.data?.payload as { plan: Record<string, unknown>[] }).plan;
+    expect(entry && "id" in entry).toBe(false);
   });
 
   it("hands back no partial plan a caller could apply instead", () => {

@@ -79,7 +79,7 @@ export function registerDriveRead(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(ls);
@@ -107,7 +107,7 @@ export function registerDriveRead(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(search);
@@ -125,7 +125,7 @@ export function registerDriveRead(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(drives);
@@ -146,7 +146,7 @@ export function registerDriveRead(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(info);
@@ -182,7 +182,7 @@ export function registerDriveRead(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(download);

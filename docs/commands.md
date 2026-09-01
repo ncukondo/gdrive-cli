@@ -1584,6 +1584,29 @@ Error: Applying this document would delete 1 item the form has and the document 
 same terms, so the sequence to run when you are not sure is `--dry-run --prune`
 first and `--prune` after — one extra `forms.get` and nothing else.
 
+**The refusal carries the list**, so nothing has to be parsed out of the
+sentence: the error envelope's `data` holds the items it would have deleted, in
+the same `plan` shape a success reports, and `-q` prints their ids one per line.
+
+```console
+$ gdrive forms write "Surveys/2026" --file form.yaml -f json
+{ "success": false,
+  "error": { "code": "PRUNE_REQUIRED", "message": "Applying this document would delete 1 item..." },
+  "data": { "id": "1FoRm...", "applied": false,
+            "plan": [ { "action": "delete", "id": "2b3c4d5e", "title": "How satisfied are you?", "index": 3 } ] } }
+```
+
+The envelope goes to stderr, as every failure's does; `-q`'s ids go to stdout,
+where `$(…)` can take them.
+
+`plan` here holds **the deletions only** — not what `--prune` would also create,
+update and move. The refusal is decided before the rest of the plan is built, so
+there is nothing else to report. `--dry-run --prune` is the call that answers
+"what would the whole thing do", and it is the same one round trip.
+
+An item the form gave no id is deleted by position and has no `id` in its entry,
+so `-q` prints one fewer line than `plan` has entries.
+
 #### The plan
 
 Every `write` reports what it did, or would do, as `data.plan`: one entry per
@@ -2025,6 +2048,11 @@ slides and names the flag, and writes nothing at all. The plan is built whole
 or not at all, exactly as
 [`forms write`](#deleting-a-question-needs---prune) builds it, and `--dry-run`
 refuses on the same terms.
+
+The refusal carries the same `data` a refused `forms write` does — `id`,
+`applied: false`, and a `plan` of the `delete` entries — and `-q` prints the
+object ids. A slide the deck gave no id is not among them: `deleteObject`
+addresses a slide by id, so there is nothing to delete it by.
 
 #### The plan
 

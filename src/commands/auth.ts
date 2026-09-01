@@ -220,7 +220,7 @@ export function registerAuth(program: Command): void {
         });
         process.exit(result.exitCode);
       } catch (error) {
-        handleError(error, opts.format);
+        handleError(error, opts.format, opts.quiet);
       }
     });
 
@@ -241,7 +241,7 @@ export function registerAuth(program: Command): void {
         });
         process.exit(result.exitCode);
       } catch (error) {
-        handleError(error, opts.format);
+        handleError(error, opts.format, opts.quiet);
       }
     });
 
@@ -266,7 +266,7 @@ export function registerAuth(program: Command): void {
         });
         process.exit(result.exitCode);
       } catch (error) {
-        handleError(error, opts.format);
+        handleError(error, opts.format, opts.quiet);
       }
     });
 }

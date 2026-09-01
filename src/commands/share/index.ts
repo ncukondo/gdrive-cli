@@ -50,7 +50,7 @@ export function registerShare(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   share.addCommand(list);
@@ -86,7 +86,7 @@ export function registerShare(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   share.addCommand(add);
@@ -110,7 +110,7 @@ export function registerShare(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   share.addCommand(remove);
@@ -136,7 +136,7 @@ export function registerShare(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   share.addCommand(link);

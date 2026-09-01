@@ -220,7 +220,7 @@ export function registerAccount(program: Command): void {
         });
         process.exit(result.exitCode);
       } catch (error) {
-        handleError(error, opts.format);
+        handleError(error, opts.format, opts.quiet);
       }
     });
 
@@ -243,7 +243,7 @@ export function registerAccount(program: Command): void {
         });
         process.exit(result.exitCode);
       } catch (error) {
-        handleError(error, opts.format);
+        handleError(error, opts.format, opts.quiet);
       }
     });
 
@@ -267,7 +267,7 @@ export function registerAccount(program: Command): void {
         });
         process.exit(result.exitCode);
       } catch (error) {
-        handleError(error, opts.format);
+        handleError(error, opts.format, opts.quiet);
       }
     });
 
@@ -292,7 +292,7 @@ export function registerAccount(program: Command): void {
         });
         process.exit(result.exitCode);
       } catch (error) {
-        handleError(error, opts.format);
+        handleError(error, opts.format, opts.quiet);
       }
     });
 }

@@ -73,7 +73,7 @@ export function registerDocs(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, format);
+      handleError(error, format, opts.quiet);
     }
   });
   docs.addCommand(read);
@@ -136,7 +136,7 @@ export function registerDocs(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   docs.addCommand(append);
@@ -166,7 +166,7 @@ export function registerDocs(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   docs.addCommand(replace);
@@ -206,7 +206,7 @@ export function registerDocs(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   docs.addCommand(insert);

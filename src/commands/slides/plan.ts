@@ -1,4 +1,5 @@
 import { AppError } from "../../types/index.ts";
+import { refusedPlan } from "../../lib/prune-refusal.ts";
 import {
   layoutFieldPlaceholders,
   slideTextTargets,
@@ -406,17 +407,25 @@ export function planSlideWrite(
     deletions.push({ id, slide, index });
   }
 
+  const deletionEntries: SlidePlanEntry[] = deletions.map(({ id, slide, index }) => ({
+    action: "delete",
+    id,
+    title: titleOf(slide),
+    index,
+  }));
+
   if (deletions.length > 0 && !options.prune) {
     const what = deletions.map(({ slide, id }) => describe(titleOf(slide), id)).join(", ");
     const count = deletions.length === 1 ? "1 slide" : `${deletions.length} slides`;
     throw new AppError(
       "PRUNE_REQUIRED",
       `Applying this document would delete ${count} the presentation has and the document does not: ${what}. Nothing has been changed. Re-run with --prune to delete them, or put them back in the document.`,
+      { data: refusedPlan(presentation.presentationId, deletionEntries) },
     );
   }
 
-  for (const { id, slide, index } of deletions) {
-    entries.push({ action: "delete", id, title: titleOf(slide), index });
+  entries.push(...deletionEntries);
+  for (const { id } of deletions) {
     requests.push({ deleteObject: { objectId: id } });
   }
 

@@ -67,7 +67,7 @@ export function registerSlides(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, format);
+      handleError(error, format, opts.quiet);
     }
   });
   slides.addCommand(read);
@@ -95,7 +95,7 @@ export function registerSlides(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   slides.addCommand(write);

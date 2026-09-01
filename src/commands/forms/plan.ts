@@ -12,6 +12,7 @@ import {
   type OptionWrite,
 } from "../../lib/form-document.ts";
 import type { FormsRequest } from "../../lib/forms-api.ts";
+import { refusedPlan } from "../../lib/prune-refusal.ts";
 
 /**
  * Turning a document into a list of edits (decision 0028 §1). Pure and separate
@@ -278,6 +279,13 @@ export function planFormWrite(
       ({ raw }) => !(raw.itemId !== undefined && raw.itemId !== null && matched.has(raw.itemId)),
     );
 
+  const deletionEntries: PlanEntry[] = deletions.map(({ raw, index }) => ({
+    action: "delete",
+    ...(raw.itemId ? { id: raw.itemId } : {}),
+    title: titleOf(raw),
+    index,
+  }));
+
   if (deletions.length > 0 && !options.prune) {
     const what = deletions
       .map(({ raw }) => describe(titleOf(raw), raw.itemId ?? undefined))
@@ -286,17 +294,11 @@ export function planFormWrite(
     throw new AppError(
       "PRUNE_REQUIRED",
       `Applying this document would delete ${count} the form has and the document does not: ${what}. Deleting a question deletes its responses with it, and nothing has been changed. Re-run with --prune to delete them, or put them back in the document.`,
+      { data: refusedPlan(form.formId, deletionEntries) },
     );
   }
 
-  for (const { raw, index } of deletions) {
-    entries.push({
-      action: "delete",
-      ...(raw.itemId ? { id: raw.itemId } : {}),
-      title: titleOf(raw),
-      index,
-    });
-  }
+  entries.push(...deletionEntries);
   // Backwards, so an earlier deletion never moves a later one's target.
   for (const { index } of [...deletions].reverse()) {
     requests.push({ deleteItem: { location: { index } } });
