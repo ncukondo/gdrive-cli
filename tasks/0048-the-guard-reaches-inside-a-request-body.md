@@ -24,11 +24,21 @@ already does (issue #29).
   everything inside it — `name`, `mimeType`, `parents`,
   `shortcutDetails.targetId` — is invisible to it.
 - The mechanism to copy is in the same file: `UnknownRequestKeys` plus a
-  `X extends Schema ? true : never` companion, as `DocsRequestChecks` uses. The
-  Drive case is simpler than those three, because `FileCreateBody` is one
-  interface rather than a union of request members, so the plain assignability
-  check plus a key check is enough and `UnknownRequestKeys` is not needed.
-- `PermissionBody` is the second body in the same file and has the same gap.
+  `X extends Schema ? true : never` companion, as `DocsRequestChecks` uses.
+  `UnknownRequestKeys` is reused rather than replaced: nothing in it is
+  union-specific, and its `T extends unknown` distributes over an interface as a
+  no-op.
+- **`UnknownRequestKeys` had to be fixed before it could do this job**, found
+  while implementing. It read `keyof T[K]` on our side without `NonNullable`.
+  For an *optional* field `T[K]` is `X | undefined` and `keyof` of that is
+  `never`, so the inner keys were compared against nothing and every one passed
+  — and `shortcutDetails?:` is optional, so the field issue #29 names is the one
+  the check would still have missed. The generated side already had
+  `NonNullable`, for the same reason one number over: the schema makes every
+  field nullable. Both sides have it now. This widens the scope beyond what the
+  plan first drew, and it is the same class rather than an addition to it.
+- The three bodies are `FileCreateBody`, `PermissionBody`, and `files.update`'s,
+  which was declared inline in the port and so could not be named by any check.
 
 ## Scope
 
@@ -38,6 +48,10 @@ already does (issue #29).
 
 ## Out of scope
 
+- A second level down. `insertText: { location: { index } }` — `location`'s own
+  keys stay unchecked, in the new guard and in the three beside it. **This work
+  will not be done**: every body here is one level deep, and a recursive check
+  would be written against no case that needs it.
 - Widening the guard to Sheets `requestBody`s or to the `media` half of an
   upload. Not surveyed, and adding an unexamined check is how a guard gets
   disabled later. Tracked by issue #29's own scope — if a gap is found while
@@ -64,9 +78,12 @@ a failing test — the same shape task 0016 used for the checks this extends.
 
 ## Acceptance criteria
 
-- [ ] Misspelling any field of `FileCreateBody` or `PermissionBody` fails
-      `bun run typecheck` with the offending key in the message
-- [ ] Misspelling a field *inside* `shortcutDetails` fails the same way
+- [ ] Misspelling any field of `FileCreateBody`, `FileUpdateBody` or
+      `PermissionBody` fails `bun run typecheck` with the offending key in the
+      message
+- [ ] **Adding** a field inside `shortcutDetails` that the schema does not have
+      fails the same way. Adding rather than renaming is the case that matters:
+      a rename breaks the call sites and would look guarded when it is not
 - [ ] `bun run test` and `bun run typecheck` pass with no other change
 - [ ] The new check carries a comment saying what it covers that
       `GeneratedParamChecks` does not, as the three beside it do
