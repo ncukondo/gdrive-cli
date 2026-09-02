@@ -192,17 +192,22 @@ describeLive("Forms against a real account", () => {
   );
 
   it(
-    "drops a section target that names an item of the form the document came from",
+    "copies a form whose options mix the two kinds of navigation, dropping both",
     async () => {
       const source = (await gdriveAs(readSchema, "forms", "read", created.id)).form;
       const sectionId = source.items[1]?.id ?? "";
       expect(sectionId).not.toBe("");
 
-      // Every option branches, not just one. A form mixing `go_to_section_id`
-      // with `go_to_action` cannot be copied at all: dropping the section
-      // targets leaves the option set half-navigated and the API answers
-      // "Invalid Options, Either all or no options should be go to enabled".
-      // Measured. That gap is stated rather than approximated.
+      // The options **mix** the two kinds of navigation, which is what the
+      // Forms editor produces: switch branching on and every option gets a
+      // target, the ones that carry on getting `NEXT_SECTION`. Until decision
+      // 0061 this form could not be copied at all — stripping the ids left the
+      // list half navigated and the API answered "Invalid Options, Either all
+      // or no options should be go to enabled", refusing the whole atomic
+      // batch (issue #37).
+      //
+      // This case is why it is live. The constraint belongs to the API, and a
+      // fake only ever confirms what its author believed (decision 0012).
       const branching = {
         ...source,
         items: source.items.map((item, index) =>
@@ -211,8 +216,8 @@ describeLive("Forms against a real account", () => {
                 ...item,
                 options: [
                   { value: "Sales", go_to_section_id: sectionId },
-                  { value: "Engineering", go_to_section_id: sectionId },
-                  { other: true, go_to_section_id: sectionId },
+                  { value: "Engineering", go_to_action: "NEXT_SECTION" },
+                  { other: true, go_to_action: "SUBMIT_FORM" },
                 ],
               }
             : item,
@@ -238,6 +243,15 @@ describeLive("Forms against a real account", () => {
 
       const copied = JSON.stringify((await gdriveAs(readSchema, "forms", "read", copy.id)).form);
       expect(copied).not.toContain("go_to_section_id");
+      // And `go_to_action` went with them, which is the half the API enforces:
+      // it accepted this batch, and it refuses a list that keeps one and not
+      // the other (decision 0061 §1).
+      expect(copied).not.toContain("go_to_action");
+      // The question itself survived. 0061 §2: a branching question can be
+      // created, only its branching cannot, so it is not skipped.
+      expect((await gdriveAs(readSchema, "forms", "read", copy.id)).form.items).toHaveLength(
+        branched.items.length,
+      );
       for (const item of branched.items) {
         const id = item.id ?? "";
         expect(id).not.toBe("");

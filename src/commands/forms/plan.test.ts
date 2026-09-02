@@ -441,9 +441,20 @@ describe("planFormCreate", () => {
    * says the generated type — and it names an item of the form the document was
    * *read* from. A new form has none of those ids, so copying one over sends
    * navigation that points at nothing, which is exactly what 0028 §1 refuses to
-   * do with `id` itself. `go_to_action` is not an id and travels fine.
+   * do with `id` itself.
+   *
+   * `go_to_action` is not an id and would travel fine on its own — but it
+   * cannot travel *beside* a stripped target, because the API requires
+   * navigation to be all-or-nothing within one option list and answers
+   * `Invalid Options, Either all or no options should be go to enabled`. So
+   * the whole list's navigation goes together (decision 0061 §1, issue #37).
+   *
+   * This fixture is the ordinary case, not a corner: the Forms editor gives
+   * every option a target when branching is on, and the ones that continue get
+   * `NEXT_SECTION`. Until this was fixed, an ordinary branching form could not
+   * be copied at all — the batch is atomic, so the refusal was total.
    */
-  it("drops section navigation, whose target belongs to the form it was read from", () => {
+  it("drops a whole option list's navigation when any of it names a foreign item", () => {
     const branching: FormRaw = {
       info: { title: "Branching" },
       items: [
@@ -474,13 +485,88 @@ describe("planFormCreate", () => {
       created !== undefined && "createItem" in created
         ? created.createItem.item.questionItem?.question.choiceQuestion?.options
         : [];
-    expect(options).toEqual([
-      { value: "Sales" },
-      { value: "Engineering", goToAction: "NEXT_SECTION" },
-    ]);
+    expect(options).toEqual([{ value: "Sales" }, { value: "Engineering" }]);
     expect(result.skipped).toEqual([
       { index: 0, title: "Which team are you on?", kind: "option.goToSectionId" },
     ]);
+  });
+
+  /**
+   * The other half of 0061 §1, and the one that stops the fix from becoming
+   * "strip navigation from every copy". An option list that navigates only
+   * with `go_to_action` carries no id, is already uniform, and the API accepts
+   * it as it stands — so nothing is dropped and nothing is reported.
+   */
+  it("keeps navigation that is only go_to_action, since no id is involved", () => {
+    const uniform: FormRaw = {
+      info: { title: "Uniform" },
+      items: [
+        {
+          itemId: "i-branch",
+          title: "Done?",
+          questionItem: {
+            question: {
+              questionId: "q-branch",
+              choiceQuestion: {
+                type: "RADIO",
+                options: [
+                  { value: "Yes", goToAction: "SUBMIT_FORM" },
+                  { value: "No", goToAction: "NEXT_SECTION" },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    };
+    const result = planFormCreate(toFormDocument(uniform).document, "Copy");
+
+    const [created] = result.requests.filter((request) => "createItem" in request);
+    const options =
+      created !== undefined && "createItem" in created
+        ? created.createItem.item.questionItem?.question.choiceQuestion?.options
+        : [];
+    expect(options).toEqual([
+      { value: "Yes", goToAction: "SUBMIT_FORM" },
+      { value: "No", goToAction: "NEXT_SECTION" },
+    ]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  /**
+   * A question whose options mix a target with a plain option — no
+   * `go_to_action` anywhere — was already uniform after the strip and stays
+   * that way. It is here because it is the case the old code got right, and a
+   * refactor that made every list unnavigated would still pass the two above.
+   */
+  it("leaves an option that never navigated alone", () => {
+    const partial: FormRaw = {
+      info: { title: "Partial" },
+      items: [
+        {
+          itemId: "i-branch",
+          title: "Team?",
+          questionItem: {
+            question: {
+              questionId: "q-branch",
+              choiceQuestion: {
+                type: "RADIO",
+                options: [{ value: "Sales", goToSectionId: "i-page" }, { value: "Other" }],
+              },
+            },
+          },
+        },
+        { itemId: "i-page", title: "Sales", pageBreakItem: {} },
+      ],
+    };
+    const result = planFormCreate(toFormDocument(partial).document, "Copy");
+
+    const [created] = result.requests.filter((request) => "createItem" in request);
+    const options =
+      created !== undefined && "createItem" in created
+        ? created.createItem.item.questionItem?.question.choiceQuestion?.options
+        : [];
+    expect(options).toEqual([{ value: "Sales" }, { value: "Other" }]);
   });
 
   /** A write is a different matter: those ids name items the form really has. */
