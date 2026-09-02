@@ -56,11 +56,15 @@ account authenticated becomes the default account.
 not a terminal
 ([`../decisions/0059`](../decisions/0059-the-browser-flow-needs-a-reader.md)).
 That is the stream a person reads, so the two redirections do what you would
-want: `gdrive auth -f json > token.json` prints the URL on your terminal and
-writes only the envelope to the file, while `gdrive auth 2> log` — where the URL
-would land in the file and nobody would see it — is `AUTH_REQUIRED` and exit 2
-instead of a process that never returns. A cron entry or a CI job, which has
-neither, gets the same refusal in a second.
+want: `gdrive auth > token.json` prints the URL — and the `Client ID:` prompt,
+if there is one — on your terminal, and writes only the envelope to the file.
+`gdrive auth 2> log`, where the URL would land in the file and nobody would see
+it, is `AUTH_REQUIRED` and exit 2 instead of a process that never returns. A
+cron entry or a CI job, which has neither, gets the same refusal in a second.
+
+The rule is **stderr must be a terminal**, so anything that redirects or pipes
+it — `2> log`, `2>&1 | tee log`, `|& less` — is refused rather than left
+waiting. Redirecting *stdout* is fine and is the case worth having.
 
 Nothing probes for a browser: `DISPLAY` is unset on a Mac that has Safari and
 `BROWSER` is unset almost everywhere, and a wrong guess would leave a machine
