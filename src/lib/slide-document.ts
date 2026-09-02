@@ -413,8 +413,25 @@ function runsOf(shape: ShapeRaw | undefined): number {
  * styled than a placeholder is, so it matters more here rather than less.
  */
 export function elementRuns(slide: PageRaw, objectId: string): number {
-  const element = (slide.pageElements ?? []).find((page) => page.objectId === objectId);
-  return runsOf(element?.shape);
+  return runsOf(findElement(slide.pageElements ?? [], objectId)?.shape);
+}
+
+/**
+ * Depth-first, **through groups**, because `toElements` flattens them.
+ *
+ * A grouped shape is listed as an `elements` entry with its own id, so it is
+ * writable like any other — and looking for it in `pageElements` alone finds
+ * nothing, `runsOf(undefined)` answers 0, and a styled shape is rewritten with
+ * no `formatting_loss` warning at all. Grouping two text boxes is ordinary
+ * (0029 §3), so this is not a corner.
+ */
+function findElement(elements: PageElementRaw[], objectId: string): PageElementRaw | undefined {
+  for (const element of elements) {
+    if (element.objectId === objectId) return element;
+    const inside = findElement(element.elementGroup?.children ?? [], objectId);
+    if (inside !== undefined) return inside;
+  }
+  return undefined;
 }
 
 /** The notes shape's own text target, or nothing when the slide has no notes page. */

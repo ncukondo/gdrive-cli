@@ -522,6 +522,97 @@ describe("planSlideWrite: elements (0030 §3, 0051 §3)", () => {
     expect(result.entries[0]).toMatchObject({ fields: ["x1"], formatting_loss: ["x1"] });
   });
 
+  /**
+   * `toElements` flattens a group into its members, so a grouped shape is an
+   * ordinary `elements` entry with its own id — and the run count that decides
+   * the formatting warning has to look inside groups too. It did not: a styled
+   * shape in a group was rewritten with no `formatting_loss` at all, which is
+   * the warning being wrong in exactly the direction that matters.
+   */
+  it("warns about a styled element inside a group", () => {
+    const grouped: PresentationRaw = {
+      presentationId: "1PrEs",
+      title: "Deck",
+      layouts,
+      slides: [
+        {
+          objectId: "s1",
+          slideProperties: { layoutObjectId: "L_BLANK" },
+          pageElements: [
+            {
+              objectId: "g1",
+              elementGroup: {
+                children: [
+                  {
+                    objectId: "x1",
+                    shape: {
+                      text: {
+                        textElements: [
+                          { textRun: { content: "Half " } },
+                          { textRun: { content: "bold\n" } },
+                        ],
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const asRead = toSlideDocument(grouped);
+    const changed = {
+      ...asRead,
+      slides: asRead.slides.map((slide) => ({
+        ...slide,
+        elements: [{ id: "x1", kind: "shape" as const, text: "Retyped" }],
+      })),
+    };
+
+    expect(planSlideWrite(grouped, changed, { prune: false }).entries[0]).toMatchObject({
+      fields: ["x1"],
+      formatting_loss: ["x1"],
+    });
+  });
+
+  /**
+   * An entry the deck itself gave no id cannot be addressed — `insertText`
+   * takes an objectId and there is nothing to give it — so an edit to one is
+   * refused rather than reported as applied. Both sides id-less, so the
+   * structural comparison passes and this is the branch that decides.
+   */
+  it("refuses a changed text on an entry neither side can address", () => {
+    const anonymous: PresentationRaw = {
+      presentationId: "1PrEs",
+      title: "Deck",
+      layouts,
+      slides: [
+        {
+          objectId: "s1",
+          slideProperties: { layoutObjectId: "L_BLANK" },
+          pageElements: [{ shape: { text: runs("Placed by hand") } }],
+        },
+      ],
+    };
+    const asRead = toSlideDocument(anonymous);
+    const changed = {
+      ...asRead,
+      slides: asRead.slides.map((slide) => ({
+        ...slide,
+        elements: [{ kind: "shape" as const, text: "Retyped" }],
+      })),
+    };
+
+    const run = () => planSlideWrite(anonymous, changed, { prune: false });
+    expect(codeOf(run)).toBe("INVALID_ARGS");
+    expect(messageOf(run)).toContain("no id");
+
+    // …and leaving it alone is still accepted, so the refusal is about the
+    // edit rather than about the entry existing.
+    expect(planSlideWrite(anonymous, asRead, { prune: false }).requests).toEqual([]);
+  });
+
   /** A structural change is still refused: 0063 §2 narrows the rule, not away. */
   it("refuses a changed kind, id or placeholder", () => {
     for (const change of [
