@@ -308,34 +308,15 @@ describe("handleAuthLogin: the flow needs a reader (issue #17, decision 0059)", 
   });
 
   /**
-   * 0059 §1. The URL is an instruction for a person, not the answer to the
-   * command, so it goes where 0007 puts what a person reads. Asserting its
-   * absence from stdout is not enough on its own — a URL that went nowhere at
-   * all would pass that.
+   * The URL itself is asserted in `tests/integration/auth-streams.test.ts`, not
+   * here. It is written in the registrar closure, which no test at this level
+   * reaches — so a unit test would have to inject a `runFlow` fake and then
+   * assert where that fake wrote, which is a test of the test. Measured: such a
+   * test passed with production writing the URL to stdout.
+   *
+   * What *is* here is the notice on the same stream, because that one really
+   * does go through `handleAuthLogin`.
    */
-  it("prints the consent URL to stderr, leaving stdout to the envelope", async () => {
-    const io = collectBoth();
-
-    await handleAuthLogin({
-      ...base,
-      fs: withClientSecret(createFakeFs()),
-      noReader: undefined,
-      write: io.write,
-      warn: io.warn,
-      runFlow: async (credentials) => {
-        io.warn(
-          `Open this URL in your browser:\nhttps://accounts.google.com/o/oauth2/auth?client_id=${credentials.clientId}`,
-        );
-        return token("x@x.com");
-      },
-    });
-
-    expect(io.stderr).toContain("https://accounts.google.com");
-    expect(io.stdout).not.toContain("https://");
-    expect(io.stdout).toContain("Authenticated as x@x.com");
-  });
-
-  /** The notice beside it, for the same reason. */
   it("prints the missing-client notice to stderr too", async () => {
     const io = collectBoth();
 
