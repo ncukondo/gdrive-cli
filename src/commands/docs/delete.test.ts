@@ -91,6 +91,22 @@ describe("handleDocsDelete (issue #41, decision 0062)", () => {
     expect(d.deleteRange).toHaveBeenCalledWith("D1", { startIndex: 19, endIndex: 35 });
   });
 
+  /**
+   * 0062 §3 says "a range that covers a **whole paragraph**", and both ends
+   * decide that. Extending on `--to` alone deletes a character the caller did
+   * not name and merges the paragraph after it into the one before — measured
+   * on a real document, `--from world --to world` over "hello world" took six
+   * characters for a five-character marker and produced
+   * `"hello next paragraph"`. There is no undo for that.
+   */
+  it("leaves the paragraph mark alone when --from starts mid-paragraph", async () => {
+    const d = deps();
+    await handleDocsDelete({ ...d, from: "middle", to: "middle" });
+    // "the middle line" is at 19; "middle" is 23..29, and 35 would be the
+    // paragraph's end. It must stop at 29.
+    expect(d.deleteRange).toHaveBeenCalledWith("D1", { startIndex: 23, endIndex: 29 });
+  });
+
   it("spans a table, which is the thing no marker can reach into", async () => {
     const d = deps();
     await handleDocsDelete({ ...d, from: "the middle line", to: "Draft ends here" });
@@ -144,7 +160,7 @@ describe("handleDocsDelete (issue #41, decision 0062)", () => {
       expect(d.deleteRange).not.toHaveBeenCalled();
     });
 
-    it("refuses a position that is neither pair", async () => {
+    it("refuses a position that is neither pair, without fetching the document", async () => {
       const d = deps();
       await expect(handleDocsDelete({ ...d, from: "Draft starts here" })).rejects.toMatchObject({
         code: "INVALID_ARGS",
@@ -154,14 +170,18 @@ describe("handleDocsDelete (issue #41, decision 0062)", () => {
         code: "INVALID_ARGS",
       });
       expect(d.deleteRange).not.toHaveBeenCalled();
+      // Nothing here needs the document, so nothing here fetches one.
+      expect(d.getDocument).not.toHaveBeenCalled();
+      expect(d.resolvePath).not.toHaveBeenCalled();
     });
 
-    it("refuses a length that would delete nothing", async () => {
+    it("refuses a length that would delete nothing, without fetching either", async () => {
       const d = deps();
       await expect(handleDocsDelete({ ...d, index: "5", length: "0" })).rejects.toMatchObject({
         code: "INVALID_ARGS",
       });
       expect(d.deleteRange).not.toHaveBeenCalled();
+      expect(d.getDocument).not.toHaveBeenCalled();
     });
   });
 
@@ -190,6 +210,11 @@ describe("handleDocsDelete (issue #41, decision 0062)", () => {
         deleted: false,
         range: { start_index: 1, end_index: 71 },
         characters: 70,
+        // 0062 §4: the document's own text at each end, not the markers echoed
+        // back. Echoing would confirm nothing the caller did not type; this is
+        // where the paragraph rule's extra character is visible before it goes.
+        starts: "Draft starts here\nthe mi",
+        ends: "Draft ends here\n",
       },
     });
   });

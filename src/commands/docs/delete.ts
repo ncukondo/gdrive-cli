@@ -4,6 +4,7 @@ import { formatValues, line, renderSuccess } from "../../lib/output.ts";
 import {
   endOfBody,
   findMarkerRanges,
+  paragraphBoundary,
   paragraphEnd,
   type DocsRange,
   type DocumentRaw,
@@ -62,7 +63,12 @@ function positiveInteger(raw: string, flag: string): number {
  * one is the only way to name it at all — which is the half of issue #41 that
  * had no workaround.
  */
-export function resolveDeleteRange(args: DeleteRangeArgs, document: DocumentRaw): DocsRange {
+/**
+ * Everything decidable from the command line alone, so a bad invocation costs
+ * no round trip. Separate from {@link resolveDeleteRange} because that one
+ * needs the document and this one does not.
+ */
+export function checkDeleteArgs(args: DeleteRangeArgs): void {
   const markers = args.from !== undefined || args.to !== undefined;
   const indices = args.index !== undefined || args.length !== undefined;
 
@@ -75,11 +81,20 @@ export function resolveDeleteRange(args: DeleteRangeArgs, document: DocumentRaw)
       "Specify what to delete: --from <marker> --to <marker>, or --index <n> --length <n>.",
     );
   }
+  if (indices && (args.index === undefined || args.length === undefined)) {
+    throw new AppError("INVALID_ARGS", "--index and --length are used together.");
+  }
+  if (markers && (args.from === undefined || args.to === undefined)) {
+    throw new AppError("INVALID_ARGS", "--from and --to are used together.");
+  }
+  if (args.index !== undefined) positiveInteger(args.index, "--index");
+  if (args.length !== undefined) positiveInteger(args.length, "--length");
+}
 
-  if (indices) {
-    if (args.index === undefined || args.length === undefined) {
-      throw new AppError("INVALID_ARGS", "--index and --length are used together.");
-    }
+export function resolveDeleteRange(args: DeleteRangeArgs, document: DocumentRaw): DocsRange {
+  checkDeleteArgs(args);
+
+  if (args.index !== undefined && args.length !== undefined) {
     const startIndex = positiveInteger(args.index, "--index");
     const length = positiveInteger(args.length, "--length");
     return clamp({ startIndex, endIndex: startIndex + length }, document);
@@ -97,12 +112,19 @@ export function resolveDeleteRange(args: DeleteRangeArgs, document: DocumentRaw)
       `--to "${args.to}" is at or before --from "${args.from}". Name the ends in document order.`,
     );
   }
-  // 0062 §3: a range that reaches a paragraph's last character takes its
-  // newline too, so removing a paragraph leaves no blank line where it was.
-  // That off-by-one is the whole difference from an empty `--replace`, which is
-  // what the report tried first.
+  // 0062 §3, and read it exactly: a range that covers a **whole paragraph**
+  // takes its paragraph mark, so removing one leaves no blank line where it
+  // was. Both ends decide that. Extending on `--to` alone deletes a character
+  // the caller did not name and merges the paragraph after it into the one
+  // before — measured on a real document, `--from world --to world` over
+  // "hello world" took six characters for a five-character marker and joined
+  // the next paragraph onto it. There is no undo for that.
+  const wholeParagraphs = paragraphBoundary(document, from.startIndex).atParagraphStart;
   return clamp(
-    { startIndex: from.startIndex, endIndex: paragraphEnd(document, to.endIndex) },
+    {
+      startIndex: from.startIndex,
+      endIndex: wholeParagraphs ? paragraphEnd(document, to.endIndex) : to.endIndex,
+    },
     document,
   );
 }
@@ -116,6 +138,47 @@ export function resolveDeleteRange(args: DeleteRangeArgs, document: DocumentRaw)
 function clamp(range: DocsRange, document: DocumentRaw): DocsRange {
   const last = endOfBody(document);
   return range.endIndex > last ? { startIndex: range.startIndex, endIndex: last } : range;
+}
+
+/**
+ * The document's own text at each end of a range, for `--dry-run`
+ * (decision 0062 §4).
+ *
+ * A deletion's arguments do not show what it removes — `--from`/`--to` names
+ * two ends and the caller is trusting their memory of what lies between them.
+ * Echoing the markers back would confirm nothing they did not type; reading the
+ * *document* at those indices is what tells them they named the range they
+ * meant, and it is the only place the paragraph rule's extra character is
+ * visible before it is gone.
+ */
+function endsOf(
+  document: DocumentRaw,
+  range: DocsRange,
+  width = 24,
+): { start: string; end: string } {
+  // Characters are read at their own Docs indices, not concatenated. A table
+  // occupies a span of the index space and contributes no characters here, so
+  // a plain join would put every character after it at the wrong index.
+  const at = new Map<number, string>();
+  for (const element of document.body?.content ?? []) {
+    for (const run of element.paragraph?.elements ?? []) {
+      const start = run.startIndex ?? element.startIndex ?? 1;
+      const content = run.textRun?.content ?? "";
+      for (let k = 0; k < content.length; k += 1) {
+        const char = content[k];
+        if (char !== undefined) at.set(start + k, char);
+      }
+    }
+  }
+  const read = (from: number, to: number): string => {
+    let out = "";
+    for (let i = from; i < to; i += 1) out += at.get(i) ?? "";
+    return out;
+  };
+  return {
+    start: read(range.startIndex, Math.min(range.endIndex, range.startIndex + width)),
+    end: read(Math.max(range.startIndex, range.endIndex - width), range.endIndex),
+  };
 }
 
 export interface DocsDeleteDeps {
@@ -135,21 +198,25 @@ export interface DocsDeleteDeps {
 }
 
 export async function handleDocsDelete(deps: DocsDeleteDeps): Promise<CommandResult> {
+  // The argument shape is decided before anything is fetched: naming neither
+  // pair, or both, or a bad integer, is an error about the command line and
+  // costs no round trip to find out.
+  const args = {
+    ...(deps.from !== undefined ? { from: deps.from } : {}),
+    ...(deps.to !== undefined ? { to: deps.to } : {}),
+    ...(deps.index !== undefined ? { index: deps.index } : {}),
+    ...(deps.length !== undefined ? { length: deps.length } : {}),
+    ...(deps.matchCase !== undefined ? { matchCase: deps.matchCase } : {}),
+  };
+  checkDeleteArgs(args);
+
   const documentId = await deps.resolvePath(deps.file);
   const document = await deps.getDocument(documentId);
-  const range = resolveDeleteRange(
-    {
-      ...(deps.from !== undefined ? { from: deps.from } : {}),
-      ...(deps.to !== undefined ? { to: deps.to } : {}),
-      ...(deps.index !== undefined ? { index: deps.index } : {}),
-      ...(deps.length !== undefined ? { length: deps.length } : {}),
-      ...(deps.matchCase !== undefined ? { matchCase: deps.matchCase } : {}),
-    },
-    document,
-  );
+  const range = resolveDeleteRange(args, document);
 
   const characters = range.endIndex - range.startIndex;
   const dryRun = deps.dryRun === true;
+  const ends = endsOf(document, range);
   if (!dryRun) await deps.deleteRange(documentId, range);
 
   deps.write(
@@ -160,10 +227,10 @@ export async function handleDocsDelete(deps: DocsDeleteDeps): Promise<CommandRes
           deleted: !dryRun,
           range: { start_index: range.startIndex, end_index: range.endIndex },
           characters,
-          ...(dryRun ? { dry_run: true } : {}),
+          ...(dryRun ? { dry_run: true, starts: ends.start, ends: ends.end } : {}),
         },
         text: dryRun
-          ? line`Would delete ${String(characters)} characters from ${documentId} (${String(range.startIndex)}–${String(range.endIndex)}); --dry-run wrote nothing`
+          ? line`Would delete ${String(characters)} characters from ${documentId} (${String(range.startIndex)}–${String(range.endIndex)}), beginning "${ends.start}" and ending "${ends.end}"; --dry-run wrote nothing`
           : line`Deleted ${String(characters)} characters from ${documentId}`,
         quiet: formatValues([String(characters)]),
       },
