@@ -255,13 +255,15 @@ describe("planFormWrite", () => {
       ),
     );
 
-    expect(error.data?.payload).toMatchObject({
+    // `toEqual`, not `toMatchObject`: the entry must carry no `id` key at all
+    // rather than an empty one, because the API addresses this deletion by
+    // position and there is nothing else to address it by. `toMatchObject`
+    // passes with a stray `id`, which is the whole thing being asserted here.
+    expect(error.data?.payload).toEqual({
+      id: "1FoRm",
       plan: [{ action: "delete", title: "No id here", index: 3 }],
+      applied: false,
     });
-    // No `id` key at all, rather than an empty one: the API addresses this
-    // deletion by position because there is nothing else to address it by.
-    const [entry] = (error.data?.payload as { plan: Record<string, unknown>[] }).plan;
-    expect(entry && "id" in entry).toBe(false);
   });
 
   it("hands back no partial plan a caller could apply instead", () => {

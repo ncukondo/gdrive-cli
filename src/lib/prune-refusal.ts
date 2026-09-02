@@ -21,16 +21,22 @@ import { formatValues } from "./output.ts";
  *
  * There is deliberately **no `text`**. The message already names the items,
  * which is 0028 §3's guarantee, and a table under it is the same list twice.
- * `quiet` is the ids: `-q` asks for the bare value
- * ([`0038`](../../decisions/0038-quiet-asks-for-a-value.md)) and on this
- * failure the bare value is what would have been deleted.
+ *
+ * `quiet` is the ids, and it is worth saying why it is not the number these
+ * commands print on success. `-q` asks for the bare value
+ * ([`0038`](../../decisions/0038-quiet-asks-for-a-value.md)), and the value
+ * differs because the question does: a success has changed `n` things and `n`
+ * is the answer, while a refusal has changed nothing, so a count of what did
+ * not happen is not a value — *which* items would have gone is. A caller
+ * reading `-q` across both has an exit code telling them which question was
+ * answered, as it does for every command here.
  *
  * It lives here rather than in either planner because both have the shape and
  * neither owns it — the same reason `after-create.ts` is here.
  */
-export function refusedPlan<T extends { id?: string }>(
+export function refusedPlan(
   id: string | null | undefined,
-  deletions: readonly T[],
+  deletions: readonly { id?: string }[],
 ): ErrorData {
   return {
     payload: { ...(id ? { id } : {}), plan: deletions, applied: false },
