@@ -30,7 +30,7 @@ function resolveMarkerIndex(
   side: "before" | "after",
   document: DocumentRaw,
   matchCase: boolean,
-): number {
+): InsertPlace {
   if (marker === "") {
     throw new AppError("INVALID_ARGS", `--${side} must not be empty.`);
   }
@@ -46,7 +46,10 @@ function resolveMarkerIndex(
         (matchCase ? "" : " Try --match-case."),
     );
   }
-  return side === "before" ? only.startIndex : only.endIndex;
+  return {
+    index: side === "before" ? only.startIndex : only.endIndex,
+    ...(only.segmentId === undefined ? {} : { segmentId: only.segmentId }),
+  };
 }
 
 /**
@@ -55,7 +58,13 @@ function resolveMarkerIndex(
  * required. The marker walk is `replace`'s, so "found" means the same thing in
  * both commands — table cells included, which is to say excluded (0021 §6).
  */
-export function resolveInsertIndex(position: InsertPosition, document: DocumentRaw): number {
+/** Where an insert lands: an index, and the segment its index belongs to. */
+export interface InsertPlace {
+  index: number;
+  segmentId?: string;
+}
+
+export function resolveInsertIndex(position: InsertPosition, document: DocumentRaw): InsertPlace {
   const given = [position.index, position.at, position.before, position.after].filter(
     (value) => value !== undefined,
   ).length;
@@ -77,7 +86,7 @@ export function resolveInsertIndex(position: InsertPosition, document: DocumentR
         `Invalid --index "${position.index}". Use an integer >= 1.`,
       );
     }
-    return n;
+    return { index: n };
   }
 
   const matchCase = position.matchCase === true;
@@ -88,8 +97,8 @@ export function resolveInsertIndex(position: InsertPosition, document: DocumentR
     return resolveMarkerIndex(position.after, "after", document, matchCase);
   }
 
-  if (position.at === "start") return 1;
-  if (position.at === "end") return endOfBody(document);
+  if (position.at === "start") return { index: 1 };
+  if (position.at === "end") return { index: endOfBody(document) };
   throw new AppError("INVALID_ARGS", `Invalid --at "${position.at}". Use: start, end.`);
 }
 
@@ -101,12 +110,13 @@ export interface DocsInsertDeps {
     index: number,
     text: string,
     boundary: ParagraphBoundary,
+    segmentId?: string,
   ) => Promise<void>;
   insertMarkdown: (
     documentId: string,
     index: number,
     source: string,
-    options: { boundary: ParagraphBoundary },
+    options: { boundary: ParagraphBoundary; segmentId?: string },
   ) => Promise<UnsupportedNote[]>;
   readInput: (arg: string) => Promise<string>;
   file: string;
@@ -132,7 +142,7 @@ export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandRes
 
   const documentId = await deps.resolvePath(deps.file);
   const document = await deps.getDocument(documentId);
-  const index = resolveInsertIndex(
+  const place = resolveInsertIndex(
     {
       ...(deps.index !== undefined ? { index: deps.index } : {}),
       ...(deps.at !== undefined ? { at: deps.at } : {}),
@@ -144,11 +154,17 @@ export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandRes
   );
   // Which paragraphs the insert may restyle is a fact about the document at
   // this index, and this is the document the index was resolved against
-  // (decision 0045 §2).
-  const boundary = paragraphBoundary(document, index);
+  // (decision 0045 §2). Read in the index's own segment, because index 42 in a
+  // footer is not index 42 in the body (decision 0064 §2).
+  const { index, segmentId } = place;
+  const boundary = paragraphBoundary(document, index, segmentId);
+  const inOneSegment = segmentId === undefined ? {} : { segmentId };
   let notes: UnsupportedNote[] = [];
-  if (as === "markdown") notes = await deps.insertMarkdown(documentId, index, text, { boundary });
-  else await deps.insertText(documentId, index, text, boundary);
+  if (as === "markdown") {
+    notes = await deps.insertMarkdown(documentId, index, text, { boundary, ...inOneSegment });
+  } else {
+    await deps.insertText(documentId, index, text, boundary, segmentId);
+  }
 
   const title = document.title ?? "";
   deps.write(
@@ -158,6 +174,7 @@ export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandRes
           id: documentId,
           title,
           index,
+          ...inOneSegment,
           ...reportUnsupported(notes, deps.format, deps.warn),
         },
         text: line`Inserted into ${title} (${documentId})`,

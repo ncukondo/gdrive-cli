@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { AppError, type CommandResult, type OutputFormat } from "../../types/index.ts";
 import { formatValues, line, renderSuccess } from "../../lib/output.ts";
 import {
-  endOfBody,
+  contentOfSegment,
   findMarkerRanges,
   paragraphBoundary,
   paragraphEnd,
@@ -112,6 +112,15 @@ export function resolveDeleteRange(args: DeleteRangeArgs, document: DocumentRaw)
       `--to "${args.to}" is at or before --from "${args.from}". Name the ends in document order.`,
     );
   }
+  // A range cannot span two index spaces: index 42 in a footer is not index 42
+  // in the body, so two markers in different segments name no range at all
+  // (decision 0064 §2).
+  if (from.segmentId !== to.segmentId) {
+    throw new AppError(
+      "INVALID_ARGS",
+      `--from "${args.from}" and --to "${args.to}" are in different parts of the document, so there is no range between them. Name two markers in the same body, header, footer or footnote.`,
+    );
+  }
   // 0062 §3, and read it exactly: a range that covers a **whole paragraph**
   // takes its paragraph mark, so removing one leaves no blank line where it
   // was. Both ends decide that. Extending on `--to` alone deletes a character
@@ -119,11 +128,16 @@ export function resolveDeleteRange(args: DeleteRangeArgs, document: DocumentRaw)
   // before — measured on a real document, `--from world --to world` over
   // "hello world" took six characters for a five-character marker and joined
   // the next paragraph onto it. There is no undo for that.
-  const wholeParagraphs = paragraphBoundary(document, from.startIndex).atParagraphStart;
+  const wholeParagraphs = paragraphBoundary(
+    document,
+    from.startIndex,
+    from.segmentId,
+  ).atParagraphStart;
   return clamp(
     {
       startIndex: from.startIndex,
-      endIndex: wholeParagraphs ? paragraphEnd(document, to.endIndex) : to.endIndex,
+      endIndex: wholeParagraphs ? paragraphEnd(document, to.endIndex, to.segmentId) : to.endIndex,
+      ...(to.segmentId === undefined ? {} : { segmentId: to.segmentId }),
     },
     document,
   );
@@ -136,8 +150,12 @@ export function resolveDeleteRange(args: DeleteRangeArgs, document: DocumentRaw)
  * what was asked for.
  */
 function clamp(range: DocsRange, document: DocumentRaw): DocsRange {
-  const last = endOfBody(document);
-  return range.endIndex > last ? { startIndex: range.startIndex, endIndex: last } : range;
+  // Only the body's final mark is the document's; a segment's own last
+  // paragraph is bounded by its own content.
+  const content = contentOfSegment(document, range.segmentId);
+  const end = content[content.length - 1]?.endIndex;
+  const last = typeof end === "number" && end > 1 ? end - 1 : 1;
+  return range.endIndex > last ? { ...range, endIndex: last } : range;
 }
 
 /**

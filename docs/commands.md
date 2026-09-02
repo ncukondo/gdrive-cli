@@ -930,6 +930,10 @@ read stdin.
 `delete` is the one command here that takes no content: it removes a range, and
 it is what an `insert` you regret is undone with.
 
+All of them reach a document's headers, footers and footnotes as well as its
+body — see [markers and segments](#markers-and-segments), which also carries the
+one breaking part of that.
+
 **Markdown is the format in both directions.** `read` renders a document as
 Markdown, and `create --content`, `append`, `insert`, and `replace` parse their
 content as Markdown, so a heading arrives as a heading and a pipe table as a
@@ -975,11 +979,15 @@ Two exceptions, both narrow:
   paragraph cannot be half-heading, so the paragraph they joined keeps its own
   style.
 - `replace --as text`, which substitutes through the API in one request and so
-  keeps the formatting of the text it replaced. That request reaches headers,
-  footers and footnotes, which nothing else here can address, and it reports
-  only how many occurrences it changed — never where. `replace` without
-  `--as text` deletes the marker and writes in the default style like the
-  others.
+  keeps the formatting of the text it replaced. It reports only how many
+  occurrences it changed — never where. `replace` without `--as text` deletes
+  the marker and writes in the default style like the others.
+
+  Its *reach* used to be the exception too: it covered headers, footers and
+  footnotes when nothing else here could address them. Every command that takes
+  a marker does now
+  ([`../decisions/0064`](../decisions/0064-a-marker-is-addressable-anywhere.md)),
+  so the two modes agree about what they cover and only styling separates them.
 
 One source line is one paragraph, matching what `read` prints — Markdown's rule
 that consecutive lines join into one paragraph does not apply. The exception is
@@ -1168,6 +1176,43 @@ content may itself be a table and Docs cannot nest one.
 
 Quiet: the document ID.
 
+### Markers and segments
+
+A Doc is not one stream of text. Besides the **body** it has **headers**,
+**footers** and **footnotes**, each with an index space of its own — index 42 in
+the body and index 42 in a footer are different characters. `read` shows all
+four, and `insert`, `replace` and `delete` can address a marker in any of them
+([`../decisions/0064`](../decisions/0064-a-marker-is-addressable-anywhere.md)).
+
+`read` labels each one with an HTML comment carrying its kind and the id the
+API knows it by, and prints nothing for a segment the document does not have:
+
+```markdown
+# The quarter in one slide
+
+Revenue up 12%.
+
+<!-- header: h.9r3k1 -->
+Confidential — 2026
+
+<!-- footnote: fn.1 -->
+Figures are unaudited.
+```
+
+You do not address a segment by that id. You address content by a **marker**,
+and the id is what the write carries underneath.
+
+**A marker must match exactly once across the whole document, not once per
+segment.** That is a change: a word that appears both in the body and in a
+running header now matches **twice**, and `insert --before` is `INVALID_ARGS`
+with the count where it used to take the body's silently. Narrow it with a
+longer marker or with `--match-case`. The refusal is the point — a write landing
+in a segment you did not mean is not something you would find by reading the
+output.
+
+`replace` still changes **every** occurrence, in every segment, as it always
+did.
+
 ### `gdrive docs delete <file>`
 
 Removes a range of the document. This is `insert`'s inverse, and it is the only
@@ -1232,9 +1277,9 @@ nothing in this CLI keeps one. Google Docs' own version history does, in the
 browser (*File → Version history*), and that is the backstop — which is why
 `--dry-run` exists.
 
-Like every other `docs` command, this reaches the document **body** only: a
-marker in a header, a footer or a footnote is not addressable
-([issue #21](https://github.com/ncukondo/gdrive-cli/issues/21)).
+Like every other `docs` command, this reaches **any segment** a marker is in —
+see [markers and segments](#markers-and-segments). A `--from` and a `--to` in
+*different* segments are refused: a range cannot span them.
 
 ---
 

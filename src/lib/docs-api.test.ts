@@ -3,6 +3,8 @@ import { callArgs } from "../../tests/helpers/mock.ts";
 import {
   createDocument,
   findMarkerRanges,
+  inSegment,
+  segmentsOf,
   insertMarkdown,
   replaceMarkdown,
   endOfBody,
@@ -12,6 +14,7 @@ import {
   renderDocument,
   replaceAllText,
   type DocsClient,
+  type DocsRequest,
   type DocumentRaw,
   type ParagraphBoundary,
   type StructuralElementRaw,
@@ -712,5 +715,156 @@ describe("replaceMarkdown", () => {
     const { replaced } = await replaceMarkdown(client, "D1", "MARK", "x", true);
     expect(replaced).toBe(0);
     expect(client.documents.batchUpdate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Issue #21, decision 0064. A Docs index means nothing without the segment it
+ * belongs to, and until now everything built on the marker walk read the body
+ * only — while `replace --as text` went through `replaceAllText`, which covers
+ * all four. That mismatch is what 0046 had to write down as an exception.
+ */
+describe("segments (decision 0064)", () => {
+  const line = (text: string, startIndex: number) => ({ startIndex, textRun: { content: text } });
+  const withSegments: DocumentRaw = {
+    documentId: "D1",
+    title: "Minutes",
+    body: {
+      content: [{ startIndex: 1, endIndex: 12, paragraph: { elements: [line("ANCHOR\n", 1)] } }],
+    },
+    headers: {
+      "h.abc": {
+        content: [{ startIndex: 1, endIndex: 12, paragraph: { elements: [line("ANCHOR\n", 1)] } }],
+      },
+    },
+    footers: {
+      "f.xyz": {
+        content: [
+          { startIndex: 1, endIndex: 15, paragraph: { elements: [line("page footer\n", 1)] } },
+        ],
+      },
+    },
+    footnotes: {
+      "fn.1": {
+        content: [{ startIndex: 1, endIndex: 10, paragraph: { elements: [line("a note\n", 1)] } }],
+      },
+    },
+  };
+
+  it("lists the body first, then headers, footers and footnotes", () => {
+    expect(segmentsOf(withSegments).map((s) => [s.kind, s.id])).toEqual([
+      ["body", undefined],
+      ["header", "h.abc"],
+      ["footer", "f.xyz"],
+      ["footnote", "fn.1"],
+    ]);
+  });
+
+  /**
+   * The breaking half of 0064 §2, and the reason the id is part of a range
+   * rather than something a caller assumes: these two are different characters
+   * that happen to share an index.
+   */
+  it("matches a marker in two segments twice, each carrying its own segment", () => {
+    expect(findMarkerRanges(withSegments, "ANCHOR", false)).toEqual([
+      { startIndex: 1, endIndex: 7 },
+      { startIndex: 1, endIndex: 7, segmentId: "h.abc" },
+    ]);
+  });
+
+  /**
+   * A header, footer or footnote starts at index **0**, and Docs omits a zero
+   * from the JSON — so a `startIndex` that is simply not there means 0, not 1.
+   * Defaulting to 1 shifts every index in the segment by one, and a delete then
+   * leaves the segment's first character behind. Measured against a real header
+   * before this was a test: `--from "HEADER" --to "tail"` left an `H`.
+   */
+  it("reads an absent startIndex as 0, which is where a segment begins", () => {
+    const atZero: DocumentRaw = {
+      documentId: "D1",
+      body: { content: [] },
+      headers: {
+        "h.abc": {
+          content: [
+            // No `startIndex`, exactly as the API sends it for index 0.
+            { endIndex: 14, paragraph: { elements: [{ textRun: { content: "HEADER TEXT\n" } }] } },
+          ],
+        },
+      },
+    };
+    expect(findMarkerRanges(atZero, "HEADER", false)).toEqual([
+      { startIndex: 0, endIndex: 6, segmentId: "h.abc" },
+    ]);
+  });
+
+  it("finds a marker that exists only in a footnote", () => {
+    expect(findMarkerRanges(withSegments, "a note", false)).toEqual([
+      { startIndex: 1, endIndex: 7, segmentId: "fn.1" },
+    ]);
+  });
+
+  it("reads a document with no segments exactly as before", () => {
+    const plain: DocumentRaw = { documentId: "D1", body: withSegments.body ?? null };
+    expect(segmentsOf(plain).map((s) => s.kind)).toEqual(["body"]);
+    expect(findMarkerRanges(plain, "ANCHOR", false)).toEqual([{ startIndex: 1, endIndex: 7 }]);
+  });
+
+  describe("inSegment", () => {
+    it("stamps every location and range, and leaves the body's alone", () => {
+      const requests: DocsRequest[] = [
+        { insertText: { location: { index: 3 }, text: "x" } },
+        { insertTable: { location: { index: 5 }, rows: 1, columns: 2 } },
+        { deleteContentRange: { range: { startIndex: 1, endIndex: 2 } } },
+        { updateTextStyle: { range: { startIndex: 1, endIndex: 2 }, textStyle: {}, fields: "*" } },
+        {
+          updateParagraphStyle: {
+            range: { startIndex: 1, endIndex: 2 },
+            paragraphStyle: {},
+            fields: "*",
+          },
+        },
+        { createParagraphBullets: { range: { startIndex: 1, endIndex: 2 }, bulletPreset: "P" } },
+        { deleteParagraphBullets: { range: { startIndex: 1, endIndex: 2 } } },
+      ];
+
+      const stamped = inSegment(requests, "h.abc");
+      for (const request of stamped) {
+        const carried = JSON.stringify(request);
+        expect(carried).toContain('"segmentId":"h.abc"');
+      }
+      // The body is spelled by leaving the field off, as the API spells it.
+      expect(inSegment(requests, undefined)).toEqual(requests);
+      expect(inSegment(requests, "")).toEqual(requests);
+    });
+
+    /**
+     * `replaceAllText` covers every segment by design — that is the reach 0046
+     * chose to keep — so it is the one request with nothing to stamp.
+     */
+    it("leaves replaceAllText alone, because it has no segment to be in", () => {
+      const all: DocsRequest[] = [
+        { replaceAllText: { containsText: { text: "a", matchCase: false }, replaceText: "b" } },
+      ];
+      expect(inSegment(all, "h.abc")).toEqual(all);
+    });
+  });
+
+  it("renders every segment, labelled, and a document with none unchanged", () => {
+    const rendered = renderDocument(withSegments, "markdown");
+    expect(rendered).toContain("ANCHOR");
+    expect(rendered).toContain("<!-- header: h.abc -->");
+    expect(rendered).toContain("<!-- footer: f.xyz -->");
+    expect(rendered).toContain("<!-- footnote: fn.1 -->");
+
+    const plain: DocumentRaw = { documentId: "D1", body: withSegments.body ?? null };
+    expect(renderDocument(plain, "markdown")).toBe("ANCHOR");
+  });
+
+  it("reads a paragraph boundary in the segment it was asked about", () => {
+    // Index 12 closes the body's only paragraph and the header's; index 15
+    // closes the footer's alone.
+    expect(paragraphBoundary(withSegments, 11, "f.xyz").atParagraphEnd).toBe(false);
+    expect(paragraphBoundary(withSegments, 14, "f.xyz").atParagraphEnd).toBe(true);
+    expect(paragraphBoundary(withSegments, 14, undefined).atParagraphEnd).toBe(false);
   });
 });

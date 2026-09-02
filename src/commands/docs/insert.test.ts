@@ -67,14 +67,14 @@ const baseDeps = () => ({
 
 describe("resolveInsertIndex", () => {
   it("maps --at start to 1 and --at end to the body end", () => {
-    expect(resolveInsertIndex({ at: "start" }, document)).toBe(1);
-    expect(resolveInsertIndex({ at: "end" }, document)).toBe(11);
+    expect(resolveInsertIndex({ at: "start" }, document)).toEqual({ index: 1 });
+    expect(resolveInsertIndex({ at: "end" }, document)).toEqual({ index: 11 });
   });
 
   // "before HERE after" at 1, a cell holding HERE at 24, "tail here" at 40.
   it("resolves --before to the marker's start and --after to its end", () => {
-    expect(resolveInsertIndex({ before: "HERE", matchCase: true }, marked)).toBe(8);
-    expect(resolveInsertIndex({ after: "HERE", matchCase: true }, marked)).toBe(12);
+    expect(resolveInsertIndex({ before: "HERE", matchCase: true }, marked)).toEqual({ index: 8 });
+    expect(resolveInsertIndex({ after: "HERE", matchCase: true }, marked)).toEqual({ index: 12 });
   });
 
   it("is NOT_FOUND when the marker is absent", () => {
@@ -99,7 +99,7 @@ describe("resolveInsertIndex", () => {
   });
 
   it("narrows an ambiguous marker with --match-case", () => {
-    expect(resolveInsertIndex({ before: "here", matchCase: true }, marked)).toBe(45);
+    expect(resolveInsertIndex({ before: "here", matchCase: true }, marked)).toEqual({ index: 45 });
   });
 
   it("does not see a marker that only exists inside a table cell", () => {
@@ -118,7 +118,7 @@ describe("resolveInsertIndex", () => {
   });
 
   it("uses --index verbatim", () => {
-    expect(resolveInsertIndex({ index: "5" }, document)).toBe(5);
+    expect(resolveInsertIndex({ index: "5" }, document)).toEqual({ index: 5 });
   });
 
   it("rejects a missing position, both options, bad values", () => {
@@ -127,6 +127,44 @@ describe("resolveInsertIndex", () => {
     expect(() => resolveInsertIndex({ index: "0" }, document)).toThrow(/--index/);
     expect(() => resolveInsertIndex({ index: "x" }, document)).toThrow(/--index/);
     expect(() => resolveInsertIndex({ at: "middle" }, document)).toThrow(/--at/);
+  });
+});
+
+/**
+ * Issue #21, decision 0064. The marker walk covers four segments now, so the
+ * "exactly once" rule of 0022 §2 finally means what it says — and an `insert`
+ * that used to take the body's match is refused instead of choosing for the
+ * caller.
+ */
+describe("resolveInsertIndex across segments", () => {
+  const twice: DocumentRaw = {
+    documentId: "D1",
+    body: {
+      content: [{ startIndex: 1, endIndex: 12, paragraph: { elements: [run("ANCHOR\n", 1)] } }],
+    },
+    headers: {
+      "h.abc": {
+        content: [{ startIndex: 1, endIndex: 12, paragraph: { elements: [run("ANCHOR\n", 1)] } }],
+      },
+    },
+    footers: {
+      "f.xyz": {
+        content: [
+          { startIndex: 1, endIndex: 15, paragraph: { elements: [run("only here\n", 1)] } },
+        ],
+      },
+    },
+  };
+
+  it("refuses a marker that is in the body and in a header", () => {
+    expect(() => resolveInsertIndex({ before: "ANCHOR" }, twice)).toThrow(/2 times/);
+  });
+
+  it("resolves a marker that is only in a footer, and says which segment", () => {
+    expect(resolveInsertIndex({ after: "only here" }, twice)).toEqual({
+      index: 10,
+      segmentId: "f.xyz",
+    });
   });
 });
 
@@ -140,10 +178,29 @@ describe("handleDocsInsert", () => {
     expect(out.output).toBe("Inserted into Meeting notes (D1)");
   });
 
+  /** 0064 §2: a write into a segment carries that segment on every request. */
+  it("sends a footer insert into the footer", async () => {
+    const footered: DocumentRaw = {
+      documentId: "D1",
+      body: { content: [{ startIndex: 1, endIndex: 12, paragraph: {} }] },
+      footers: {
+        "f.xyz": {
+          content: [
+            { startIndex: 1, endIndex: 15, paragraph: { elements: [run("only here\n", 1)] } },
+          ],
+        },
+      },
+    };
+    const d = { ...baseDeps(), getDocument: vi.fn(async () => footered) };
+    await handleDocsInsert({ ...d, text: "tail", after: "only here", as: "text" });
+
+    expect(d.insertText).toHaveBeenCalledWith("D1", 10, "tail", expect.anything(), "f.xyz");
+  });
+
   it("--as text inserts the exact bytes", async () => {
     const d = baseDeps();
     await handleDocsInsert({ ...d, index: "4", as: "text" });
-    expect(d.insertText).toHaveBeenCalledWith("D1", 4, "hi", INSIDE);
+    expect(d.insertText).toHaveBeenCalledWith("D1", 4, "hi", INSIDE, undefined);
     expect(d.insertMarkdown).not.toHaveBeenCalled();
   });
 
@@ -176,10 +233,13 @@ describe("handleDocsInsert", () => {
     const readInput = vi.fn(async () => "from stdin");
     await handleDocsInsert({ ...d, text: "-", readInput, at: "start", as: "text" });
     expect(readInput).toHaveBeenCalledWith("-");
-    expect(d.insertText).toHaveBeenCalledWith("D1", 1, "from stdin", {
-      atParagraphStart: true,
-      atParagraphEnd: false,
-    });
+    expect(d.insertText).toHaveBeenCalledWith(
+      "D1",
+      1,
+      "from stdin",
+      { atParagraphStart: true, atParagraphEnd: false },
+      undefined,
+    );
 
     await expect(
       handleDocsInsert({ ...baseDeps(), at: "start", text: "", readInput: vi.fn(async () => "") }),
