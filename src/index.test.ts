@@ -314,7 +314,7 @@ describe("handleError", () => {
     const exitSpy = mockProcessExit();
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    expect(() => handleError(new Error("boom"), "text")).toThrow(ExitSignal);
+    expect(() => handleError(new Error("boom"), "text", false)).toThrow(ExitSignal);
 
     expect(stderrSpy.mock.calls.map((c) => c[0]).join("")).toContain("boom");
     expect(exitSpy).toHaveBeenCalledWith(ExitCode.GENERAL);
@@ -324,7 +324,7 @@ describe("handleError", () => {
     mockProcessExit();
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    expect(() => handleError(new AppError("AUTH_REQUIRED", "login first"), "json")).toThrow(
+    expect(() => handleError(new AppError("AUTH_REQUIRED", "login first"), "json", false)).toThrow(
       ExitSignal,
     );
 
@@ -338,13 +338,15 @@ describe("handleError", () => {
     const exitSpy = mockProcessExit();
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    expect(() => handleError(new AppError("AUTH_REQUIRED", "x"), "text")).toThrow(ExitSignal);
+    expect(() => handleError(new AppError("AUTH_REQUIRED", "x"), "text", false)).toThrow(
+      ExitSignal,
+    );
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.AUTH);
 
-    expect(() => handleError(new AppError("INVALID_ARGS", "x"), "text")).toThrow(ExitSignal);
+    expect(() => handleError(new AppError("INVALID_ARGS", "x"), "text", false)).toThrow(ExitSignal);
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.ARGUMENT);
 
-    expect(() => handleError(new AppError("NOT_FOUND", "x"), "text")).toThrow(ExitSignal);
+    expect(() => handleError(new AppError("NOT_FOUND", "x"), "text", false)).toThrow(ExitSignal);
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.GENERAL);
   });
 
@@ -359,7 +361,7 @@ describe("handleError", () => {
       data: { payload: { copied: [{ src: "1A", dst: "1X", name: "a.pdf" }] }, quiet: "1X" },
     });
 
-    expect(() => handleError(error, "json")).toThrow(ExitSignal);
+    expect(() => handleError(error, "json", false)).toThrow(ExitSignal);
     const parsed = JSON.parse(stderrSpy.mock.calls.map((c) => c[0]).join(""));
     expect(parsed.data).toEqual({ copied: [{ src: "1A", dst: "1X", name: "a.pdf" }] });
     expect(exitSpy).toHaveBeenLastCalledWith(ExitCode.GENERAL);

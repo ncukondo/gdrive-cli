@@ -142,15 +142,24 @@ export function resolveGlobalOptions(program: Command): GlobalOptions {
 }
 
 /**
- * `quiet` is optional because only a command that reports a partial result
- * (decision 0031 §4) has anything to vary with it; every other registrar leaves
- * it out and gets exactly the error line it got before.
+ * `quiet` is **required**, and that is the whole of what this parameter has to
+ * teach. It used to default to `false` on the reasoning that only a command
+ * reporting a partial result (decision 0031 §4) had anything to vary with it —
+ * so every other registrar could leave it out. The defaulting is what made the
+ * distinction invisible: a command that *later* grows an error payload with
+ * values in it keeps compiling, keeps passing its unit tests, and silently
+ * prints nothing for `-q`. Five of forty-four call sites passed it, and
+ * `forms write` and `slides write` were two of the thirty-nine that did not on
+ * the day their refusal gained a payload (issue #31).
+ *
+ * A required parameter moves that from something a reviewer has to notice to
+ * something `tsc` decides, which is decision 0047 §1 one layer down.
  *
  * The reason goes to stderr and the values `-q` asked for go to stdout, which
  * is the only stream `$(…)` and a pipe read — {@link renderError} decides the
  * split and says why.
  */
-export function handleError(error: unknown, format: OutputFormat, quiet = false): void {
+export function handleError(error: unknown, format: OutputFormat, quiet: boolean): void {
   const code = errorToCode(error);
   const message = error instanceof Error ? error.message : String(error);
   const data = error instanceof AppError ? error.data : undefined;
@@ -166,7 +175,8 @@ export function main(argv: string[] = process.argv): void {
   try {
     program.parse(argv);
   } catch (error) {
-    handleError(error, resolveGlobalOptions(program).format);
+    const opts = resolveGlobalOptions(program);
+    handleError(error, opts.format, opts.quiet);
   }
 }
 

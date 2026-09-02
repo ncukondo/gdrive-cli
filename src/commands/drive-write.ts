@@ -83,7 +83,7 @@ export function registerDriveWrite(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(upload);
@@ -107,7 +107,7 @@ export function registerDriveWrite(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(mkdir);
@@ -133,7 +133,7 @@ export function registerDriveWrite(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(mv);
@@ -197,7 +197,7 @@ export function registerDriveWrite(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(ln);
@@ -221,7 +221,7 @@ export function registerDriveWrite(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(rm);
@@ -245,7 +245,7 @@ export function registerDriveWrite(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   program.addCommand(rename);
