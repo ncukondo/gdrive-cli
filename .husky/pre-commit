@@ -9,4 +9,4 @@ bun run lint:widths
 bun run lint:records
 bun run lint:landing
 
-bunx vitest --changed --run --exclude 'tests/e2e/**'
+bunx vitest --changed --run

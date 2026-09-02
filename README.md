@@ -175,7 +175,7 @@ export GDRIVE_CLI_E2E_FOLDER=<the id of a Drive folder you can lose>
 bun run test:e2e
 ```
 
-Each test file creates its own subfolder there — three, today, since vitest
+Each test file creates its own subfolder there — one per file, since vitest
 gives each file a process — does every write inside it, and trashes it when that
 file passes. A file that fails anywhere, including in its setup, keeps its folder
 so you can look at what happened. No test addresses anything outside its own
