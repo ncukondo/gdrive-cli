@@ -131,6 +131,17 @@ function codeOf(run: () => unknown): string {
   return "no error";
 }
 
+/** The {@link AppError} itself, for the half of a refusal that is not prose. */
+function errorOf(run: () => unknown): AppError {
+  try {
+    run();
+  } catch (error) {
+    if (error instanceof AppError) return error;
+    throw error;
+  }
+  throw new Error("expected a refusal");
+}
+
 function messageOf(run: () => unknown): string {
   try {
     run();
@@ -205,6 +216,25 @@ describe("planSlideWrite: matching slides (0030 §1)", () => {
     const message = messageOf(() => plan(dropped));
     expect(message).toContain("s3");
     expect(message).toContain("--prune");
+  });
+
+  /**
+   * Issue #31, the deck half. Same rule as `forms write`: 0030 §4 reuses 0028
+   * §4's plan wholesale, so a refusal owes the caller the same list a success
+   * gives it, in `data` (0031 §3–§4).
+   */
+  it("carries the slides it refused to delete in the error's data", () => {
+    const dropped = { ...document, slides: document.slides.slice(0, 2) };
+    const error = errorOf(() => plan(dropped));
+
+    expect(error.code).toBe("PRUNE_REQUIRED");
+    expect(error.data?.payload).toEqual({
+      id: "1PrEs",
+      plan: [{ action: "delete", id: "s3", title: "", index: 2 }],
+      applied: false,
+    });
+    // The same entries `--prune` reports, so one parser reads both answers.
+    expect(error.data?.payload).toMatchObject({ plan: plan(dropped, true).entries });
   });
 
   it("deletes it by object id with --prune", () => {

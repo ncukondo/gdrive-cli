@@ -64,7 +64,7 @@ export function registerSheets(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   sheets.addCommand(tabs);
@@ -92,7 +92,7 @@ export function registerSheets(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, format);
+      handleError(error, format, opts.quiet);
     }
   });
   sheets.addCommand(read);
@@ -119,7 +119,7 @@ export function registerSheets(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   sheets.addCommand(write);
@@ -146,7 +146,7 @@ export function registerSheets(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   sheets.addCommand(append);
@@ -170,7 +170,7 @@ export function registerSheets(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   sheets.addCommand(clear);

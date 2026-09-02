@@ -138,7 +138,7 @@ export function registerUpgrade(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
 }

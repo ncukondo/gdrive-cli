@@ -71,7 +71,7 @@ export function registerForms(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, format);
+      handleError(error, format, opts.quiet);
     }
   });
   forms.addCommand(read);
@@ -98,7 +98,7 @@ export function registerForms(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, format);
+      handleError(error, format, opts.quiet);
     }
   });
   forms.addCommand(responses);
@@ -126,7 +126,7 @@ export function registerForms(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      handleError(error, opts.format);
+      handleError(error, opts.format, opts.quiet);
     }
   });
   forms.addCommand(write);
