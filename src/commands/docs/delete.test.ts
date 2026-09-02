@@ -160,6 +160,36 @@ describe("handleDocsDelete (issue #41, decision 0062)", () => {
       expect(d.deleteRange).not.toHaveBeenCalled();
     });
 
+    /**
+     * Decision 0064 §2. A Docs index is meaningless without its segment, so
+     * two markers in different ones name no range at all — and the failure a
+     * silent choice would produce is the body being deleted while the caller
+     * meant the header. Measured against a real document before this refusal
+     * existed; that is exactly what happened.
+     */
+    it("refuses --from and --to in different segments", async () => {
+      const split: DocumentRaw = {
+        documentId: "D1",
+        body: {
+          content: [
+            { startIndex: 1, endIndex: 12, paragraph: { elements: [run("IN BODY\n", 1)] } },
+          ],
+        },
+        headers: {
+          "h.abc": {
+            content: [
+              { endIndex: 12, paragraph: { elements: [{ textRun: { content: "IN HEAD\n" } }] } },
+            ],
+          },
+        },
+      };
+      const d = deps({ getDocument: vi.fn(async () => split) });
+      await expect(
+        handleDocsDelete({ ...d, from: "IN BODY", to: "IN HEAD" }),
+      ).rejects.toMatchObject({ code: "INVALID_ARGS" });
+      expect(d.deleteRange).not.toHaveBeenCalled();
+    });
+
     it("refuses a position that is neither pair, without fetching the document", async () => {
       const d = deps();
       await expect(handleDocsDelete({ ...d, from: "Draft starts here" })).rejects.toMatchObject({

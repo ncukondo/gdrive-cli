@@ -189,7 +189,11 @@ export function registerDocs(program: Command): void {
       const result = await handleDocsInsert({
         resolvePath: (arg) => resolveTargetId(drive, arg),
         getDocument: (id) => getDocument(docsClient, id),
-        insertText: (id, index, t, boundary) => insertText(docsClient, id, index, t, boundary),
+        // Every argument, including the segment. Dropping the last one here is
+        // how a header insert silently lands in the body — measured against a
+        // real Doc before this line existed (decision 0064 §2).
+        insertText: (id, index, t, boundary, segmentId) =>
+          insertText(docsClient, id, index, t, boundary, segmentId),
         insertMarkdown: (id, index, source, options) =>
           insertMarkdown(docsClient, id, index, source, options),
         readInput: input,

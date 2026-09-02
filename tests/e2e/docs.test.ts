@@ -276,6 +276,30 @@ describeLive("Docs against a real account", () => {
   });
 
   /**
+   * Issue #21, decision 0064 — the half a live suite can reach.
+   *
+   * Nothing in this CLI creates a header, a footer or a footnote, so a document
+   * that *has* one cannot be built from here; that case is a manual pass, and
+   * the segment write path was verified by hand against a real header while
+   * this was written (it found two defects a fake could not).
+   *
+   * What is here is the compatibility guarantee, which is the thing most likely
+   * to regress: a document with no segments must read exactly as it did before
+   * the walk learned about them.
+   */
+  it(
+    "reads a document with no header or footnote exactly as it did before",
+    async () => {
+      const plain = (await gdriveAs(bodySchema, "docs", "read", documentId)).content;
+      expect(plain).not.toContain("<!-- header:");
+      expect(plain).not.toContain("<!-- footer:");
+      expect(plain).not.toContain("<!-- footnote:");
+      expect(plain).toMatch(/^# E2E round trip$/m);
+    },
+    LIVE_TIMEOUT,
+  );
+
+  /**
    * Issue #41, and the shape it was reported in: a Markdown draft containing a
    * pipe table was inserted, and nothing could take it back out. The table is
    * what makes this live rather than a fake's business — `deleteContentRange`
