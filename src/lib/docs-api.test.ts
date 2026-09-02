@@ -4,6 +4,7 @@ import {
   createDocument,
   findMarkerRanges,
   inSegment,
+  segmentKind,
   segmentsOf,
   insertMarkdown,
   replaceMarkdown,
@@ -847,6 +848,67 @@ describe("segments (decision 0064)", () => {
       ];
       expect(inSegment(all, "h.abc")).toEqual(all);
     });
+  });
+
+  /**
+   * Docs refuses `pageBreakBefore` outside the body and rejects the whole
+   * batch: `Cannot update page-break-before in a header.` 0045 §2's reset names
+   * every writable field on purpose, so a reset that reaches a segment has to
+   * drop that one. Measured against a real header — without this,
+   * `docs insert --before` a marker mid-header fails outright, which is most of
+   * what 0064 §1 promises.
+   */
+  it("drops the field Docs will not take outside the body", () => {
+    const reset: DocsRequest[] = [
+      {
+        updateParagraphStyle: {
+          range: { startIndex: 1, endIndex: 2 },
+          paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+          fields: "namedStyleType,pageBreakBefore,alignment",
+        },
+      },
+    ];
+    const [stamped] = inSegment(reset, "h.abc");
+    expect(stamped).toEqual({
+      updateParagraphStyle: {
+        range: { startIndex: 1, endIndex: 2, segmentId: "h.abc" },
+        paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+        fields: "namedStyleType,alignment",
+      },
+    });
+    // The body keeps it: there, a page break before a paragraph is a real thing.
+    expect(inSegment(reset, undefined)).toEqual(reset);
+  });
+
+  /**
+   * The `?? 0` fix belongs to every index default, not to the one place the
+   * symptom appeared (decision 0040 §3). This is the one it was missed in.
+   */
+  it("reads a boundary at a segment's index 0, where Docs omits the startIndex", () => {
+    const atZero: DocumentRaw = {
+      documentId: "D1",
+      body: { content: [] },
+      headers: {
+        "h.abc": {
+          content: [
+            { endIndex: 14, paragraph: { elements: [{ textRun: { content: "HEADER TEXT\n" } }] } },
+          ],
+        },
+      },
+    };
+    expect(paragraphBoundary(atZero, 0, "h.abc").atParagraphStart).toBe(true);
+  });
+
+  it("names what kind of segment an id belongs to", () => {
+    expect(segmentKind(withSegments, undefined)).toBe("body");
+    expect(segmentKind(withSegments, "h.abc")).toBe("header");
+    expect(segmentKind(withSegments, "fn.1")).toBe("footnote");
+  });
+
+  /** `--as text` is for content that was never Markdown; a comment is markup. */
+  it("labels a segment without markup in text mode", () => {
+    expect(renderDocument(withSegments, "text")).toContain("[header: h.abc]");
+    expect(renderDocument(withSegments, "text")).not.toContain("<!--");
   });
 
   it("renders every segment, labelled, and a document with none unchanged", () => {

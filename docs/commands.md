@@ -1184,8 +1184,11 @@ the body and index 42 in a footer are different characters. `read` shows all
 four, and `insert`, `replace` and `delete` can address a marker in any of them
 ([`../decisions/0064`](../decisions/0064-a-marker-is-addressable-anywhere.md)).
 
-`read` labels each one with an HTML comment carrying its kind and the id the
-API knows it by, and prints nothing for a segment the document does not have:
+`read` labels each one with its kind and the id the API knows it by, and prints
+nothing for a segment the document does not have. Markdown mode uses an HTML
+comment, which survives a `read | append` round trip without rendering;
+`--as text` uses `[header: …]`, because that mode is for content that was never
+Markdown and a comment is markup:
 
 ```markdown
 # The quarter in one slide
@@ -1212,6 +1215,18 @@ output.
 
 `replace` still changes **every** occurrence, in every segment, as it always
 did.
+
+Two things a segment will not take, both the API's rules rather than this CLI's:
+
+- **A table cannot go in a footnote.** A Markdown table written there is
+  reported through the same channel `read` uses for content Docs cannot hold,
+  and the rest of the payload is still written — rather than the API refusing
+  the whole batch.
+- **A page break before a paragraph is a body idea.** An insert into a header,
+  footer or footnote resets the paragraph style of what it wrote
+  ([`../decisions/0045`](../decisions/0045-inserted-content-is-default-styled.md))
+  without that one field, because Docs answers
+  `Cannot update page-break-before in a header` and rejects everything with it.
 
 ### `gdrive docs delete <file>`
 

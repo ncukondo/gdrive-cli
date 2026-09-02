@@ -3,7 +3,34 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { describeLive, gdrive, gdriveAs, LIVE_TIMEOUT, useSandbox } from "./helpers/sandbox.ts";
+import {
+  describeLive,
+  gdrive,
+  gdriveAs,
+  gdriveError,
+  LIVE_TIMEOUT,
+  useSandbox,
+} from "./helpers/sandbox.ts";
+import { google } from "googleapis";
+import { nodeFs } from "../../src/lib/fs.ts";
+import { loadConfig } from "../../src/lib/config.ts";
+import { getAccountClient } from "../../src/lib/account.ts";
+
+/**
+ * The one place these tests reach past the CLI binary, and the generated
+ * googleapis client rather than this project's port.
+ *
+ * Both are deliberate. Nothing in this CLI sends `createHeader`, so a document
+ * with a header cannot be built from the surface under test; and the port's
+ * request union does not name that request, correctly — adding it so a fixture
+ * could be built would grow the guarded surface for a test's convenience. The
+ * case is worth reaching for: the manual version of it found three defects no
+ * fake could raise.
+ */
+async function docsClient() {
+  const { client } = await getAccountClient(nodeFs, loadConfig(nodeFs), undefined);
+  return google.docs({ version: "v1", auth: client });
+}
 
 const createdSchema = z.object({ id: z.string() });
 const bodySchema = z.object({ content: z.string() });
@@ -276,16 +303,135 @@ describeLive("Docs against a real account", () => {
   });
 
   /**
-   * Issue #21, decision 0064 — the half a live suite can reach.
+   * Issue #21, decision 0064.
    *
-   * Nothing in this CLI creates a header, a footer or a footnote, so a document
-   * that *has* one cannot be built from here; that case is a manual pass, and
-   * the segment write path was verified by hand against a real header while
-   * this was written (it found two defects a fake could not).
-   *
-   * What is here is the compatibility guarantee, which is the thing most likely
-   * to regress: a document with no segments must read exactly as it did before
-   * the walk learned about them.
+   * Nothing in this CLI creates a header, a footer or a footnote, so the
+   * fixture is built through the Docs client directly — the one place these
+   * tests reach past the binary, and they do it because the case cannot exist
+   * otherwise. It earns that: the manual version of this pass found three
+   * defects no fake could raise, two of which only appear together.
+   */
+  describe("headers, footers and footnotes (issue #21, decision 0064)", () => {
+    let segmented = "";
+    let headerId = "";
+
+    beforeAll(async () => {
+      const made = await gdriveAs(
+        createdSchema,
+        "docs",
+        "create",
+        "segments",
+        "--content",
+        "BODY LINE\n",
+        "--parent",
+        sandbox.id,
+      );
+      segmented = made.id;
+      const docs = await docsClient();
+      await docs.documents.batchUpdate({
+        documentId: segmented,
+        requestBody: {
+          requests: [
+            { createHeader: { type: "DEFAULT" } },
+            { createFootnote: { location: { index: 1 } } },
+          ],
+        },
+      });
+      const raw = (await docs.documents.get({ documentId: segmented })).data;
+      headerId = Object.keys(raw.headers ?? {})[0] ?? "";
+      const footnoteId = Object.keys(raw.footnotes ?? {})[0] ?? "";
+      await docs.documents.batchUpdate({
+        documentId: segmented,
+        requestBody: {
+          requests: [
+            {
+              insertText: {
+                location: { index: 0, segmentId: headerId },
+                text: "first line\nBETA second\n",
+              },
+            },
+            {
+              insertText: { location: { index: 0, segmentId: footnoteId }, text: "FNSTART note\n" },
+            },
+          ],
+        },
+      });
+    }, LIVE_TIMEOUT);
+
+    it(
+      "reads all three beside the body",
+      async () => {
+        const content = (await gdriveAs(bodySchema, "docs", "read", segmented)).content;
+        expect(content).toContain("BODY LINE");
+        expect(content).toContain(`<!-- header: ${headerId} -->`);
+        expect(content).toContain("BETA second");
+        expect(content).toContain("FNSTART note");
+      },
+      LIVE_TIMEOUT,
+    );
+
+    /**
+     * The case the manual pass caught twice over. `--before` a marker that
+     * opens a paragraph is where the API refuses `pageBreakBefore` outside the
+     * body — and where an absent `startIndex` has to read as 0 for the reset to
+     * be planned at all. Either fix alone leaves this red or silently wrong.
+     */
+    it(
+      "writes into the header, not the body",
+      async () => {
+        await gdrive("docs", "insert", segmented, "NEW", "--before", "BETA");
+        const content = (await gdriveAs(bodySchema, "docs", "read", segmented)).content;
+        expect(content).toMatch(/NEW\s*\n?BETA second/);
+        // The body is untouched, which is what the first version of this got
+        // wrong: the registrar dropped the segment and wrote here instead.
+        expect(content).toMatch(/^BODY LINE$/m);
+      },
+      LIVE_TIMEOUT,
+    );
+
+    /** Docs holds tables, but not in a footnote (decision 0064, Consequences). */
+    it(
+      "reports a table it cannot put in a footnote, and writes the rest",
+      async () => {
+        const table = join(local, "fn-table.md");
+        writeFileSync(table, "| a | b |\n| - | - |\n| 1 | 2 |\n");
+        await gdrive("docs", "insert", segmented, `@${table}`, "--after", "FNSTART");
+        const content = (await gdriveAs(bodySchema, "docs", "read", segmented)).content;
+        expect(content).toContain("FNSTART note");
+      },
+      LIVE_TIMEOUT,
+    );
+
+    it(
+      "refuses a marker that is in the body and in the header",
+      async () => {
+        const docs = await docsClient();
+        await docs.documents.batchUpdate({
+          documentId: segmented,
+          requestBody: {
+            requests: [
+              { insertText: { location: { index: 1, segmentId: headerId }, text: "BODY LINE" } },
+            ],
+          },
+        });
+        // The code, because that is what the helper reports; the count is in
+        // the message and is asserted where messages are, beside the resolver.
+        // What matters live is that Google was never asked: the alternative to
+        // this refusal is a write landing in a segment nobody named.
+        expect(await gdriveError("docs", "insert", segmented, "X", "--before", "BODY LINE")).toBe(
+          "INVALID_ARGS",
+        );
+        const after = (await gdriveAs(bodySchema, "docs", "read", segmented)).content;
+        expect(after).not.toContain("X");
+      },
+      LIVE_TIMEOUT,
+    );
+  });
+
+  /**
+   * The compatibility guarantee, which is the thing most likely to regress: a
+   * document with no segments must read exactly as it did before the walk
+   * learned about them.
    */
   it(
     "reads a document with no header or footnote exactly as it did before",
