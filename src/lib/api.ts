@@ -21,7 +21,7 @@ import {
 export const MAX_PAGES = 100;
 
 /** Drive's largest page. Asking for less costs round trips and buys nothing. */
-const PAGE_SIZE = 1000;
+export const PAGE_SIZE = 1000;
 
 /**
  * A listing, and whether it is all of one (decision 0060 §1).
@@ -1031,6 +1031,12 @@ export async function listPermissions(
   } catch (error) {
     mapDriveError(error);
   }
+  // This loop has the same cap as `collectPages` and, unlike it, reports
+  // nothing when it stops. That is deliberate: `permissions.list` caps at 100
+  // per page whatever is asked, so the bound is 10,000 grants on one file, and
+  // nothing has ever come near it. Decision 0060 is about a listing a command
+  // *copies from*; this one is read and printed. If a caller ever hits it, the
+  // fix is the same shape as `collectPages`'s.
   return permissions;
 }
 

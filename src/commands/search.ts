@@ -27,10 +27,13 @@ export async function handleSearch(deps: SearchDeps): Promise<CommandResult> {
 
   const { files, complete } = await deps.searchFiles(deps.query, options);
 
+  // The note goes on both branches. Drive can return an empty page while still
+  // carrying a `nextPageToken` — a heavily filtered `fullText contains` does
+  // it — so "No files found" on a truncated search would invert the answer: it
+  // did not find none, it stopped looking.
   const text =
-    files.length === 0
-      ? line`No files found matching "${deps.query}".`
-      : formatFileTable(files) + truncationNote(complete);
+    (files.length === 0 ? line`No files found matching "${deps.query}".` : formatFileTable(files)) +
+    truncationNote(complete);
 
   deps.write(
     renderSuccess(
