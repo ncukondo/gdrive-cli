@@ -164,10 +164,6 @@ export function registerDriveWrite(program: Command): void {
       });
       process.exit(result.exitCode);
     } catch (error) {
-      // `cp -r` is the one command *in this file* that can fail after changing
-      // something, so it is the one with a partial result to print
-      // (decision 0031 §4). The four `create`s are the others, and pass `quiet`
-      // for the same reason (decision 0057 §2).
       handleError(error, opts.format, opts.quiet);
     }
   });

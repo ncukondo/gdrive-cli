@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { refusedPlan } from "./prune-refusal.ts";
+import { renderError } from "./output.ts";
 
 /**
  * The refusal payload is tested without a command around it for the reason
@@ -38,14 +39,31 @@ describe("refusedPlan", () => {
   });
 
   /**
-   * The message already names the items (0028 §3). A `text` summary under it
-   * would be the same list twice, and an assertion that it is absent is the
-   * only thing that keeps somebody from adding one back without a reason.
+   * The message already names the items (0028 §3), so a summary under it would
+   * be the same list twice. Asserted through what a reader actually sees rather
+   * than through the absence of a field: `renderError` is what turns the two
+   * into lines, and it is the thing that would change if a `text` were added.
    */
-  it("adds nothing under the error in text mode", () => {
-    expect(refusedPlan("1FoRm", deletions).text).toBeUndefined();
+  it("leaves the error one line in text mode, rather than repeating the list", () => {
+    const rendered = renderError(
+      "PRUNE_REQUIRED",
+      "Applying this document would delete 2 items",
+      "text",
+      false,
+      refusedPlan("1FoRm", deletions),
+    );
+    expect(rendered.stderr).toBe("Error: Applying this document would delete 2 items\n");
+    expect(rendered.stdout).toBe("");
   });
 
+  /**
+   * `FormRaw.formId` and `PresentationRaw.presentationId` are both
+   * `?: string | null` in `lib/form-document.ts` and `lib/slide-document.ts` —
+   * the projections, not the API params — so this branch is reachable from the
+   * types the planners actually hold. Without the guard the payload would carry
+   * `"id": null`, which is a field a caller has to special-case rather than one
+   * they can test for.
+   */
   it("omits the id when the API did not return one", () => {
     expect(refusedPlan(undefined, deletions).payload).toEqual({
       plan: deletions,
