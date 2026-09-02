@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  MAX_PAGES,
   copyFile,
   createFolder,
   createShortcut,
@@ -243,8 +244,9 @@ describe("listChildren", () => {
     }));
     const drive = mockDrive({ list });
 
-    const files = await listChildren(drive, "FOLDER", { trashed: false });
+    const { files, complete } = await listChildren(drive, "FOLDER", { trashed: false });
     expect(files.map((f) => f.id)).toEqual(["a", "b", "c"]);
+    expect(complete).toBe(true);
     const firstQ = callArgs(list)[0].q;
     expect(firstQ).toContain("'FOLDER' in parents");
     expect(firstQ).toContain("trashed = false");
@@ -254,8 +256,44 @@ describe("listChildren", () => {
     const list = vi.fn(async () => ({
       data: { files: [raw({ id: "a" }), raw({ id: "b" }), raw({ id: "c" })] },
     }));
-    const files = await listChildren(mockDrive({ list }), "F", { limit: 2 });
+    const { files } = await listChildren(mockDrive({ list }), "F", { limit: 2 });
     expect(files.map((f) => f.id)).toEqual(["a", "b"]);
+  });
+
+  /**
+   * Issue #32. The cap was a bound on a `nextPageToken` loop and became, by
+   * accident, a listing size — silently, so a `cp -r` over a folder past it
+   * reported a partial copy as a success (decision 0060).
+   */
+  it("says so when it stopped at the page cap rather than at the end", async () => {
+    const list = vi.fn(async () => ({
+      data: { files: [raw({ id: "a" })], nextPageToken: "always-another" },
+    }));
+    const { files, complete } = await listChildren(mockDrive({ list }), "F");
+    expect(complete).toBe(false);
+    expect(files).toHaveLength(MAX_PAGES);
+    expect(list).toHaveBeenCalledTimes(MAX_PAGES);
+  });
+
+  /**
+   * A listing cut short by the caller's own `--limit` is not truncation: they
+   * asked for `n` and got `n`. Both leave the loop early, which is why this is
+   * the case most likely to be got wrong.
+   */
+  it("is complete when the limit stopped it, even with pages left", async () => {
+    const list = vi.fn(async () => ({
+      data: { files: [raw({ id: "a" }), raw({ id: "b" })], nextPageToken: "more" },
+    }));
+    const { files, complete } = await listChildren(mockDrive({ list }), "F", { limit: 2 });
+    expect(files).toHaveLength(2);
+    expect(complete).toBe(true);
+  });
+
+  /** Decision 0060 §5: the cap bounds a loop; it does not choose a page size. */
+  it("asks Drive for its largest page", async () => {
+    const list = vi.fn(async (_params: ListParams) => ({ data: { files: [] } }));
+    await listChildren(mockDrive({ list }), "F");
+    expect(callArgs(list)[0].pageSize).toBe(1000);
   });
 
   it("adds a type filter and orderBy", async () => {
@@ -270,8 +308,9 @@ describe("listChildren", () => {
 describe("searchFiles", () => {
   it("queries name and fullText", async () => {
     const list = vi.fn(async (_params: ListParams) => ({ data: { files: [raw({ id: "x" })] } }));
-    const files = await searchFiles(mockDrive({ list }), "budget");
+    const { files, complete } = await searchFiles(mockDrive({ list }), "budget");
     expect(files.map((f) => f.id)).toEqual(["x"]);
+    expect(complete).toBe(true);
     const q = callArgs(list)[0].q;
     expect(q).toContain("name contains 'budget'");
     expect(q).toContain("fullText contains 'budget'");

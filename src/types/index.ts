@@ -18,6 +18,13 @@ const ERROR_CODES = [
    * document.
    */
   "PRUNE_REQUIRED",
+  /**
+   * A listing stopped at the page cap and a command that needed all of it
+   * refused to pretend otherwise (decision 0060 §4). Distinct from `API_ERROR`
+   * because nothing failed at Google, and the next action differs: copy the
+   * large subfolders one at a time, or narrow what was asked for.
+   */
+  "LISTING_INCOMPLETE",
   "API_ERROR",
   "CONFIG_ERROR",
   "IO_ERROR",
@@ -188,6 +195,7 @@ const ERROR_CODE_EXIT_MAP: Record<ErrorCode, number> = {
   NOT_FOUND: ExitCode.GENERAL,
   INVALID_ARGS: ExitCode.ARGUMENT,
   PRUNE_REQUIRED: ExitCode.ARGUMENT,
+  LISTING_INCOMPLETE: ExitCode.ARGUMENT,
   API_ERROR: ExitCode.GENERAL,
   CONFIG_ERROR: ExitCode.GENERAL,
   IO_ERROR: ExitCode.GENERAL,

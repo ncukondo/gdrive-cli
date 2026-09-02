@@ -34,12 +34,17 @@ function collect() {
   };
 }
 
+/** A fake listing that ran to the end, which is what most of these are about. */
+function whole(files: DriveFile[]) {
+  return { files, complete: true };
+}
+
 describe("handleSearch", () => {
   it("renders a table of matches and passes options", async () => {
     const out = collect();
-    const searchFiles = vi.fn(async (_q: string, _o: ListOptions) => [
-      file({ id: "x", name: "budget" }),
-    ]);
+    const searchFiles = vi.fn(async (_q: string, _o: ListOptions) =>
+      whole([file({ id: "x", name: "budget" })]),
+    );
     await handleSearch({
       searchFiles,
       query: "budget",
@@ -57,7 +62,7 @@ describe("handleSearch", () => {
   it("shows a friendly message when there are no matches (text)", async () => {
     const out = collect();
     await handleSearch({
-      searchFiles: async () => [],
+      searchFiles: async () => whole([]),
       query: "zzz",
       format: "text",
       quiet: false,
@@ -69,19 +74,19 @@ describe("handleSearch", () => {
   it("returns an empty files array in JSON when there are no matches", async () => {
     const out = collect();
     await handleSearch({
-      searchFiles: async () => [],
+      searchFiles: async () => whole([]),
       query: "zzz",
       format: "json",
       quiet: false,
       write: out.write,
     });
-    expect(JSON.parse(out.output)).toEqual({ success: true, data: { files: [] } });
+    expect(JSON.parse(out.output)).toEqual({ success: true, data: { files: [], complete: true } });
   });
 
   it("renders quiet ids", async () => {
     const out = collect();
     await handleSearch({
-      searchFiles: async () => [file({ id: "a" }), file({ id: "b" })],
+      searchFiles: async () => whole([file({ id: "a" }), file({ id: "b" })]),
       query: "q",
       format: "text",
       quiet: true,
@@ -91,7 +96,7 @@ describe("handleSearch", () => {
   });
 
   it("passes a shared-drive scope into searchFiles (decision 0016)", async () => {
-    const searchFiles = vi.fn(async (_q: string, _o: ListOptions) => []);
+    const searchFiles = vi.fn(async (_q: string, _o: ListOptions) => whole([]));
     await handleSearch({
       searchFiles,
       query: "q",

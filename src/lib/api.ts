@@ -9,7 +9,32 @@ import {
   type ShareRole,
 } from "../types/index.ts";
 
+/**
+ * How many pages of a listing this CLI will walk before it gives up.
+ *
+ * It is a bound on a `nextPageToken` loop, not a limit on how many files you
+ * may have — a distinction it lost by being silent, which is issue #32. At
+ * {@link PAGE_SIZE} that is 100,000 children, and a listing that reaches it
+ * reports `complete: false` rather than looking like a short folder
+ * (decision 0060).
+ */
 export const MAX_PAGES = 100;
+
+/** Drive's largest page. Asking for less costs round trips and buys nothing. */
+const PAGE_SIZE = 1000;
+
+/**
+ * A listing, and whether it is all of one (decision 0060 §1).
+ *
+ * `complete` is false only when {@link MAX_PAGES} stopped the walk. A listing
+ * cut short by the caller's own `limit` is complete: they asked for `n` and got
+ * `n`. Both leave the loop early, and conflating them is how a caller would
+ * learn to ignore the flag.
+ */
+export interface Listing {
+  files: DriveFile[];
+  complete: boolean;
+}
 
 /**
  * Fields requested for every file metadata response. `shortcutDetails` rides
@@ -573,7 +598,7 @@ async function collectPages(
   client: DriveClient,
   baseParams: ListParams,
   limit?: number,
-): Promise<DriveFile[]> {
+): Promise<Listing> {
   const files: DriveFile[] = [];
   let pageToken: string | undefined;
   let pages = 0;
@@ -589,7 +614,9 @@ async function collectPages(
       const res = await client.files.list(params);
       for (const raw of res.data.files ?? []) {
         files.push(normalizeFile(raw));
-        if (limit !== undefined && files.length >= limit) return files;
+        // The caller's own limit, reached: complete, because this is what they
+        // asked for (decision 0060 §1).
+        if (limit !== undefined && files.length >= limit) return { files, complete: true };
       }
       pageToken = res.data.nextPageToken ?? undefined;
       pages += 1;
@@ -597,7 +624,8 @@ async function collectPages(
   } catch (error) {
     mapDriveError(error);
   }
-  return files;
+  // Drive still had more and this stopped anyway: the one case that is not.
+  return { files, complete: pageToken === undefined };
 }
 
 // --- Wrapper operations -----------------------------------------------------
@@ -623,7 +651,7 @@ export async function listChildren(
   client: DriveClient,
   folderId: string,
   options: ListOptions = {},
-): Promise<DriveFile[]> {
+): Promise<Listing> {
   const clauses = [
     `'${escapeQueryValue(folderId)}' in parents`,
     `trashed = ${options.trashed ? "true" : "false"}`,
@@ -632,7 +660,7 @@ export async function listChildren(
   if (typeClause) clauses.push(typeClause);
   const params: ListParams = {
     q: clauses.join(" and "),
-    pageSize: 100,
+    pageSize: PAGE_SIZE,
     includeItemsFromAllDrives: true,
   };
   const orderBy = orderByClause(options.order);
@@ -646,7 +674,7 @@ export async function searchFiles(
   client: DriveClient,
   query: string,
   options: ListOptions = {},
-): Promise<DriveFile[]> {
+): Promise<Listing> {
   const escaped = escapeQueryValue(query);
   const clauses = [
     `(name contains '${escaped}' or fullText contains '${escaped}')`,
@@ -654,7 +682,7 @@ export async function searchFiles(
   ];
   const typeClause = typeFilterClause(options.type);
   if (typeClause) clauses.push(typeClause);
-  const params: ListParams = { q: clauses.join(" and "), pageSize: 100 };
+  const params: ListParams = { q: clauses.join(" and "), pageSize: PAGE_SIZE };
   const orderBy = orderByClause(options.order);
   if (orderBy) params.orderBy = orderBy;
   applyScope(params, options.scope);

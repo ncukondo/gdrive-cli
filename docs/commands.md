@@ -398,10 +398,18 @@ sheet	2026-06-02 11:40	Headcount	1QwErT...
 ```
 
 ```json
-{ "files": [ { /* file object */ } ] }
+{ "files": [ { /* file object */ } ], "complete": true }
 ```
 
 Quiet: one file ID per line.
+
+`complete` is `false` when the listing stopped at **100,000 entries** — this CLI
+walks 100 pages of 1,000 — rather than at the end of the folder. The rows are
+real; there are just more of them. Text mode prints a note under the table, `-q`
+is unchanged, and the exit code is still 0: narrow with `--type`, `-n`, or a
+[`search`](#gdrive-search-query). A listing you cut short yourself with `-n` is
+`complete: true`, because you asked for that many
+([`../decisions/0060`](../decisions/0060-a-listing-says-when-it-stopped.md)).
 
 A folder ID from a shared drive works with no flag at all — `ls` follows
 whatever folder it is given:
@@ -447,10 +455,12 @@ $ gdrive search budget --all-drives        # My Drive + every shared drive
 ```
 
 ```json
-{ "files": [ { /* file object */ } ] }
+{ "files": [ { /* file object */ } ], "complete": true }
 ```
 
 Quiet: one file ID per line.
+
+`complete` means the same thing it does for [`ls`](#gdrive-ls-folder).
 
 Shared drives are excluded unless you ask for them: on an account with
 organizational drives attached, widening the search is usually noise, so the
@@ -728,6 +738,12 @@ Four things are worth knowing before you run it on something large:
   the top-level folder the first run created already holds the name
   ([above](#a-name-has-to-be-addressable)). Remove the partial copy — or give the
   retry `--name` — and start again.
+- **A folder with more than 100,000 children stops the run** with
+  `LISTING_INCOMPLETE` (exit 3). Nothing below that folder is copied, and the
+  report names it at the `listing` stage. This is not Drive failing: it is this
+  CLI refusing to report a copy of children it never enumerated, which is what
+  the complete report above is worth. Copy the large subfolders one at a time
+  ([`../decisions/0060`](../decisions/0060-a-listing-says-when-it-stopped.md)).
 - **Copying a folder into itself is refused** before anything is copied:
   `gdrive cp -r A A/B` is `INVALID_ARGS`, and so is `gdrive cp -r / Archive`
   whatever spelling of the root you use. Permissions, ownership and revision
@@ -2232,7 +2248,7 @@ honor `GDRIVE_CLI_VERSION` and `GDRIVE_CLI_INSTALL_DIR`. See
 | `0` | Success | — |
 | `1` | Operation failed | `NOT_FOUND`, `PERMISSION_DENIED`, `API_ERROR`, `CONFIG_ERROR`, `IO_ERROR` |
 | `2` | Authentication problem | `AUTH_REQUIRED`, `AUTH_EXPIRED`, `ACCOUNT_NOT_FOUND` |
-| `3` | Bad arguments | `INVALID_ARGS`, `PRUNE_REQUIRED` |
+| `3` | Bad arguments | `INVALID_ARGS`, `PRUNE_REQUIRED`, `LISTING_INCOMPLETE` |
 
 Errors go to stderr — as `Error: <message>` in text mode, or as the envelope in
 JSON mode. See [`../decisions/0007`](../decisions/0007-output-and-errors.md).

@@ -1,12 +1,12 @@
 import { Command } from "commander";
-import type { CommandResult, DriveFile, FileType, OutputFormat } from "../types/index.ts";
+import type { CommandResult, FileType, OutputFormat } from "../types/index.ts";
 import { line, renderSuccess } from "../lib/output.ts";
-import type { DriveScope, ListOptions, OrderKey } from "../lib/api.ts";
+import type { DriveScope, Listing, ListOptions, OrderKey } from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
-import { TYPE_OPTION_DESCRIPTION } from "./ls.ts";
+import { truncationNote, TYPE_OPTION_DESCRIPTION } from "./ls.ts";
 
 export interface SearchDeps {
-  searchFiles: (query: string, options: ListOptions) => Promise<DriveFile[]>;
+  searchFiles: (query: string, options: ListOptions) => Promise<Listing>;
   query: string;
   format: OutputFormat;
   quiet: boolean;
@@ -25,14 +25,16 @@ export async function handleSearch(deps: SearchDeps): Promise<CommandResult> {
   if (deps.order !== undefined) options.order = deps.order;
   if (deps.scope !== undefined) options.scope = deps.scope;
 
-  const files = await deps.searchFiles(deps.query, options);
+  const { files, complete } = await deps.searchFiles(deps.query, options);
 
   const text =
-    files.length === 0 ? line`No files found matching "${deps.query}".` : formatFileTable(files);
+    files.length === 0
+      ? line`No files found matching "${deps.query}".`
+      : formatFileTable(files) + truncationNote(complete);
 
   deps.write(
     renderSuccess(
-      { data: { files }, text, quiet: formatFilesQuiet(files) },
+      { data: { files, complete }, text, quiet: formatFilesQuiet(files) },
       deps.format,
       deps.quiet,
     ),

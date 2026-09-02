@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { copyTree } from "./copy-tree.ts";
-import { FOLDER_MIME, SHORTCUT_MIME } from "./api.ts";
+import { FOLDER_MIME, MAX_PAGES, SHORTCUT_MIME } from "./api.ts";
 import { AppError, type ErrorData } from "../types/index.ts";
 import {
   createWritableTreeDrive,
@@ -269,6 +269,66 @@ describe("copyTree", () => {
 
       expect(error).toMatchObject({ code: "PERMISSION_DENIED", message: "No write access here." });
       expect(dataOf(error)).toBeUndefined();
+    });
+  });
+
+  /**
+   * Issue #32. `collectPages` stops at `MAX_PAGES` and used to return what it
+   * had, silently — so this walk copied what it saw, exited 0, and reported a
+   * complete tree. That makes 0031 §4's guarantee false for exactly the runs it
+   * exists for, and §3 and §4 are a pair: stopping early is defensible only
+   * because the report says how far it got (decision 0060 §3).
+   */
+  describe("when a folder's listing is longer than this will page through", () => {
+    /** One child per page, so `MAX_PAGES + 1` children outrun the cap. */
+    function tooManyChildren(): DriveNode[] {
+      const nodes: DriveNode[] = [
+        { id: "DEST", name: "Archive", mimeType: FOLDER_MIME, parents: ["root"] },
+        { id: "1F", name: "2026", mimeType: FOLDER_MIME, parents: ["root"] },
+      ];
+      for (let n = 0; n <= MAX_PAGES; n += 1) {
+        nodes.push({
+          id: `f${String(n)}`,
+          name: `${String(n)}.txt`,
+          mimeType: "text/plain",
+          parents: ["1F"],
+        });
+      }
+      return nodes;
+    }
+
+    it("stops rather than reporting a partial copy as a success", async () => {
+      const drive = createWritableTreeDrive(tooManyChildren(), { pageSize: 1 });
+      const error = await failureFrom(copyTree(drive.client, source, "DEST", { retry: noWait }));
+
+      expect(error).toMatchObject({ code: "LISTING_INCOMPLETE" });
+    });
+
+    it("names the folder it could not finish reading, and what it had done", async () => {
+      const drive = createWritableTreeDrive(tooManyChildren(), { pageSize: 1 });
+      const error = await failureFrom(copyTree(drive.client, source, "DEST", { retry: noWait }));
+
+      // The destination folder exists and is in the report; what is missing is
+      // its contents, which is the `listing` stage rather than `copying`.
+      expect(payloadOf(error)).toMatchObject({
+        folders: [{ src: "1F", dst: "new1", name: "2026" }],
+        copied: [],
+        failed: { src: "1F", name: "2026", stage: "listing" },
+      });
+    });
+
+    it("copies nothing from that folder, rather than the part it could see", async () => {
+      const drive = createWritableTreeDrive(tooManyChildren(), { pageSize: 1 });
+      await failureFrom(copyTree(drive.client, source, "DEST", { retry: noWait }));
+
+      expect(drive.trace().filter((call) => call.startsWith("copy:"))).toEqual([]);
+    });
+
+    /** A folder inside the cap is unaffected, which is every real folder. */
+    it("copies a folder that fits, as before", async () => {
+      const drive = createWritableTreeDrive(twoLevelTree(), { pageSize: 1 });
+      const report = await copyTree(drive.client, source, "DEST");
+      expect(report.copied).toHaveLength(2);
     });
   });
 

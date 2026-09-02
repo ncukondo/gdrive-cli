@@ -72,10 +72,77 @@ describe("option parsers", () => {
   });
 });
 
+/** A fake listing that ran to the end, which is what most of these are about. */
+function whole(files: DriveFile[]) {
+  return { files, complete: true };
+}
+
+describe("handleLs: a listing that stopped early (issue #32, decision 0060 §2)", () => {
+  const cut = { files: [file({ id: "a", name: "a.txt" })], complete: false };
+
+  it("says so in the envelope and still succeeds", async () => {
+    const out = collect();
+    const result = await handleLs({
+      resolvePath: vi.fn(),
+      listChildren: async () => cut,
+      format: "json",
+      quiet: false,
+      write: out.write,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(out.output)).toMatchObject({
+      success: true,
+      data: { complete: false },
+    });
+  });
+
+  it("prints the rows and a note under them in text mode", async () => {
+    const out = collect();
+    await handleLs({
+      resolvePath: vi.fn(),
+      listChildren: async () => cut,
+      format: "text",
+      quiet: false,
+      write: out.write,
+    });
+
+    expect(out.output).toContain("a.txt");
+    expect(out.output).toContain("more");
+  });
+
+  /** A note is not a value (decision 0038): `-q` is unchanged by it. */
+  it("adds nothing to -q", async () => {
+    const out = collect();
+    await handleLs({
+      resolvePath: vi.fn(),
+      listChildren: async () => cut,
+      format: "text",
+      quiet: true,
+      write: out.write,
+    });
+
+    expect(out.output).toBe("a");
+  });
+
+  it("prints no note when the listing ran to the end", async () => {
+    const out = collect();
+    await handleLs({
+      resolvePath: vi.fn(),
+      listChildren: async () => whole([file({ id: "a", name: "a.txt" })]),
+      format: "text",
+      quiet: false,
+      write: out.write,
+    });
+
+    expect(out.output).not.toContain("more");
+  });
+});
+
 describe("handleLs", () => {
   it("defaults to root when no folder is given (no path resolution)", async () => {
     const resolvePath = vi.fn();
-    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => whole(files));
     await handleLs({
       resolvePath,
       listChildren,
@@ -89,7 +156,7 @@ describe("handleLs", () => {
 
   it("resolves a folder argument to an id", async () => {
     const resolvePath = vi.fn(async () => "FID");
-    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => whole(files));
     await handleLs({
       resolvePath,
       listChildren,
@@ -106,7 +173,7 @@ describe("handleLs", () => {
     const out = collect();
     await handleLs({
       resolvePath: vi.fn(),
-      listChildren: async () => files,
+      listChildren: async () => whole(files),
       format: "text",
       quiet: false,
       write: out.write,
@@ -121,7 +188,7 @@ describe("handleLs", () => {
     const out = collect();
     await handleLs({
       resolvePath: vi.fn(),
-      listChildren: async () => files,
+      listChildren: async () => whole(files),
       format: "json",
       quiet: false,
       write: out.write,
@@ -141,14 +208,14 @@ describe("handleLs", () => {
     const json = collect();
     await handleLs({
       resolvePath: vi.fn(),
-      listChildren: async () => awkward,
+      listChildren: async () => whole(awkward),
       format: "text",
       quiet: false,
       write: text.write,
     });
     await handleLs({
       resolvePath: vi.fn(),
-      listChildren: async () => awkward,
+      listChildren: async () => whole(awkward),
       format: "json",
       quiet: false,
       write: json.write,
@@ -163,7 +230,7 @@ describe("handleLs", () => {
     const out = collect();
     await handleLs({
       resolvePath: vi.fn(),
-      listChildren: async () => files,
+      listChildren: async () => whole(files),
       format: "text",
       quiet: true,
       write: out.write,
@@ -172,7 +239,7 @@ describe("handleLs", () => {
   });
 
   it("passes type/limit/order into listChildren", async () => {
-    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => whole(files));
     await handleLs({
       resolvePath: vi.fn(),
       listChildren,
@@ -193,7 +260,7 @@ describe("handleLs", () => {
   });
 
   it("passes a shared-drive scope into listChildren (decision 0016)", async () => {
-    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => whole(files));
     await handleLs({
       resolvePath: vi.fn(),
       listChildren,
@@ -207,7 +274,7 @@ describe("handleLs", () => {
 
   it("defaults to the shared drive's root when --drive is given without a folder", async () => {
     const resolvePath = vi.fn();
-    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => whole(files));
     await handleLs({
       resolvePath,
       listChildren,
@@ -223,7 +290,7 @@ describe("handleLs", () => {
   it("rejects a folder argument together with a scope flag", async () => {
     // Previously the folder resolved against My Drive and the driveId was
     // ignored, so `ls --drive X <folder>` returned some other drive's contents.
-    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => whole(files));
     await expect(
       handleLs({
         resolvePath: vi.fn(async () => "FID"),
@@ -242,7 +309,7 @@ describe("handleLs", () => {
     await expect(
       handleLs({
         resolvePath: vi.fn(async () => "FID"),
-        listChildren: vi.fn(async () => files),
+        listChildren: vi.fn(async () => whole(files)),
         format: "text",
         quiet: false,
         write: () => {},
@@ -253,7 +320,7 @@ describe("handleLs", () => {
   });
 
   it("sends no scope when neither flag is given", async () => {
-    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => files);
+    const listChildren = vi.fn(async (_id: string, _o: ListOptions) => whole(files));
     await handleLs({
       resolvePath: vi.fn(),
       listChildren,
