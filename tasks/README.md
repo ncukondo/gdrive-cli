@@ -103,7 +103,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0050 The generated-type guard reaches inside a Drive `requestBody`](archive/0050-the-guard-reaches-inside-a-request-body.md) | — | J | done |
 | [0051 A `PRUNE_REQUIRED` refusal carries the plan it refused](archive/0051-a-refusal-carries-its-plan.md) | — | J | done |
 | [0052 The e2e exclusion stops depending on the shell](archive/0052-the-e2e-exclusion-leaves-the-shell.md) | — | J | done |
-| [0053 A listing says when it stopped early](0053-a-listing-says-when-it-stopped.md) | — | K | todo |
+| [0053 A listing says when it stopped early](archive/0053-a-listing-says-when-it-stopped.md) | — | K | done |
 | [0054 A copied question keeps all of its navigation or none](archive/0054-navigation-is-all-or-nothing.md) | — | K | done |
 | [0055 `gdrive docs delete` removes a range](0055-docs-delete.md) | — | L | todo |
 | [0056 An `elements` entry's text is writable](0056-an-element-is-writable-by-id.md) | — | L | todo |
