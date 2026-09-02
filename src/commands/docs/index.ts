@@ -6,6 +6,7 @@ import { getAccountClient } from "../../lib/account.ts";
 import { moveFile, type DriveClient } from "../../lib/api.ts";
 import {
   createDocument,
+  deleteRange,
   getDocument,
   insertMarkdown,
   insertText,
@@ -26,6 +27,7 @@ import { createDocsCreateCommand, handleDocsCreate } from "./create.ts";
 import { createDocsAppendCommand, handleDocsAppend } from "./append.ts";
 import { createDocsReplaceCommand, handleDocsReplace } from "./replace.ts";
 import { createDocsInsertCommand, handleDocsInsert } from "./insert.ts";
+import { createDocsDeleteCommand, handleDocsDelete } from "./delete.ts";
 
 async function buildClients(
   opts: GlobalOptions,
@@ -210,4 +212,39 @@ export function registerDocs(program: Command): void {
     }
   });
   docs.addCommand(insert);
+
+  const remove = createDocsDeleteCommand();
+  remove.action(async (file: string) => {
+    const opts = resolveGlobalOptions(program);
+    const o = remove.opts<{
+      from?: string;
+      to?: string;
+      index?: string;
+      length?: string;
+      matchCase?: boolean;
+      dryRun?: boolean;
+    }>();
+    try {
+      const { drive, docs: docsClient } = await buildClients(opts);
+      const result = await handleDocsDelete({
+        resolvePath: (arg) => resolveTargetId(drive, arg),
+        getDocument: (id) => getDocument(docsClient, id),
+        deleteRange: (id, range) => deleteRange(docsClient, id, range),
+        file,
+        format: opts.format,
+        quiet: opts.quiet,
+        write: stdout,
+        ...(o.from !== undefined ? { from: o.from } : {}),
+        ...(o.to !== undefined ? { to: o.to } : {}),
+        ...(o.index !== undefined ? { index: o.index } : {}),
+        ...(o.length !== undefined ? { length: o.length } : {}),
+        ...(o.matchCase ? { matchCase: true } : {}),
+        ...(o.dryRun ? { dryRun: true } : {}),
+      });
+      process.exit(result.exitCode);
+    } catch (error) {
+      handleError(error, opts.format);
+    }
+  });
+  docs.addCommand(remove);
 }

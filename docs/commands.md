@@ -927,6 +927,9 @@ Quiet: just the URL.
 Text arguments accept a literal string, `@file` to read a local file, or `-` to
 read stdin.
 
+`delete` is the one command here that takes no content: it removes a range, and
+it is what an `insert` you regret is undone with.
+
 **Markdown is the format in both directions.** `read` renders a document as
 Markdown, and `create --content`, `append`, `insert`, and `replace` parse their
 content as Markdown, so a heading arrives as a heading and a pipe table as a
@@ -1164,6 +1167,67 @@ content may itself be a table and Docs cannot nest one.
 ```
 
 Quiet: the document ID.
+
+### `gdrive docs delete <file>`
+
+Removes a range of the document. This is `insert`'s inverse, and it is the only
+command here that can remove a **table**
+([`../decisions/0062`](../decisions/0062-a-write-has-an-inverse.md)).
+
+Exactly one pair is required:
+
+| Options | What is removed |
+|---------|-----------------|
+| `--from <marker> --to <marker>` | From the start of the first through the end of the second, both included |
+| `--index <n> --length <n>` | That many characters from that 1-based index |
+
+```console
+$ gdrive docs delete -f text "Notes/Meeting" --from "Draft starts here" --to "Draft ends here"
+Deleted 70 characters from 1BzqpK...
+
+$ gdrive docs delete -f text "Notes/Meeting" --from "Q3" --to "totals" --dry-run
+Would delete 412 characters from 1BzqpK... (1204–1616); --dry-run wrote nothing
+```
+
+**`--dry-run` first is worth the round trip.** What a deletion removes is not
+visible in its arguments: `--from`/`--to` names two ends, and everything between
+them goes whether or not you remembered it was there.
+
+Each marker must match **exactly once**, on the same terms as
+[`insert`](#gdrive-docs-insert-file-textfile--) — no match is `NOT_FOUND`, two
+or more is `INVALID_ARGS` with the count, and `--match-case` narrows it. A
+`--to` at or before `--from` is refused before anything is sent.
+
+**A whole paragraph takes its paragraph mark with it**, so removing one leaves
+no blank line where it was. That is the difference between this and
+`replace --find "…" --replace ""`, which substitutes text for text and correctly
+leaves the empty paragraph behind. Reach for `delete` when the paragraph should
+go; reach for `replace` when its text should.
+
+**A table is reached by naming its neighbours.** A marker inside a table cell is
+never matched — the same rule `insert` and `replace` follow — so name something
+before the table and something after it, and the table between them goes with
+the range. That is the case with no other route.
+
+The document's **last paragraph mark cannot be removed**; Docs requires it. A
+range that would reach it stops one character short, silently, because that is
+the API's rule rather than a choice this CLI makes.
+
+```json
+{ "id": "1BzqpK...", "deleted": true,
+  "range": { "start_index": 1, "end_index": 71 }, "characters": 70 }
+```
+
+Quiet: the number of characters removed.
+
+**There is no undo here.** Drive's trash does not hold a deleted range, and
+nothing in this CLI keeps one. Google Docs' own version history does, in the
+browser (*File → Version history*), and that is the backstop — which is why
+`--dry-run` exists.
+
+Like every other `docs` command, this reaches the document **body** only: a
+marker in a header, a footer or a footnote is not addressable
+([issue #21](https://github.com/ncukondo/gdrive-cli/issues/21)).
 
 ---
 

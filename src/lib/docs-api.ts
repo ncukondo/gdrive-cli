@@ -344,6 +344,23 @@ export interface ParagraphBoundary {
 
 const INSIDE_A_PARAGRAPH: ParagraphBoundary = { atParagraphStart: false, atParagraphEnd: false };
 
+/**
+ * The end of the paragraph `index` falls at the end of, or `index` unchanged.
+ *
+ * A marker range ends at the last character of the matched text. When that is
+ * also the paragraph's last character, the paragraph's newline sits one place
+ * further on — and a deletion that stops short of it leaves an empty paragraph
+ * where the text was, which is the defect issue #41 reports about an empty
+ * `--replace` (decision 0062 §3).
+ */
+export function paragraphEnd(document: DocumentRaw, index: number): number {
+  for (const element of document.body?.content ?? []) {
+    if (!element.paragraph) continue;
+    if (element.endIndex === index + 1) return element.endIndex;
+  }
+  return index;
+}
+
 /** Reads the boundary at `index` from a document the caller already has. */
 export function paragraphBoundary(document: DocumentRaw, index: number): ParagraphBoundary {
   let atParagraphStart = false;
@@ -527,6 +544,15 @@ export async function insertMarkdown(
 
   await applyRequests(client, documentId, pending);
   return unsupported;
+}
+
+/** Removes a range of the body (decision 0062 §1). */
+export async function deleteRange(
+  client: DocsClient,
+  documentId: string,
+  range: DocsRange,
+): Promise<void> {
+  await applyRequests(client, documentId, [{ deleteContentRange: { range } }]);
 }
 
 /**
