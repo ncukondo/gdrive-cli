@@ -103,6 +103,8 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0050 The generated-type guard reaches inside a Drive `requestBody`](0050-the-guard-reaches-inside-a-request-body.md) | — | J | todo |
 | [0051 A `PRUNE_REQUIRED` refusal carries the plan it refused](0051-a-refusal-carries-its-plan.md) | — | J | todo |
 | [0052 The e2e exclusion stops depending on the shell](0052-the-e2e-exclusion-leaves-the-shell.md) | — | J | todo |
+| [0053 A listing says when it stopped early](0053-a-listing-says-when-it-stopped.md) | — | K | todo |
+| [0054 A copied question keeps all of its navigation or none](0054-navigation-is-all-or-nothing.md) | — | K | todo |
 
 ## Parallelism notes
 
@@ -150,6 +152,12 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   `src/index.ts` — 0049 adds the flow's gate beside `canPrompt`, 0051 makes
   `handleError`'s `quiet` required, and the two hunks are a hundred lines apart.
   Whichever merges second rebases; nothing else about the order matters.
+
+- **Group K** (0053 / 0054): the two open issues that needed a position taken
+  first — 0060 and 0061. Disjoint: 0053 owns `lib/api.ts`'s pagination and
+  `lib/copy-tree.ts`, 0054 owns `commands/forms/`. 0053 collides with 0050 in
+  `lib/api.ts` — different regions of the same file — so whichever lands second
+  rebases.
 
 - **Group E** (0031 / 0032): Slides. Same shape as group D and disjoint from it
   (`commands/slides/`, `lib/slides-api.ts`), so D and E can run side by side.
