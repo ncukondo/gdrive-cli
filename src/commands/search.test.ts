@@ -39,6 +39,65 @@ function whole(files: DriveFile[]) {
   return { files, complete: true };
 }
 
+describe("handleSearch: a listing that stopped early (issue #32, decision 0060 §2)", () => {
+  it("says so in the envelope, and prints the note under the rows", async () => {
+    const json = collect();
+    const text = collect();
+    const cut = { files: [file({ id: "a", name: "budget" })], complete: false };
+
+    await handleSearch({
+      searchFiles: async () => cut,
+      query: "budget",
+      format: "json",
+      quiet: false,
+      write: json.write,
+    });
+    await handleSearch({
+      searchFiles: async () => cut,
+      query: "budget",
+      format: "text",
+      quiet: false,
+      write: text.write,
+    });
+
+    expect(JSON.parse(json.output)).toMatchObject({ data: { complete: false } });
+    expect(text.output).toContain("budget");
+    expect(text.output).toContain("more");
+  });
+
+  /**
+   * Drive can answer with an empty page and still carry a `nextPageToken` — a
+   * heavily filtered `fullText contains` does it — so a truncated search that
+   * matched nothing must not say it found none. It did not find none; it
+   * stopped looking, and the two are opposite answers.
+   */
+  it("does not report 'no files found' as the answer to a search it abandoned", async () => {
+    const out = collect();
+    await handleSearch({
+      searchFiles: async () => ({ files: [], complete: false }),
+      query: "budget",
+      format: "text",
+      quiet: false,
+      write: out.write,
+    });
+
+    expect(out.output).toContain("No files found");
+    expect(out.output).toContain("more");
+  });
+
+  it("prints no note when the search ran to the end", async () => {
+    const out = collect();
+    await handleSearch({
+      searchFiles: async () => whole([file({ id: "a" })]),
+      query: "q",
+      format: "text",
+      quiet: false,
+      write: out.write,
+    });
+    expect(out.output).not.toContain("more");
+  });
+});
+
 describe("handleSearch", () => {
   it("renders a table of matches and passes options", async () => {
     const out = collect();

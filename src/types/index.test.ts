@@ -45,6 +45,16 @@ describe("errorToExit", () => {
    * with a flag — not a malformed document, so 0028 §3 gives it its own code in
    * the same exit bucket as `INVALID_ARGS` rather than overloading that one.
    */
+  /**
+   * `docs/commands.md` promises exit 3 for this one in two places, and the map
+   * is a plain object — a wrong value is a working program with a broken
+   * promise, which nothing else here would notice (decision 0060 §4).
+   */
+  it("puts LISTING_INCOMPLETE in the argument bucket: the next action is the caller's", () => {
+    expect(errorToExit("LISTING_INCOMPLETE")).toBe(ExitCode.ARGUMENT);
+    expect(errorToCode(new AppError("LISTING_INCOMPLETE", "x"))).toBe("LISTING_INCOMPLETE");
+  });
+
   it("puts PRUNE_REQUIRED in the argument bucket, distinct from INVALID_ARGS", () => {
     expect(errorToExit("PRUNE_REQUIRED")).toBe(ExitCode.ARGUMENT);
     expect(errorToCode(new AppError("PRUNE_REQUIRED", "x"))).toBe("PRUNE_REQUIRED");

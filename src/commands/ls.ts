@@ -10,6 +10,7 @@ import { renderSuccess } from "../lib/output.ts";
 import { parseChoice } from "../lib/args.ts";
 import {
   MAX_PAGES,
+  PAGE_SIZE,
   type DriveScope,
   type Listing,
   type ListOptions,
@@ -27,7 +28,7 @@ import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
 export function truncationNote(complete: boolean): string {
   return complete
     ? ""
-    : `\nThis listing stopped at ${String(MAX_PAGES * 1000)} entries and there are more. Narrow it with --type, -n, or a search.`;
+    : `\nThis listing stopped at ${String(MAX_PAGES * PAGE_SIZE)} entries and there are more. Narrow it with --type, -n, or a search.`;
 }
 
 const VALID_ORDERS: OrderKey[] = ["name", "modified", "created"];
