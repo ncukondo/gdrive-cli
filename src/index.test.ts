@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GlobalOptions } from "./index.ts";
 import {
   canPrompt,
+  noReader,
   createProgram,
   documentFormat,
   encodingFormat,
@@ -149,6 +150,16 @@ describe("global options", () => {
    * environment says nobody is, and with no terminal a prompt cannot be
    * answered whatever the format says.
    */
+  function withStderr<T>(isTTY: boolean | undefined, body: () => T): T {
+    const original = process.stderr.isTTY;
+    Object.defineProperty(process.stderr, "isTTY", { value: isTTY, configurable: true });
+    try {
+      return body();
+    } finally {
+      Object.defineProperty(process.stderr, "isTTY", { value: original, configurable: true });
+    }
+  }
+
   function withStdin<T>(isTTY: boolean | undefined, body: () => T): T {
     const original = process.stdin.isTTY;
     Object.defineProperty(process.stdin, "isTTY", { value: isTTY, configurable: true });
@@ -158,6 +169,44 @@ describe("global options", () => {
       Object.defineProperty(process.stdin, "isTTY", { value: original, configurable: true });
     }
   }
+
+  /**
+   * The flow's gate and the prompt's gate ask about **different streams**
+   * (decision 0059 §2), and this is the test that holds them apart. Typing
+   * happens on stdin; reading the consent URL happens on stderr, which is where
+   * 0059 §1 puts it. A gate that consulted stdin for the flow would refuse
+   * `gdrive auth </dev/null` at an interactive shell — which works — and permit
+   * `gdrive auth > log` at that same shell, which hangs.
+   */
+  it("gates the flow on stderr and never on stdin", () => {
+    withNoConfig(() => {
+      withStdin(undefined, () => {
+        withStderr(true, () => expect(noReader(parseArgs([]))).toBeUndefined());
+        withStderr(undefined, () => expect(noReader(parseArgs([]))).toBe("no_terminal"));
+      });
+      withStdin(true, () => {
+        withStderr(undefined, () => expect(noReader(parseArgs([]))).toBe("no_terminal"));
+      });
+    });
+  });
+
+  it("names the flag only once the terminal is there, since one is not a fix for the other", () => {
+    withNoConfig(() => {
+      withStderr(true, () => {
+        expect(noReader(parseArgs(["-f", "json"]))).toBe("asked_for_json");
+        expect(noReader(parseArgs(["-f", "text"]))).toBeUndefined();
+      });
+      // Both closed: the terminal wins, because "drop -f json" is advice that
+      // does not work on a machine that has none.
+      withStderr(undefined, () => expect(noReader(parseArgs(["-f", "json"]))).toBe("no_terminal"));
+    });
+    // A format the environment named is not a format the caller named.
+    withStderr(true, () => {
+      vi.stubEnv("GDRIVE_CLI_FORMAT", "json");
+      expect(noReader(parseArgs([]))).toBeUndefined();
+      vi.unstubAllEnvs();
+    });
+  });
 
   it("allows a prompt only at a terminal, and never when -f json named the format", () => {
     withStdin(true, () => {

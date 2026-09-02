@@ -33,13 +33,12 @@ export GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 export GOOGLE_CLIENT_SECRET="..."
 ```
 
-**The prompt needs a terminal.** With no tty on stdin — a CI job, a cron entry,
-anything piped — a missing client is `AUTH_REQUIRED` and exit 2 rather than a
-process waiting on input nobody will type
+**The prompt needs a terminal on stdin.** With no tty there — a CI job, a cron
+entry, anything piped — a missing client is `AUTH_REQUIRED` and exit 2 rather
+than a process waiting on input nobody will type
 ([`../decisions/0005`](../decisions/0005-auth-and-scopes.md) states the purpose
-as preserving automation). `gdrive -f json auth` refuses the same way even at a
-terminal, because that caller asked for a machine answer. A fresh install at a
-terminal, having named no format, is prompted.
+as preserving automation). A fresh install at a terminal, having named no
+format, is prompted.
 
 ## 3. Log in
 
@@ -47,11 +46,29 @@ terminal, having named no format, is prompted.
 gdrive auth              # same as `gdrive auth login`
 ```
 
-`gdrive` starts a local HTTP server on a free port, opens your browser to
-Google's consent page, receives the authorization code on the redirect, and
-exchanges it for tokens. It then calls the userinfo endpoint to detect the
-account email and stores the token under that email. The first account
-authenticated becomes the default account.
+`gdrive` starts a local HTTP server on a free port and prints a consent URL —
+**you open it**; nothing here launches a browser. It receives the authorization
+code on the redirect, exchanges it for tokens, calls the userinfo endpoint to
+detect the account email, and stores the token under that email. The first
+account authenticated becomes the default account.
+
+**The URL goes to stderr**, and `gdrive auth` refuses to start when stderr is
+not a terminal
+([`../decisions/0059`](../decisions/0059-the-browser-flow-needs-a-reader.md)).
+That is the stream a person reads, so the two redirections do what you would
+want: `gdrive auth -f json > token.json` prints the URL on your terminal and
+writes only the envelope to the file, while `gdrive auth 2> log` — where the URL
+would land in the file and nobody would see it — is `AUTH_REQUIRED` and exit 2
+instead of a process that never returns. A cron entry or a CI job, which has
+neither, gets the same refusal in a second.
+
+Nothing probes for a browser: `DISPLAY` is unset on a Mac that has Safari and
+`BROWSER` is unset almost everywhere, and a wrong guess would leave a machine
+with no way to log in at all. The terminal stands for "a person is here".
+
+`gdrive -f json auth` is refused too — logging in means a person opening a URL,
+and a caller that asked for a machine answer is not one. Drop the flag and it
+logs in; the refusal says so.
 
 ```console
 $ gdrive auth -f text

@@ -52,10 +52,49 @@ export function documentFormat(opts: GlobalOptions): OutputFormat {
  *
  * A named `-f json` refuses on its own, terminal or not: that caller asked for
  * a machine answer and a prompt is not one.
+ *
+ * This covers the prompt and only the prompt. The wait *after* it — the OAuth
+ * flow — is {@link noReader}'s, on a different stream, for the reason that
+ * function gives.
  */
 export function canPrompt(opts: GlobalOptions): boolean {
-  if (opts.formatNamed && opts.format === "json") return false;
+  if (askedForJson(opts)) return false;
   return process.stdin.isTTY === true;
+}
+
+/** A caller who said `-f json` out loud, rather than inheriting it. */
+function askedForJson(opts: GlobalOptions): boolean {
+  return opts.formatNamed && opts.format === "json";
+}
+
+/** Why nobody will read what this command prints for a person (decision 0059). */
+export type NoReader =
+  /** Nothing is attached to stderr: a cron entry, a CI job, output redirected. */
+  | "no_terminal"
+  /** A caller who named `-f json` and therefore asked for a machine answer. */
+  | "asked_for_json";
+
+/**
+ * Whether somebody will see a consent URL, and if not, why not. `undefined`
+ * means somebody will.
+ *
+ * This is `canPrompt`'s question about a different stream, and the difference
+ * is the whole of decision 0059. A prompt needs **stdin**, because somebody has
+ * to type into it. The OAuth flow needs the URL it prints to be *read*, and
+ * 0059 §1 puts that on **stderr** — so this asks about stderr, and asking about
+ * stdin instead is the mistake that refuses `gdrive auth </dev/null` at an
+ * interactive shell while still hanging on `gdrive auth > log` at that same
+ * shell. Two gates because two streams; the failure 0059 answers was one wait
+ * with no gate at all, not a second predicate.
+ *
+ * The reason is returned rather than a boolean because only one of the two is
+ * fixed by dropping a flag. The terminal is checked first for that reason: on a
+ * machine with none, "re-run without `-f json`" is advice that does not work.
+ */
+export function noReader(opts: GlobalOptions): NoReader | undefined {
+  if (process.stderr.isTTY !== true) return "no_terminal";
+  if (askedForJson(opts)) return "asked_for_json";
+  return undefined;
 }
 
 /**
