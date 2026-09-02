@@ -105,6 +105,9 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0052 The e2e exclusion stops depending on the shell](0052-the-e2e-exclusion-leaves-the-shell.md) | — | J | todo |
 | [0053 A listing says when it stopped early](0053-a-listing-says-when-it-stopped.md) | — | K | todo |
 | [0054 A copied question keeps all of its navigation or none](0054-navigation-is-all-or-nothing.md) | — | K | todo |
+| [0055 `gdrive docs delete` removes a range](0055-docs-delete.md) | — | L | todo |
+| [0056 An `elements` entry's text is writable](0056-an-element-is-writable-by-id.md) | — | L | todo |
+| [0057 A marker is addressable in a header, footer or footnote](0057-a-marker-is-addressable-anywhere.md) | 0055 | L | todo |
 
 ## Parallelism notes
 
@@ -158,6 +161,13 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   `lib/copy-tree.ts`, 0054 owns `commands/forms/`. 0053 collides with 0050 in
   `lib/api.ts` — different regions of the same file — so whichever lands second
   rebases.
+
+- **Group L** (0055 / 0056 / 0057): the three issues whose answer needed
+  designing rather than finding — 0062, 0063 and 0064. 0056 is disjoint from the
+  other two (`commands/slides/`) and runs beside either. **0055 and 0057 are
+  sequential and share `lib/docs-api.ts`**: 0055 adds a third caller to the
+  marker walk and 0057 changes what that walk returns, so doing 0057 first would
+  mean building `docs delete` against a range type nothing else used yet.
 
 - **Group E** (0031 / 0032): Slides. Same shape as group D and disjoint from it
   (`commands/slides/`, `lib/slides-api.ts`), so D and E can run side by side.
@@ -477,6 +487,24 @@ was inert in all six places it appeared — a tuple element that evaluates to
 `handleError`'s `quiet` parameter defaulted and thirty-nine of forty-four call
 sites left it out. Both are the same shape as 0047's own subject, one layer
 down: a guard nobody has watched fail is one nobody knows is wired up.
+
+0055, 0056 and 0057 close the tracker, and what they have in common is that
+each needed a position taken rather than a defect found. Two of the three turned
+out smaller than their issues suggested once the position was written.
+
+0056 is the clearest. [`0051`](../decisions/0051-elements-holds-placeholders-too.md)
+§3 held the write for a schema question — how a document names the second `BODY`
+on a slide — and the answer was already in the document: every `elements` entry
+carries the object id `insertText` addresses. The record that deferred it was
+right to defer; what it needed was somebody to look, not somebody to invent.
+
+0057 is the one that is genuinely large, and it is large in a way the issue
+does not show. The visible half is that the marker walk reads the body only. The
+half that reaches everywhere is that a Docs index means nothing without a
+`segmentId`, so every request this CLI builds gains a field and the
+"matches exactly once" rule changes meaning: a marker in a body and in a header
+now matches twice, and an `insert` that worked yesterday is refused. That is the
+correct failure and it is still a breaking change.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
