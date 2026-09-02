@@ -2,10 +2,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { z } from "zod";
 import {
   describeLive,
   file,
   gdrive,
+  gdriveAs,
   gdriveError,
   info,
   list,
@@ -21,6 +23,11 @@ import {
  * as `type: file` for as long as the map said so, and every unit test agreed,
  * because every unit test was told what the map says.
  */
+
+const listingSchema = z.object({
+  files: z.array(z.object({ id: z.string() })),
+  complete: z.boolean(),
+});
 
 const JAPANESE_NAME = "研修医へのフィードバックシート";
 
@@ -54,6 +61,27 @@ describeLive("Drive against a real account", () => {
       expect(byName.get("A document")).toBe("doc");
       expect(byName.get("A spreadsheet")).toBe("sheet");
       expect(byName.get(JAPANESE_NAME)).toBe("file");
+    },
+    LIVE_TIMEOUT,
+  );
+
+  /**
+   * Issue #32's reachable half. `complete` is what a caller reads to know the
+   * listing is all of one, and the value is decided from Drive's own
+   * `nextPageToken` — so this is the assertion a fake cannot make, even though
+   * it only ever exercises the true branch.
+   *
+   * The false branch would need 100,001 files in one folder. It is asserted
+   * against a fake in `src/lib/api.test.ts` and `src/lib/copy-tree.test.ts`,
+   * and saying so here is better than a case that quietly proves half of what
+   * its name claims.
+   */
+  it(
+    "says an ordinary listing is complete, from Drive's own pagination",
+    async () => {
+      const listing = await gdriveAs(listingSchema, "ls", sandbox.id);
+      expect(listing.complete).toBe(true);
+      expect(listing.files.length).toBe(seeded.length);
     },
     LIVE_TIMEOUT,
   );

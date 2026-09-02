@@ -3,6 +3,7 @@ import {
   copyFile,
   createFolder,
   listChildren,
+  MAX_PAGES,
   withRetry,
   type DriveClient,
   type RetryOptions,
@@ -154,7 +155,21 @@ async function fill(
     progress,
     { src: src.id, name: src.name, stage: "listing", dst: dstId },
     options,
-    () => listChildren(client, src.id),
+    async () => {
+      const listing = await listChildren(client, src.id);
+      // A listing that stopped at the page cap makes 0031 §4's report a lie:
+      // this walk would copy what it saw, exit 0, and never mention the
+      // children it did not (decision 0060 §3, issue #32). Stopping here puts
+      // the folder in the `failed` entry above, at the `listing` stage, so the
+      // report says exactly where the tree is incomplete.
+      if (!listing.complete) {
+        throw new AppError(
+          "LISTING_INCOMPLETE",
+          `${src.name} has more children than this can page through (${String(MAX_PAGES)} pages). Nothing below it was copied. Copy its subfolders one at a time.`,
+        );
+      }
+      return listing.files;
+    },
   );
 
   for (const child of children) {

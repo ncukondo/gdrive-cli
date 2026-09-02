@@ -3,14 +3,32 @@ import {
   AppError,
   FILE_TYPES,
   type CommandResult,
-  type DriveFile,
   type FileType,
   type OutputFormat,
 } from "../types/index.ts";
 import { renderSuccess } from "../lib/output.ts";
 import { parseChoice } from "../lib/args.ts";
-import type { DriveScope, ListOptions, OrderKey } from "../lib/api.ts";
+import {
+  MAX_PAGES,
+  type DriveScope,
+  type Listing,
+  type ListOptions,
+  type OrderKey,
+} from "../lib/api.ts";
 import { formatFileTable, formatFilesQuiet } from "./file-format.ts";
+
+/**
+ * What a truncated listing tells a person, in text mode (decision 0060 §2).
+ *
+ * It goes beside the rows rather than instead of them: the listing is real, it
+ * is just not all of it. `-q` gets nothing extra — a note is not a value
+ * (decision 0038) — and the exit code stays 0.
+ */
+export function truncationNote(complete: boolean): string {
+  return complete
+    ? ""
+    : `\nThis listing stopped at ${String(MAX_PAGES * 1000)} entries and there are more. Narrow it with --type, -n, or a search.`;
+}
 
 const VALID_ORDERS: OrderKey[] = ["name", "modified", "created"];
 
@@ -40,7 +58,7 @@ export function parseLimit(value: string | undefined): number | undefined {
 
 export interface LsDeps {
   resolvePath: (arg: string) => Promise<string>;
-  listChildren: (folderId: string, options: ListOptions) => Promise<DriveFile[]>;
+  listChildren: (folderId: string, options: ListOptions) => Promise<Listing>;
   format: OutputFormat;
   quiet: boolean;
   write: (msg: string) => void;
@@ -87,11 +105,15 @@ export async function handleLs(deps: LsDeps): Promise<CommandResult> {
   if (deps.order !== undefined) options.order = deps.order;
   if (deps.scope !== undefined) options.scope = deps.scope;
 
-  const files = await deps.listChildren(folderId, options);
+  const { files, complete } = await deps.listChildren(folderId, options);
 
   deps.write(
     renderSuccess(
-      { data: { files }, text: formatFileTable(files), quiet: formatFilesQuiet(files) },
+      {
+        data: { files, complete },
+        text: formatFileTable(files) + truncationNote(complete),
+        quiet: formatFilesQuiet(files),
+      },
       deps.format,
       deps.quiet,
     ),
