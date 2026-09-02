@@ -5,6 +5,7 @@ import {
   endOfBody,
   findMarkerRanges,
   paragraphBoundary,
+  segmentKind,
   type DocumentRaw,
   type ParagraphBoundary,
 } from "../../lib/docs-api.ts";
@@ -116,7 +117,7 @@ export interface DocsInsertDeps {
     documentId: string,
     index: number,
     source: string,
-    options: { boundary: ParagraphBoundary; segmentId?: string },
+    options: { boundary: ParagraphBoundary; segmentId?: string; tables?: boolean },
   ) => Promise<UnsupportedNote[]>;
   readInput: (arg: string) => Promise<string>;
   file: string;
@@ -161,7 +162,15 @@ export async function handleDocsInsert(deps: DocsInsertDeps): Promise<CommandRes
   const inOneSegment = segmentId === undefined ? {} : { segmentId };
   let notes: UnsupportedNote[] = [];
   if (as === "markdown") {
-    notes = await deps.insertMarkdown(documentId, index, text, { boundary, ...inOneSegment });
+    // Docs holds tables, but not in a footnote. Saying so here means the rest
+    // of the payload is still written and the loss is reported, instead of the
+    // API refusing the whole batch (decision 0064, Consequences).
+    const tables = segmentKind(document, segmentId) !== "footnote";
+    notes = await deps.insertMarkdown(documentId, index, text, {
+      boundary,
+      ...inOneSegment,
+      ...(tables ? {} : { tables: false }),
+    });
   } else {
     await deps.insertText(documentId, index, text, boundary, segmentId);
   }

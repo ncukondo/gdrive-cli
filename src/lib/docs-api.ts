@@ -342,7 +342,7 @@ export function renderDocument(document: DocumentRaw, as: DocsRenderFormat): str
     // A segment the document does not have, or has empty, is not a heading with
     // nothing under it.
     if (one === "" && segment.kind !== "body") continue;
-    rendered.push(segment.kind === "body" ? one : `${segmentHeading(segment)}\n${one}`);
+    rendered.push(segment.kind === "body" ? one : `${segmentHeading(segment, as)}\n${one}`);
   }
   return rendered.join("\n\n").replace(/\n+$/, "");
 }
@@ -354,8 +354,14 @@ export function renderDocument(document: DocumentRaw, as: DocsRenderFormat): str
  * rather than a handle — but the id is here because a document with two headers
  * has to be distinguishable, and because it is what a `Location` carries.
  */
-function segmentHeading(segment: Segment): string {
-  return `<!-- ${segment.kind}: ${segment.id ?? ""} -->`;
+function segmentHeading(segment: Segment, as: DocsRenderFormat): string {
+  const label = `${segment.kind}: ${segment.id ?? ""}`;
+  // Markdown gets a comment, which survives a `read | append` round trip
+  // without rendering. `--as text` gets no markup: that mode exists for content
+  // that was never Markdown, and an HTML comment in it is exactly the artefact
+  // it is asked to avoid. Something has to be there either way — running a
+  // footer straight onto the body with no boundary is worse than a label.
+  return as === "text" ? `[${label}]` : `<!-- ${label} -->`;
 }
 
 function renderSegment(content: StructuralElementRaw[], lists: Record<string, ListRaw>): string {
@@ -442,6 +448,11 @@ export function paragraphEnd(document: DocumentRaw, index: number, segmentId?: s
   return index;
 }
 
+/** What kind of segment an id names, for a caller deciding what may go in it. */
+export function segmentKind(document: DocumentRaw, segmentId: string | undefined): SegmentKind {
+  return segmentsOf(document).find((segment) => segment.id === segmentId)?.kind ?? "body";
+}
+
 /** One segment's content, by the id a range carries (decision 0064 §2). */
 export function contentOfSegment(
   document: DocumentRaw,
@@ -459,6 +470,25 @@ export function contentOfSegment(
  * way out keeps that true, and means one place decides rather than a dozen.
  * The body is spelled by leaving the field off, which is what the API does.
  */
+/**
+ * A paragraph style field Docs refuses outside the body.
+ *
+ * `Cannot update page-break-before in a header.` — a header, a footer and a
+ * footnote have no page to break before, and the API rejects the whole batch
+ * rather than ignoring the field. 0045 §2's reset names every writable field on
+ * purpose, so it names this one, and a reset that reaches a segment has to drop
+ * it. Without this, `docs insert` before any marker that opens a paragraph in a
+ * header fails outright — which is most of what decision 0064 §1 promises.
+ */
+const NOT_IN_A_SEGMENT = ["pageBreakBefore"];
+
+function fieldsOutsideTheBody(fields: string): string {
+  return fields
+    .split(",")
+    .filter((field) => !NOT_IN_A_SEGMENT.includes(field))
+    .join(",");
+}
+
 export function inSegment(requests: DocsRequest[], segmentId: string | undefined): DocsRequest[] {
   if (segmentId === undefined || segmentId === "") return requests;
   return requests.map((request) => {
@@ -494,6 +524,7 @@ export function inSegment(requests: DocsRequest[], segmentId: string | undefined
         updateParagraphStyle: {
           ...request.updateParagraphStyle,
           range: { ...request.updateParagraphStyle.range, segmentId },
+          fields: fieldsOutsideTheBody(request.updateParagraphStyle.fields),
         },
       };
     }
@@ -526,7 +557,14 @@ export function paragraphBoundary(
   let atParagraphEnd = false;
   for (const element of contentOfSegment(document, segmentId)) {
     if (!element.paragraph) continue;
-    if (element.startIndex === index) atParagraphStart = true;
+    // `?? 0` for the reason `findMarkerRanges` has it: a segment starts at 0
+    // and Docs omits a zero from the JSON, so an absent `startIndex` means 0
+    // and not 1. Missed here on the first pass — decision 0040 §3's shape, the
+    // fix going to the symptom's site rather than to the class. It has to land
+    // *with* the `pageBreakBefore` fix above: until this said 0, a header
+    // insert at index 0 was reported as mid-paragraph, no style reset was
+    // planned, and the field Docs refuses was never sent.
+    if ((element.startIndex ?? 0) === index) atParagraphStart = true;
     if (element.endIndex === index + 1) atParagraphEnd = true;
   }
   return { atParagraphStart, atParagraphEnd };
@@ -667,10 +705,19 @@ export async function insertMarkdown(
   documentId: string,
   index: number,
   source: string,
-  options: { leadingNewline?: boolean; boundary?: ParagraphBoundary; segmentId?: string } = {},
+  options: {
+    leadingNewline?: boolean;
+    boundary?: ParagraphBoundary;
+    segmentId?: string;
+    /** False in a footnote, where Docs refuses `insertTable` (decision 0064). */
+    tables?: boolean;
+  } = {},
 ): Promise<UnsupportedNote[]> {
   const { segmentId } = options;
-  const { blocks, unsupported } = parseMarkdown(source);
+  const tablesAllowed = options.tables !== false;
+  const parsed = parseMarkdown(source);
+  const { blocks } = parsed;
+  let unsupported = parsed.unsupported;
   let cursor = index;
   let leadingNewline = options.leadingNewline === true;
   let pending: DocsRequest[] = [];
@@ -695,6 +742,13 @@ export async function insertMarkdown(
       pending.push({ insertText: { location: { index: cursor }, text: "\n" } });
       cursor += 1;
       leadingNewline = false;
+    }
+    if (!tablesAllowed) {
+      // Docs answers "Cannot insert table in a footnote" and refuses the whole
+      // batch, so the table is reported through the channel `read` already uses
+      // for content Docs cannot hold, and everything else is still written.
+      unsupported = [...unsupported, { line: 0, kind: "table" }];
+      continue;
     }
     const create = planTable(segment.rows, cursor);
     if (create === null) continue;
@@ -815,9 +869,11 @@ export async function replaceMarkdown(
       atParagraphEnd: paragraphBoundary(document, range.endIndex, segmentId).atParagraphEnd,
     };
     await applyRequests(client, documentId, [{ deleteContentRange: { range } }]);
+    const tables = segmentKind(document, segmentId) !== "footnote";
     unsupported = await insertMarkdown(client, documentId, range.startIndex, source, {
       boundary,
       ...(segmentId === undefined ? {} : { segmentId }),
+      ...(tables ? {} : { tables: false }),
     });
   }
   return { replaced: ranges.length, unsupported };

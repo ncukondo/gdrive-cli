@@ -50,7 +50,12 @@ export type MarkdownBlock =
 /** Something Docs cannot hold, kept as literal text and reported (0021 §3). */
 export interface UnsupportedNote {
   line: number;
-  kind: "image" | "html";
+  /**
+   * `table` is the one that is not about Markdown: Docs holds tables, but not
+   * in a footnote, and a write there reports the loss rather than letting the
+   * API refuse the whole batch (decision 0064, Consequences).
+   */
+  kind: "image" | "html" | "table";
 }
 
 export interface ParsedMarkdown {
