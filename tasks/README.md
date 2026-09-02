@@ -107,7 +107,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0054 A copied question keeps all of its navigation or none](archive/0054-navigation-is-all-or-nothing.md) | — | K | done |
 | [0055 `gdrive docs delete` removes a range](archive/0055-docs-delete.md) | — | L | done |
 | [0056 An `elements` entry's text is writable](archive/0056-an-element-is-writable-by-id.md) | — | L | done |
-| [0057 A marker is addressable in a header, footer or footnote](0057-a-marker-is-addressable-anywhere.md) | 0055 | L | todo |
+| [0057 A marker is addressable in a header, footer or footnote](archive/0057-a-marker-is-addressable-anywhere.md) | 0055 | L | done |
 
 ## Parallelism notes
 
@@ -505,6 +505,41 @@ half that reaches everywhere is that a Docs index means nothing without a
 "matches exactly once" rule changes meaning: a marker in a body and in a header
 now matches twice, and an `insert` that worked yesterday is refused. That is the
 correct failure and it is still a breaking change.
+
+0049 through 0057 emptied the issue tracker, and the thing worth carrying out of
+them is not any of the nine fixes. It is that **every one of the four defects
+that mattered most was invisible to a green unit suite**, and three of them were
+invisible to a fresh reviewer reading the diff as well.
+
+Two were caught by a reviewer reading a *record* against the code rather than
+the code against itself. 0055 shipped a deletion that took a paragraph mark it
+had not been asked for — `--from world --to world` over "hello world" removing
+six characters and merging the paragraph after it — because the implementation
+read only the `--to` end while 0062 §3 says "covers a **whole paragraph**". And
+0056's `formatting_loss` was silently 0 for a shape inside a group, because
+`elementRuns` scanned the top level while the projection beside it flattens
+groups. Both diffs read correctly; both records said something the code did not
+do.
+
+Two more needed a live document, and one of those needed *two* fixes at once.
+0057's registrar dropped a `segmentId` between the handler and the API, so a
+header insert compiled, passed a unit test that calls the handler directly, and
+wrote into the body — `failed-create.test.ts`'s class, a third time. Underneath
+it, a segment's first index is 0 and Docs omits zeros from JSON, so the `?? 1`
+default shifted every index in a segment by one. The second bug **hid** the
+first: with the boundary misread, no style reset was planned, and the field Docs
+refuses outside the body was never sent. A live probe passed with the fix and
+without it, which is what a test looks like when it is measuring nothing.
+
+The pattern across all four is one sentence: *the code was consistent with
+itself, and wrong about something outside it.* A unit suite compares the code to
+its author's beliefs. What caught these was comparing it to a written record, or
+to Google.
+
+The smaller version of the same thing is worth keeping too. Two live tests
+written in this stretch could not fail — 0055's undo case trimmed away the blank
+paragraph it existed to detect, and 0053's `search` half had no case at all —
+and both were found by running the mutation rather than by reading the test.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
