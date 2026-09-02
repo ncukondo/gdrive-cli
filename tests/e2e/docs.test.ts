@@ -285,6 +285,14 @@ describeLive("Docs against a real account", () => {
    * The blank-line assertion is the other half. `replace --replace ""` leaves
    * the paragraph mark, which is what made the report's workaround useless;
    * whether the mark really goes is something the round trip can see.
+   *
+   * **The draft goes in the middle, and the comparison is exact.** The first
+   * version of this put it at the end and compared with `trimEnd()`, and it
+   * passed with decision 0062 §3's paragraph rule removed — a leftover blank
+   * paragraph at the end of a document is trimmed by the very call that was
+   * meant to ignore whitespace. Measured, mid-document and untrimmed, the
+   * difference is `"AAA before.\nTAIL ANCHOR"` against
+   * `"AAA before.\n\nTAIL ANCHOR"`.
    */
   describe("undoing an insert (issue #41, decision 0062)", () => {
     let undone = "";
@@ -297,7 +305,7 @@ describeLive("Docs against a real account", () => {
         "create",
         "undo me",
         "--content",
-        "# Kept\n\nThis paragraph must survive.",
+        "# Kept\n\nThis paragraph must survive.\n\nTAIL ANCHOR\n",
         "--parent",
         sandbox.id,
       );
@@ -307,8 +315,8 @@ describeLive("Docs against a real account", () => {
         "insert",
         created.id,
         ["DRAFT OPENS", "", "| a | b |", "| - | - |", "| 1 | 2 |", "", "DRAFT CLOSES"].join("\n"),
-        "--at",
-        "end",
+        "--before",
+        "TAIL ANCHOR",
       );
       const filled = (await gdriveAs(bodySchema, "docs", "read", created.id)).content;
       expect(filled).toContain("DRAFT OPENS");
@@ -332,9 +340,10 @@ describeLive("Docs against a real account", () => {
       "leaves the document as it was, without the blank paragraphs a replace would",
       () => {
         // Not just "the text is gone": the report's complaint was 35 empty
-        // paragraphs where 35 lines used to be. Trailing whitespace aside, the
-        // document is what it was before the insert.
-        expect(undone.trimEnd()).toBe(before.trimEnd());
+        // paragraphs where 35 lines used to be. Exact, with no trimming — the
+        // blank paragraph this is about is between two lines, and trimming is
+        // what let an earlier version of this test pass without the fix.
+        expect(undone).toBe(before);
       },
       LIVE_TIMEOUT,
     );
