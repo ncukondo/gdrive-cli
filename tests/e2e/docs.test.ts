@@ -274,4 +274,69 @@ describeLive("Docs against a real account", () => {
       LIVE_TIMEOUT,
     );
   });
+
+  /**
+   * Issue #41, and the shape it was reported in: a Markdown draft containing a
+   * pipe table was inserted, and nothing could take it back out. The table is
+   * what makes this live rather than a fake's business — `deleteContentRange`
+   * over a range that spans a real Docs table is a request only Docs can accept
+   * or refuse, and no fake knows which.
+   *
+   * The blank-line assertion is the other half. `replace --replace ""` leaves
+   * the paragraph mark, which is what made the report's workaround useless;
+   * whether the mark really goes is something the round trip can see.
+   */
+  describe("undoing an insert (issue #41, decision 0062)", () => {
+    let undone = "";
+    let before = "";
+
+    beforeAll(async () => {
+      const created = await gdriveAs(
+        createdSchema,
+        "docs",
+        "create",
+        "undo me",
+        "--content",
+        "# Kept\n\nThis paragraph must survive.",
+        "--parent",
+        sandbox.id,
+      );
+      before = (await gdriveAs(bodySchema, "docs", "read", created.id)).content;
+      await gdrive(
+        "docs",
+        "insert",
+        created.id,
+        ["DRAFT OPENS", "", "| a | b |", "| - | - |", "| 1 | 2 |", "", "DRAFT CLOSES"].join("\n"),
+        "--at",
+        "end",
+      );
+      const filled = (await gdriveAs(bodySchema, "docs", "read", created.id)).content;
+      expect(filled).toContain("DRAFT OPENS");
+      expect(filled).toMatch(/\|\s*1\s*\|\s*2\s*\|/);
+
+      await gdrive("docs", "delete", created.id, "--from", "DRAFT OPENS", "--to", "DRAFT CLOSES");
+      undone = (await gdriveAs(bodySchema, "docs", "read", created.id)).content;
+    }, LIVE_TIMEOUT);
+
+    it(
+      "removes a range that spans a real Docs table",
+      () => {
+        expect(undone).not.toContain("DRAFT OPENS");
+        expect(undone).not.toContain("DRAFT CLOSES");
+        expect(undone).not.toMatch(/\|\s*1\s*\|/);
+      },
+      LIVE_TIMEOUT,
+    );
+
+    it(
+      "leaves the document as it was, without the blank paragraphs a replace would",
+      () => {
+        // Not just "the text is gone": the report's complaint was 35 empty
+        // paragraphs where 35 lines used to be. Trailing whitespace aside, the
+        // document is what it was before the insert.
+        expect(undone.trimEnd()).toBe(before.trimEnd());
+      },
+      LIVE_TIMEOUT,
+    );
+  });
 });
