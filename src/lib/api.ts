@@ -73,6 +73,16 @@ export interface SharedDriveRaw {
   name?: string | null;
 }
 
+/**
+ * What `files.update` changes. Named rather than inline so the guard in
+ * `google-clients.ts` can reach it: an anonymous type is invisible to a check
+ * that has to be written against a name.
+ */
+export interface FileUpdateBody {
+  trashed?: boolean;
+  name?: string;
+}
+
 export interface FileCreateBody {
   name?: string;
   mimeType?: string;
@@ -135,7 +145,7 @@ export interface DriveClient {
       fileId: string;
       addParents?: string;
       removeParents?: string;
-      requestBody?: { trashed?: boolean; name?: string };
+      requestBody?: FileUpdateBody;
       fields?: string;
       supportsAllDrives?: boolean;
     }) => Promise<{ data: DriveFileRaw }>;
