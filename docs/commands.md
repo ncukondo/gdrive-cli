@@ -1186,12 +1186,14 @@ $ gdrive docs delete -f text "Notes/Meeting" --from "Draft starts here" --to "Dr
 Deleted 70 characters from 1BzqpK...
 
 $ gdrive docs delete -f text "Notes/Meeting" --from "Q3" --to "totals" --dry-run
-Would delete 412 characters from 1BzqpK... (1204–1616); --dry-run wrote nothing
+Would delete 412 characters from 1BzqpK... (1204–1616), beginning "Q3 review\nRevenue was up" and ending "and that is the totals\n"; --dry-run wrote nothing
 ```
 
 **`--dry-run` first is worth the round trip.** What a deletion removes is not
 visible in its arguments: `--from`/`--to` names two ends, and everything between
-them goes whether or not you remembered it was there.
+them goes whether or not you remembered it was there. It reports the range, the
+character count, and — as `starts` and `ends` — the document's own text at each
+end, which is what tells you the range is the one you meant.
 
 Each marker must match **exactly once**, on the same terms as
 [`insert`](#gdrive-docs-insert-file-textfile--) — no match is `NOT_FOUND`, two
@@ -1203,6 +1205,11 @@ no blank line where it was. That is the difference between this and
 `replace --find "…" --replace ""`, which substitutes text for text and correctly
 leaves the empty paragraph behind. Reach for `delete` when the paragraph should
 go; reach for `replace` when its text should.
+
+*Whole* is exact: the mark goes only when `--from` is at the start of a
+paragraph. A range that begins mid-paragraph removes what you named and nothing
+more, so `--from world --to world` over `hello world` takes five characters and
+leaves `hello ` with its paragraph intact.
 
 **A table is reached by naming its neighbours.** A marker inside a table cell is
 never matched — the same rule `insert` and `replace` follow — so name something
