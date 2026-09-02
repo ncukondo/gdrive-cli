@@ -100,9 +100,23 @@ function optionsOf(item: ItemWrite): OptionWrite[] {
  * was read from. A new form has none of those ids, so it is dropped on the
  * create-everything path for the same reason 0028 §1 refuses to create an item
  * from an `id` the form does not have: the target would point at nothing.
- * `goToAction` is a constant, not an id, and travels fine.
+ *
+ * `goToAction` is a constant rather than an id, so it would travel fine on its
+ * own — and it still cannot stay here. The API requires navigation to be
+ * all-or-nothing within one option list:
+ *
+ *     Invalid Options, Either all or no options should be go to enabled
+ *
+ * Leaving it beside a stripped target makes the list half navigated and the
+ * whole atomic `batchUpdate` is refused, so an ordinary branching form could
+ * not be copied at all (issue #37, decision 0061 §1). It goes with the ids.
+ *
+ * This runs only for a list that *has* a target to strip. A list navigating
+ * with `goToAction` alone carries no id, is already uniform, and is left
+ * exactly as it is — dropping that would lose real navigation to fix a problem
+ * it does not have.
  */
-function withoutSectionTargets(item: ItemWrite): ItemWrite {
+function withoutNavigation(item: ItemWrite): ItemWrite {
   const questionItem = item.questionItem;
   const choice = questionItem?.question.choiceQuestion;
   if (questionItem === undefined || choice === undefined) return item;
@@ -114,7 +128,7 @@ function withoutSectionTargets(item: ItemWrite): ItemWrite {
         choiceQuestion: {
           ...choice,
           options: choice.options.map((option) => {
-            const { goToSectionId: _target, ...rest } = option;
+            const { goToSectionId: _target, goToAction: _action, ...rest } = option;
             return rest;
           }),
         },
@@ -333,7 +347,7 @@ export function planFormWrite(
     // the document was read from, and names nothing in this one.
     if (options.ignoreIds === true && optionsOf(built).some((o) => o.goToSectionId !== undefined)) {
       skipped.push({ index, title: titleOf(entry.item), kind: "option.goToSectionId" });
-      item = withoutSectionTargets(item);
+      item = withoutNavigation(item);
     }
     entries.push({ action: "create", title: titleOf(entry.item), index });
     requests.push({ createItem: { item, location: { index } } });

@@ -1730,7 +1730,23 @@ Every **id** in the document is ignored, because a new form has none of them:
 `page_break` of the form the document was read from. Ignoring them is what makes
 reading one form and creating another a copy rather than an error about unknown
 IDs — at the cost of the branching, which is reported and left out rather than
-pointed at nothing. Set it again in the new form if you need it.
+pointed at nothing.
+
+**A question's branching leaves as a unit.** When a `go_to_section_id` is
+dropped, that option list's `go_to_action` values go with it, because the API
+requires navigation to be all-or-nothing within one list and refuses the whole
+form otherwise — which is what an ordinary branching form used to hit, since
+switching branching on in the Forms editor gives every option a target and the
+ones that carry on get `NEXT_SECTION`
+([`../decisions/0061`](../decisions/0061-navigation-is-all-or-nothing.md)). A
+list that navigates with `go_to_action` alone names no id, so it is copied as
+it stands.
+
+The question itself is copied either way — its wording, its options and whether
+it is required. Only the flow is lost, and the `page_break` items that flow
+pointed at are copied as ordinary items with new ids, so **rebuilding the
+branching is by hand**: set `go_to_section_id` on the new form's options to the
+new form's own page-break ids.
 
 ```console
 $ gdrive forms create -f text "2027 Engagement survey" --file form.yaml --parent Surveys
