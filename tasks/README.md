@@ -99,6 +99,10 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0046 A `create` that fails leaves nothing in My Drive's root](archive/0046-create-lands-in-its-parent.md) | 0045 | — | done |
 | [0047 The Docs port learns about tabs, and `docs tabs` manages them](0047-docs-tabs-port-and-coordinate.md) | — | I | todo |
 | [0048 A read covers every tab, and a write names the one it means](0048-docs-read-covers-every-tab.md) | 0047 | I | todo |
+| [0049 `gdrive auth` refuses where nobody can read the URL](0049-auth-refuses-without-a-reader.md) | — | J | todo |
+| [0050 The generated-type guard reaches inside a Drive `requestBody`](0050-the-guard-reaches-inside-a-request-body.md) | — | J | todo |
+| [0051 A `PRUNE_REQUIRED` refusal carries the plan it refused](0051-a-refusal-carries-its-plan.md) | — | J | todo |
+| [0052 The e2e exclusion stops depending on the shell](0052-the-e2e-exclusion-leaves-the-shell.md) | — | J | todo |
 
 ## Parallelism notes
 
@@ -137,6 +141,16 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
   0047's coordinate resolver and its `docs tabs add` to build a multi-tab fixture
   at all. The order is chosen so the damaging half closes first: 0047 removes the
   ability to edit an unseen tab, 0048 then widens what a read covers.
+- **Group J** (0049 / 0050 / 0051 / 0052): the four open issues that needed no
+  new position taken before code. Disjoint by construction — 0049 owns
+  `commands/auth.ts`, 0050 owns `lib/google-clients.ts` and `lib/api.ts`'s body
+  types, 0051 owns the two planners and a new `lib/prune-refusal.ts`, and 0052
+  owns the vitest configs, `package.json`'s `scripts` and `.husky/pre-commit`.
+  They meet at one file and it is worth knowing: 0049 and 0051 both edit
+  `src/index.ts` — 0049 adds the flow's gate beside `canPrompt`, 0051 makes
+  `handleError`'s `quiet` required, and the two hunks are a hundred lines apart.
+  Whichever merges second rebases; nothing else about the order matters.
+
 - **Group E** (0031 / 0032): Slides. Same shape as group D and disjoint from it
   (`commands/slides/`, `lib/slides-api.ts`), so D and E can run side by side.
   Sequential within the group. 0031 needs 0029 only for the `yaml` dependency
@@ -428,6 +442,33 @@ shape: the previous one had fixed the instance it named and left another member
 of the same class. Executing a rule is what shows where its sentence stopped, and
 that is an argument for executing rules early rather than for writing them more
 carefully (0050 Consequences).
+
+0049 through 0052 come from the issue tracker rather than from a survey, and
+they are the half of it that needed no new position taken first. The tracker had
+nine open issues when they were written; five turned on a question the records
+had not answered — what a truncated listing owes its caller, what a copy does
+with a half-navigated option set, how a document addresses a second `BODY` — and
+those wait for a decision. These four did not, and two of them had been waiting
+on something that had already arrived.
+
+That is the part worth keeping. Issue #31 said "there is nothing to build here
+before 0033" and 0033 had been archived for a month; the `data` field it was
+waiting for was in `src/types/index.ts` with two other commands already using
+it. Issue #18 said the quoting bug "does not bite yet" because `tests/e2e/` was
+empty, and tasks 0039 and 0045 had since put seven files there. A deferral
+records the world on the day it was written, and neither issue was wrong when
+filed. Nothing re-reads them when the thing they waited for lands, which is an
+argument for checking a blocked issue's premise before its priority.
+
+Two of the four then found, in implementation, that the mechanism they were
+copying did not work. 0050's `UnknownRequestKeys` compared an optional field's
+inner keys against `never`, and its `X extends Schema ? true : never` companion
+was inert in all six places it appeared — a tuple element that evaluates to
+`never` is legal TypeScript, so those assertions had asserted nothing since task
+0016. 0051's payload was built correctly and then dropped, because
+`handleError`'s `quiet` parameter defaulted and thirty-nine of forty-four call
+sites left it out. Both are the same shape as 0047's own subject, one layer
+down: a guard nobody has watched fail is one nobody knows is wired up.
 
 Order of first delivery to a usable CLI: 0001 → 0002/0003 → 0004 → 0006 →
 0007 (list/read is the first useful surface), then fan out group B (0008) and
