@@ -31,11 +31,17 @@ import {
  *   came through the edit unchanged; that the CLI planned no request for it is
  *   a property of the planner and is asserted beside it. The bold itself stays
  *   a manual check (0043 §4).
- * - *A real `elements` entry.* One needs a shape this CLI cannot make: a
- *   second `BODY` carrying text, or a box placed by hand in the Slides UI.
- *   `slides create` cannot produce one and `slides write` cannot write into
- *   one, so the case below is a document naming an element the slide does not
- *   have — the same guard, reached from the side a CLI can reach.
+ * - *A real `elements` entry.* Writing one is implemented (decision 0063), and
+ *   it still cannot be exercised from here, for a reason worth stating
+ *   precisely: an **empty** placeholder is dropped by the projection —
+ *   neither a field nor an element — so the second `BODY` of a deck this CLI
+ *   built never appears, and there is nothing to address. An entry shows up
+ *   only once it *has* text, which means a deck made in the Slides UI or a
+ *   second column filled by hand. `slides create` cannot produce one.
+ *
+ *   So the case below is still a document naming an element the slide does not
+ *   have — the same guard, reached from the side a CLI can reach — and the
+ *   write itself is a manual check.
  */
 
 const elementSchema = z.looseObject({

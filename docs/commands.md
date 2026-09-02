@@ -1792,7 +1792,8 @@ never a surprise.
 A presentation is **one YAML document** (see
 [`../decisions/0029`](../decisions/0029-slides-document.md)), as a form is. A
 slide is its **layout, its placeholders and its speaker notes** — everything
-else on the slide is listed, read-only, under `elements`.
+else on the slide is listed under `elements`, where its text can be edited
+and nothing else about it can.
 
 The Slides API must be enabled on your Google Cloud project
 ([`authentication.md`](authentication.md)); no new OAuth scope is needed, so an
@@ -1861,7 +1862,7 @@ Per slide:
 | `skipped` | Present only when the slide is skipped in presentation mode |
 | `title`, `subtitle`, `body` | The text of the matching placeholder, when it has any |
 | `notes` | The speaker notes — the `BODY` placeholder of the slide's notes page, promoted to a field of its own so nobody has to know that |
-| `elements` | Everything the document has no field for — a shape outside the layout, an image, and also a placeholder whose field is already taken. Read-only (below) |
+| `elements` | Everything the document has no field for — a shape outside the layout, an image, and also a placeholder whose field is already taken. Its `text` is writable; its structure is not (below) |
 
 **No geometry appears, in either direction.** A slide in the API is a canvas of
 positioned boxes: every element carries a transform and a size in EMU, and the
@@ -1921,18 +1922,52 @@ matters: a displaced `BODY` is a box the Slides API would rewrite as readily as
 the `body` above it, while a hand-placed text box is outside every layout and
 nothing can put it back under one.
 
-**Editing an `elements` entry does not change the deck, and `slides write`
-refuses the document rather than report success for an edit that did not
-happen**
-([`../decisions/0030`](../decisions/0030-slides-write.md) §3). Both sorts of
-entry are refused, for different reasons: for a shape outside the layout there
-is no way to honour the change, and for a displaced placeholder this CLI has
-simply not implemented the write yet
-([`../decisions/0051`](../decisions/0051-elements-holds-placeholders-too.md) §3;
-[issue #28](https://github.com/ncukondo/gdrive-cli/issues/28)). Listing them and
-refusing to write them is the honest half of the trade — text outside a named
-field is how a large share of real decks are built, and hiding it would make the
-common deck read as empty, the one outcome worse than reading it partially.
+**An entry's `text` is writable; everything else about it is not**
+([`../decisions/0063`](../decisions/0063-an-element-is-addressed-by-its-id.md)).
+Change the `text` on an entry and `slides write` rewrites that shape, addressed
+by the `id` the entry already carries — which is what `insertText` takes, and is
+why nothing had to be added to the document to make this work. It applies to a
+displaced placeholder and to a hand-placed text box alike: `insertText` does not
+distinguish them, so neither does this.
+
+That is what makes a `TITLE_AND_TWO_COLUMNS` deck round-trip. The second column
+reads as an `elements` entry and writes as one.
+
+```yaml
+  - id: s_two
+    layout: TITLE_AND_TWO_COLUMNS
+    title: A title
+    body: The left column
+    elements:
+      - id: SLIDES_API1087468714_6
+        kind: shape
+        placeholder: BODY
+        text: The right column        # edit this and it is written
+```
+
+Changing an entry's `id`, `kind` or `placeholder`, adding an entry, or removing
+one is refused with `INVALID_ARGS`, because no request can carry any of those:
+this document models an element's *text* and nothing else about it. An entry the
+deck gave no `id` cannot be written either — there is nothing to address — so
+only an unchanged one is accepted.
+
+**An empty placeholder is not listed**, so it cannot be filled from here. The
+projection drops a placeholder with no text — neither a field nor an element —
+so a two-column slide whose right column is blank has nothing to address, and a
+deck this CLI built that way stays that way. Put text in the column once, in
+the Slides editor, and it becomes an `elements` entry you can edit from then on.
+
+The **position** of an element is still not modelled at all
+([`../decisions/0029`](../decisions/0029-slides-document.md) §1): this writes
+into an element that exists and creates none. And `slides create --file` still
+skips `elements` entirely, because a new deck has none of the ids that would
+address them.
+
+A rewrite **loses the entry's inline formatting**, exactly as it does for a
+placeholder ([`../decisions/0030`](../decisions/0030-slides-write.md) §2): only
+a changed entry is rewritten, and the plan's `formatting_loss` names the ones
+that had more than one text run. A hand-placed box is likelier to be styled than
+a placeholder is, so this is worth reading before a bulk edit.
 
 Leaving the key out entirely is not an edit: a document that never mentions a
 slide's `elements` is accepted, and only a key that is *there* is compared with
@@ -1940,8 +1975,7 @@ what `read` emitted. That is **not** how the text fields read an absent key —
 see [what an absent field means](#what-an-absent-field-means).
 
 So a deck built without a template reads as `BLANK` slides full of `elements`.
-That is accurate, and it is also the signal that very little of it will be
-editable from here.
+That is accurate, and its text is editable; its layout is not.
 
 ### `gdrive slides read <presentation>`
 
