@@ -28,6 +28,14 @@ Parallel: no — it rewrites `findMarkerRanges` and everything built on it, whic
   furthest, because every request builder gains a field.
 - A `DocumentRaw` carries `headers`, `footers` and `footnotes` as maps keyed by
   segment id, each holding a `content` array shaped like the body's.
+- **A segment's first index is 0, and Docs omits a zero from the JSON.** So an
+  absent `startIndex` means 0 rather than 1, and the body's `?? 1` default
+  shifts every index in a segment by one. Found against a real header:
+  `delete --from "HEADER" --to "tail"` emptied it down to a lone `H`.
+- **Stamp the segment on the way out, not through every builder.** The Markdown
+  request builders compose `Location`s against one index space and know nothing
+  about segments; one `inSegment(requests, id)` at the boundary keeps that true
+  and puts the decision in one place.
 
 ## Scope
 
@@ -68,6 +76,12 @@ Parallel: no — it rewrites `findMarkerRanges` and everything built on it, whic
    and a document with none reads exactly as it does today.
 6. **Red** — `docs delete` (task 0055) can remove a footer's paragraph.
 7. **Green** — implement, one segment kind at a time.
+8. **Red, and only a live document can raise it** — the registrar. `handleDocsInsert`'s
+   `insertText` dep gained a fifth argument and `commands/docs/index.ts` wired
+   four, so the segment was dropped between the handler and the API and a header
+   insert landed in the body. Every unit test passed, because they call the
+   handler. This is `tests/integration/failed-create.test.ts`'s class a third
+   time; check every registrar dep against its handler's signature by hand.
 
 ## Acceptance criteria
 
