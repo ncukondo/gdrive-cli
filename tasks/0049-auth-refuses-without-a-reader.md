@@ -44,7 +44,15 @@ for ever on a loopback server no browser will reach (issue #17).
 - `src/index.ts` — the flow's gate, beside `canPrompt` rather than instead of it
 - `src/commands/auth.ts` — `handleAuthLogin` and its registrar
 - `src/lib/auth.ts` — only where the credential notice is written
+- `src/lib/prompt.ts` — `createReadlinePrompt` built readline with
+  `output: process.stdout`, so `gdrive auth > file` put `Client ID:` in the file
+  and left the terminal silent. Found in review; the same stream question as the
+  URL, and 0059 §1 is only true once both move.
 - `src/commands/auth.test.ts`, `src/index.test.ts`, `src/lib/auth.test.ts`
+- `tests/integration/auth-streams.test.ts` — the URL is written in the registrar
+  closure, which no test beside `handleAuthLogin` reaches. A unit test there has
+  to inject a `runFlow` fake and then assert where the fake wrote, which passes
+  with production writing to stdout. Measured; that is why this file exists.
 - `docs/authentication.md`, `docs/commands.md`
 
 ## Out of scope
@@ -94,8 +102,12 @@ for ever on a loopback server no browser will reach (issue #17).
 - [ ] `gdrive auth > out` at a terminal shows the URL and completes, where it
       used to hang
 - [ ] `gdrive -f json auth` exits 2 and says the flag is what refused
-- [ ] `gdrive auth -f json > token.json` at a terminal: `token.json` parses as
-      one envelope — no prose in it
+- [ ] `gdrive auth > token.json` at a terminal: `token.json` holds one envelope
+      and no prose, and the URL — and the `Client ID:` prompt, if there is one —
+      appears on the terminal
+- [ ] The refusal's rule is the **class**, not two examples: stderr must be a
+      terminal, so `2> log`, `2>&1 | tee log` and `|& less` are refused too, and
+      `docs/` says so
 - [ ] `bun run test` and `bun run typecheck` pass
 - [ ] `docs/authentication.md` §2 states the rule for the command rather than
       for the prompt, and §3 no longer claims a browser is opened
