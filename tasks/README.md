@@ -100,7 +100,7 @@ command-registration contract) and `decisions/0012-testing-strategy.md`
 | [0047 The Docs port learns about tabs, and `docs tabs` manages them](0047-docs-tabs-port-and-coordinate.md) | — | I | todo |
 | [0048 A read covers every tab, and a write names the one it means](0048-docs-read-covers-every-tab.md) | 0047 | I | todo |
 | [0049 `gdrive auth` refuses where nobody can read the URL](0049-auth-refuses-without-a-reader.md) | — | J | todo |
-| [0050 The generated-type guard reaches inside a Drive `requestBody`](0050-the-guard-reaches-inside-a-request-body.md) | — | J | todo |
+| [0050 The generated-type guard reaches inside a Drive `requestBody`](archive/0050-the-guard-reaches-inside-a-request-body.md) | — | J | done |
 | [0051 A `PRUNE_REQUIRED` refusal carries the plan it refused](0051-a-refusal-carries-its-plan.md) | — | J | todo |
 | [0052 The e2e exclusion stops depending on the shell](0052-the-e2e-exclusion-leaves-the-shell.md) | — | J | todo |
 | [0053 A listing says when it stopped early](0053-a-listing-says-when-it-stopped.md) | — | K | todo |
