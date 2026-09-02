@@ -21,6 +21,171 @@ missing version, because nothing else can tell the two apart.
 Releases before 0.8.0 are not backfilled; their notes are whatever GitHub
 generated at the time.
 
+## 0.11.0 — 2026-09-02
+
+**Every open issue on the tracker is closed in this release.** Nine of them, and
+what they have in common is worth knowing before the list: the two that will be
+felt first are both `docs` — a document's headers, footers and footnotes stop
+being invisible, and `insert` finally has an inverse.
+
+The rest is smaller and mostly protective. `gdrive auth` stops hanging for ever
+where nobody can finish it, a truncated listing stops passing for a complete one,
+and a branching form can be copied at all.
+
+### Breaking changes
+
+Pre-1.0 behaviour changes, permitted by [decision
+0014](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0014-pre-1.0-compatibility.md)
+and listed here because that record makes the release notes the compatibility
+log for 0.x. Each was measured — against a real Google account where the change
+is about what Google accepts, and by running the command where it is about the
+terminal.
+
+1. **A marker that appears in the body *and* in a header now matches twice, and
+   `docs insert --before|--after` refuses it.** The marker walk covers headers,
+   footers and footnotes now, so "matches exactly once" means once in the whole
+   document rather than once in the body. An `insert` that worked yesterday can
+   become `INVALID_ARGS` naming the count.
+
+   This is the correct failure: the alternative is a write landing in a segment
+   you did not mean, which nothing in the output would tell you about.
+
+   What to do: narrow the marker, or add `--match-case`. `docs replace` is
+   unaffected — it changes every occurrence, as it always did.
+   [Decision 0064](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0064-a-marker-is-addressable-anywhere.md)
+   §2.
+
+2. **`gdrive docs read` prints a document's headers, footers and footnotes.**
+   Anything parsing that output sees new content for a document that has them.
+   Each is labelled with its kind and the id the API knows it by —
+   `<!-- header: kix.… -->` in Markdown, `[header: kix.…]` under `--as text`,
+   which takes no markup. A document with none reads exactly as before.
+
+   What to do: nothing, unless you were treating `docs read` as body-only.
+   [Decision 0064](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0064-a-marker-is-addressable-anywhere.md)
+   §3.
+
+3. **`gdrive auth` needs a terminal on stderr, and refuses in a second where it
+   used to hang for ever.** The consent URL — and the `Client ID:` prompt beside
+   it — moved to stderr, where a person reads rather than a caller consumes, and
+   that is now the stream the command checks.
+
+   Three measured consequences, on a machine with credentials already in place:
+
+   | | before | now |
+   |---|---|---|
+   | `gdrive auth </dev/null`, nothing attached | blocked until killed | exit 2, naming the terminal |
+   | `gdrive auth > file` at a terminal | hung, with the URL in the file | works; the URL is on your terminal and the file gets the envelope alone |
+   | `gdrive auth 2> file` at a terminal | worked | exit 2, naming the terminal |
+
+   What to do: stop redirecting stderr. The rule is that stderr must be a
+   terminal, so `2> log`, `2>&1 | tee log` and `|& less` are all refused;
+   redirecting stdout is the case worth having and it now works.
+   [Decision 0059](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0059-the-browser-flow-needs-a-reader.md).
+
+4. **`gdrive -f json auth` is refused.** It used to complete the login, printing
+   a consent URL and a JSON envelope interleaved on one stream — so nothing
+   could parse the result, but a person watching it did get a token.
+
+   What to do: drop the flag. The refusal says so.
+   [Decision 0059](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0059-the-browser-flow-needs-a-reader.md)
+   §4.
+
+5. **A new error code, `LISTING_INCOMPLETE`** (exit 3). A consumer that switches
+   exhaustively over the codes has a new member to handle. It is raised only by
+   `cp -r`, below.
+   [Decision 0060](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0060-a-listing-says-when-it-stopped.md)
+   §4.
+
+6. **`gdrive cp -r` fails on a folder with more than 100,000 children** instead
+   of reporting a partial copy as a success. Nothing that was correct becomes
+   incorrect; a run that used to lie now stops and says where.
+
+   What to do: copy the large subfolders one at a time. The error names the
+   folder, and the usual `cp -r` report still lists everything already copied.
+
+7. **`gdrive ls` and `gdrive search` gain a `complete` field** in the JSON
+   envelope. A consumer that asserted the exact key set needs to stop; one that
+   ignores it behaves as before.
+
+### Added
+
+- **`gdrive docs delete <file>`** — `insert`'s inverse, and the only command
+  here that can remove a **table**. `--from <marker> --to <marker>` names two
+  ends and never anything inside, so a table between them goes with the range;
+  `--index <n> --length <n>` is the escape hatch. Removing a whole paragraph
+  takes its paragraph mark, so no blank line is left — which an empty
+  `--replace` cannot do. `--dry-run` reports the range, the character count and
+  the document's own text at each end. There is no undo: Google Docs' version
+  history in the browser is the backstop.
+  [Decision 0062](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0062-a-write-has-an-inverse.md).
+- **`docs insert`, `docs replace` and `docs delete` reach headers, footers and
+  footnotes.** Two limits are the API's rather than this CLI's, and both are
+  reported rather than passed through: a table cannot go in a footnote (the rest
+  of the payload is still written, and the loss is reported), and a page break
+  before a paragraph is a body idea, so the style reset drops that one field
+  outside the body.
+- **`gdrive slides write` can edit an `elements` entry's text**, addressed by
+  the object id the entry already carries. That is what makes a
+  `TITLE_AND_TWO_COLUMNS` deck round-trip: its second column reads as an
+  `elements` entry and now writes as one. A displaced placeholder and a
+  hand-placed text box are treated alike, because `insertText` does not
+  distinguish them. Structure — an entry's `id`, `kind` or `placeholder`, and
+  adding or removing one — is still refused, and an *empty* placeholder is still
+  not listed, so a blank second column cannot be filled from here.
+  [Decision 0063](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0063-an-element-is-addressed-by-its-id.md).
+- **A `PRUNE_REQUIRED` refusal carries the plan it refused.** `forms write` and
+  `slides write` put the items they would have deleted in the error envelope's
+  `data` — `{id, plan, applied: false}`, the same `plan` shape a success reports
+  — and `-q` prints their ids, one per line. The deletions only: the refusal is
+  decided before the rest of the plan is built, and `--dry-run --prune` is the
+  one call that answers the rest.
+- **`ls` and `search` report `complete`.** `false` means the listing stopped at
+  100,000 entries rather than at the end of the folder; the rows are real, there
+  are just more of them. Text mode prints a note, `-q` is unchanged, and the
+  exit code is still 0. A listing you cut short yourself with `-n` is
+  `complete: true` — you asked for that many.
+
+### Fixed
+
+- **`gdrive forms create --file` can copy a branching form.** Stripping an
+  option's `go_to_section_id` while keeping its `go_to_action` left the option
+  list half-navigated, and the Forms API refuses that outright — so an ordinary
+  branching form could not be copied **at all**, the whole atomic batch failing
+  with *Invalid Options, Either all or no options should be go to enabled*. The
+  navigation now leaves as a unit; the question itself is still copied, with its
+  wording and its options. A list that navigates only with `go_to_action` names
+  no id and is copied untouched. Confirmed both ways against a real account.
+  [Decision 0061](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0061-navigation-is-all-or-nothing.md).
+- **`gdrive auth` no longer blocks for ever on a machine that has credentials.**
+  The guard covered the credential prompt and not the OAuth flow underneath it,
+  so the *configured* machine — the one that gets past the prompt — was the one
+  that hung. See breaking change 3.
+- **A listing is four to ten times fewer round trips.** Drive is asked for pages
+  of 1,000 rather than 100, so an ordinary thousand-child folder costs one
+  request instead of ten.
+- **A truncated `search` no longer reports "No files found".** Drive can return
+  an empty page while still having more, and the old message inverted the answer:
+  it had not found none, it had stopped looking.
+- **The generated-type guard reaches inside a Drive `requestBody`.** A field in
+  `files.create`, `files.copy`, `files.update` or a permission body is now
+  checked against the googleapis types, which
+  [decision 0026](https://github.com/ncukondo/gdrive-cli/blob/main/decisions/0026-ln.md)
+  §6 wrongly claimed was already true. Two guards beside it turned out not to
+  guard: an optional field's inner keys were compared against nothing, and the
+  `extends` assertion in the Docs, Forms and Slides checks had asserted nothing
+  since it was written. Invisible to a user; it is what stops a googleapis bump
+  from breaking a request silently.
+
+### Development
+
+- **`bun run test` no longer depends on the shell to exclude the live suite.**
+  The exclusion moved from `--exclude 'tests/e2e/**'` — POSIX quoting that
+  `cmd.exe` does not honour — into `vitest.config.ts`, with `test:e2e` getting
+  its own config. On Windows the old form could hand vitest a literal that
+  matched nothing, and `bun run test` would have reached for a real Google
+  account. No test script contains a quote or a glob character now.
+
 ## 0.10.0 — 2026-08-07
 
 **Slides can be read and written, forms can be written, and Drive gains `ln`,
