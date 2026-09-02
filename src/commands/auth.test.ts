@@ -51,6 +51,26 @@ function token(email: string, overrides: Partial<TokenData> = {}): TokenData {
   };
 }
 
+/** Both sinks, kept apart: which stream a line lands on is the subject here. */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function collectBoth() {
+  const out: string[] = [];
+  const err: string[] = [];
+  return {
+    write: (m: string) => out.push(m),
+    warn: (m: string) => err.push(m),
+    get stdout() {
+      return out.join("\n");
+    },
+    get stderr() {
+      return err.join("\n");
+    },
+  };
+}
+
 function collect() {
   const lines: string[] = [];
   return {
@@ -118,8 +138,10 @@ describe("handleAuthLogin", () => {
       config,
       format: "text",
       canPrompt: true,
+      noReader: undefined,
       quiet: false,
       write: out.write,
+      warn: () => {},
       promptFn: async () => "",
       runFlow,
       writeConfig,
@@ -144,8 +166,10 @@ describe("handleAuthLogin", () => {
       config,
       format: "text",
       canPrompt: true,
+      noReader: undefined,
       quiet: false,
       write: () => {},
+      warn: () => {},
       promptFn: async () => "",
       runFlow: async () => token("second@x.com"),
       writeConfig,
@@ -165,8 +189,10 @@ describe("handleAuthLogin", () => {
         config: { default_format: "text", accounts: [] },
         format: "json",
         canPrompt: false,
+        noReader: undefined,
         quiet: false,
         write: () => {},
+        warn: () => {},
         promptFn,
         runFlow,
         writeConfig: () => {},
@@ -195,8 +221,10 @@ describe("handleAuthLogin", () => {
       config: { default_format: "text", accounts: [] },
       format: "json",
       canPrompt: true,
+      noReader: undefined,
       quiet: false,
       write: out.write,
+      warn: out.write,
       promptFn,
       runFlow,
       writeConfig: () => {},
@@ -211,6 +239,118 @@ describe("handleAuthLogin", () => {
     });
     expect(out.output).toContain("No OAuth client configured");
     expect(out.output).toContain('"authenticated": true');
+  });
+});
+
+describe("handleAuthLogin: the flow needs a reader (issue #17, decision 0059)", () => {
+  const base = {
+    config: { default_format: "text" as const, accounts: [] },
+    format: "text" as const,
+    canPrompt: true,
+    quiet: false,
+    promptFn: async () => "",
+    writeConfig: () => {},
+  };
+
+  /**
+   * The *configured* machine is the one that hung: `canPrompt` guarded the
+   * credential prompt, and a machine with `client_secret.json` already in place
+   * sailed past it and blocked on the flow, which had no gate. `withClientSecret`
+   * is the load-bearing part — with an empty fake fs this test passes against
+   * the broken code, because the credential lookup throws first.
+   */
+  it("refuses before the flow, with credentials already in place", async () => {
+    const io = collectBoth();
+    const runFlow = vi.fn(async () => token("x@x.com"));
+
+    await expect(
+      handleAuthLogin({
+        ...base,
+        fs: withClientSecret(createFakeFs()),
+        noReader: "no_terminal",
+        write: io.write,
+        warn: io.warn,
+        runFlow,
+      }),
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+
+    expect(runFlow).not.toHaveBeenCalled();
+    expect(io.stdout).toBe("");
+    expect(io.stderr).toBe("");
+  });
+
+  /**
+   * 0059 §5: one of the two is fixed by dropping a flag and the other is not, so
+   * each message has to say which. The negative assertions are the point — a
+   * single message naming both reasons satisfies `toContain` on both and is
+   * exactly what the rule forbids.
+   */
+  it("tells a caller which of the two refused, and not the other", async () => {
+    const deps = {
+      ...base,
+      fs: withClientSecret(createFakeFs()),
+      write: () => {},
+      warn: () => {},
+      runFlow: async () => token("x@x.com"),
+    };
+
+    const terminal = messageOf(
+      await handleAuthLogin({ ...deps, noReader: "no_terminal" }).catch((e: unknown) => e),
+    );
+    expect(terminal).toContain("terminal");
+    expect(terminal).not.toContain("-f json");
+
+    const flag = messageOf(
+      await handleAuthLogin({ ...deps, noReader: "asked_for_json" }).catch((e: unknown) => e),
+    );
+    expect(flag).toContain("-f json");
+    expect(flag).not.toContain("needs a terminal");
+  });
+
+  /**
+   * 0059 §1. The URL is an instruction for a person, not the answer to the
+   * command, so it goes where 0007 puts what a person reads. Asserting its
+   * absence from stdout is not enough on its own — a URL that went nowhere at
+   * all would pass that.
+   */
+  it("prints the consent URL to stderr, leaving stdout to the envelope", async () => {
+    const io = collectBoth();
+
+    await handleAuthLogin({
+      ...base,
+      fs: withClientSecret(createFakeFs()),
+      noReader: undefined,
+      write: io.write,
+      warn: io.warn,
+      runFlow: async (credentials) => {
+        io.warn(
+          `Open this URL in your browser:\nhttps://accounts.google.com/o/oauth2/auth?client_id=${credentials.clientId}`,
+        );
+        return token("x@x.com");
+      },
+    });
+
+    expect(io.stderr).toContain("https://accounts.google.com");
+    expect(io.stdout).not.toContain("https://");
+    expect(io.stdout).toContain("Authenticated as x@x.com");
+  });
+
+  /** The notice beside it, for the same reason. */
+  it("prints the missing-client notice to stderr too", async () => {
+    const io = collectBoth();
+
+    await handleAuthLogin({
+      ...base,
+      fs: createFakeFs(),
+      noReader: undefined,
+      promptFn: async () => "typed",
+      write: io.write,
+      warn: io.warn,
+      runFlow: async () => token("x@x.com"),
+    });
+
+    expect(io.stderr).toContain("No OAuth client configured");
+    expect(io.stdout).not.toContain("No OAuth client configured");
   });
 });
 

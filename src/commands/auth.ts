@@ -25,7 +25,7 @@ import {
 } from "../lib/auth.ts";
 import { listAuthenticatedAccounts, resolveAccountEmail } from "../lib/account.ts";
 import { createReadlinePrompt } from "../lib/prompt.ts";
-import { canPrompt, resolveGlobalOptions, handleError } from "../index.ts";
+import { canPrompt, noReader, type NoReader, resolveGlobalOptions, handleError } from "../index.ts";
 
 /** Maps a full scope URL to a short label (…/auth/drive → "drive"). */
 function shortScope(scope: string): string {
@@ -141,8 +141,17 @@ export interface AuthLoginDeps {
    * `canPrompt` in `src/index.ts`, which is where the rule lives.
    */
   canPrompt: boolean;
+  /**
+   * Why nobody will read the consent URL, or `undefined` when somebody will.
+   * A different question from `canPrompt`, on a different stream — see
+   * `noReader` in `src/index.ts` and decision 0059 §2.
+   */
+  noReader: NoReader | undefined;
   quiet: boolean;
+  /** stdout: the envelope, and nothing else (decision 0059 §1). */
   write: (msg: string) => void;
+  /** stderr: the consent URL, and every notice on the way to it. */
+  warn: (msg: string) => void;
   promptFn: PromptFn;
   /** Runs the browser flow for `credentials`, returning the persisted token. */
   runFlow: (credentials: ClientCredentials) => Promise<TokenData>;
@@ -150,14 +159,35 @@ export interface AuthLoginDeps {
   writeConfig: (config: Config) => void;
 }
 
+/**
+ * What to tell somebody whose login was refused before it started
+ * (decision 0059 §5). Not "cannot authenticate": one of these two is fixed by
+ * dropping a flag and the other is not, and a message that names both leaves
+ * the caller to work out which applies.
+ */
+function refusal(reason: NoReader): AppError {
+  const why =
+    reason === "no_terminal"
+      ? "`gdrive auth` needs a terminal. It prints a consent URL for you to open and then waits for your browser to come back, and nothing is attached to read that URL. Log in where you have one; the token lands in ~/.config/gdrive-cli/accounts/<email>.json, and a machine you copy it to needs client_secret.json (or GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) as well."
+      : "Logging in means a person opening a URL, which a caller that named `-f json` is not. Re-run without it.";
+  return new AppError("AUTH_REQUIRED", why);
+}
+
 export async function handleAuthLogin(deps: AuthLoginDeps): Promise<CommandResult> {
+  // Both of this command's waits are refused before either one starts, and
+  // before a port is opened (decision 0059 §2). `canPrompt` used to guard only
+  // the first; `runFlow` below blocks on a loopback server until a browser
+  // redirects back, and had no gate at all — so a machine that already had
+  // client_secret.json got past the gate and hung on the wait that has none.
+  // That was issue #17.
+  if (deps.noReader !== undefined) throw refusal(deps.noReader);
+
   // Decision 0005 keeps this from prompting where nothing can answer, so a
   // script gets AUTH_REQUIRED rather than a process waiting on stdin. The
-  // caller passes the answer in: no terminal, or a named `-f json`, means no
-  // prompt. Note that `runFlow` below waits for a browser and does *not* pass
-  // this gate — 0005 step 3 is interactive by construction.
+  // notice goes to `warn`, because it is addressed to a person and stdout
+  // belongs to the envelope (0059 §1).
   const credentials = deps.canPrompt
-    ? await getClientCredentialsOrPrompt(deps.fs, deps.write, deps.promptFn)
+    ? await getClientCredentialsOrPrompt(deps.fs, deps.warn, deps.promptFn)
     : getClientCredentials(deps.fs);
 
   const isFirstAccount = listAuthenticatedAccounts(deps.fs).length === 0;
@@ -196,6 +226,7 @@ export function registerAuth(program: Command): void {
     .action(async () => {
       const opts = resolveGlobalOptions(program);
       const write = (msg: string) => process.stdout.write(msg + "\n");
+      const warn = (msg: string) => process.stderr.write(msg + "\n");
       try {
         const config = loadConfig(nodeFs, opts.config);
         const writePath = resolveConfigWritePath(nodeFs, opts.config);
@@ -204,12 +235,14 @@ export function registerAuth(program: Command): void {
           config,
           format: opts.format,
           canPrompt: canPrompt(opts),
+          noReader: noReader(opts),
           quiet: opts.quiet,
           write,
+          warn,
           promptFn: createReadlinePrompt(),
           runFlow: async (credentials) => {
             const { authUrl, waitForToken, server } = await startOAuthFlow(credentials, nodeFs);
-            write(`Open this URL in your browser:\n${authUrl}`);
+            warn(`Open this URL in your browser:\n${authUrl}`);
             try {
               return await waitForToken;
             } finally {

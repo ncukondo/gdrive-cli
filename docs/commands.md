@@ -28,8 +28,9 @@ outrank a default. `-q` prints the bare value whatever the default is, a named
 ([`../decisions/0038`](../decisions/0038-quiet-asks-for-a-value.md)), and a
 command whose output is a document prints the document
 ([`../decisions/0036`](../decisions/0036-machine-format-by-default.md) §1).
-`gdrive auth` asks a further question — whether a terminal is there to prompt —
-see [`authentication.md`](authentication.md).
+`gdrive auth` asks two further questions, on two streams — whether a terminal is
+there on stdin to prompt, and whether one is there on stderr to read the consent
+URL — see [`authentication.md`](authentication.md).
 
 ## Output modes
 
