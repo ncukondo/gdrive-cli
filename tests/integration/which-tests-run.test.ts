@@ -22,12 +22,22 @@ const listed = z.array(z.object({ file: z.string() }));
 
 /** The files `vitest list` reports for `args`, repo-relative. */
 function collects(args: string[]): string[] {
+  // `bunx`, not `npx`. This is the one test in the suite guarding a defect that
+  // only appears on Windows, and `npx` there is `npx.cmd`: `execFile` does no
+  // PATHEXT resolution without a shell, and Node refuses to spawn a `.cmd`
+  // outright since 18.20. So the guard would throw on the platform it exists
+  // for. Nothing else in the repo shells out to npm either — `.husky/pre-commit`
+  // uses `bunx`.
+  //
   // `--json` takes an optional value, so anything positional has to come before
   // it or vitest reads the path as the file to write the list into.
-  const raw = execFileSync("npx", ["vitest", "list", ...args, "--filesOnly", "--json"], {
+  //
+  // stderr is inherited rather than ignored: when the spawn itself fails, the
+  // reason is the only useful thing there is.
+  const raw = execFileSync("bunx", ["vitest", "list", ...args, "--filesOnly", "--json"], {
     cwd: process.cwd(),
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
+    stdio: ["ignore", "pipe", "inherit"],
   });
   return listed
     .parse(JSON.parse(raw))

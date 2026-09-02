@@ -15,8 +15,12 @@ export default defineConfig({
      * would reach for a real Google account. Only `pre-push` runs that suite
      * (decision 0043 §1), through `vitest.e2e.config.ts`.
      *
-     * `configDefaults.exclude` is spread rather than replaced: assigning this
-     * key drops vitest's own `node_modules` and `dist` entries.
+     * `configDefaults.exclude` is spread rather than replaced, because assigning
+     * this key drops vitest's own `node_modules` and `dist` entries. That is
+     * defensive rather than load-bearing today — `include` above is scoped to
+     * `src`, `tests` and `scripts`, so nothing under `node_modules` is reachable
+     * either way, measured — and it stops being defensive the moment `include`
+     * widens.
      */
     exclude: [...configDefaults.exclude, "tests/e2e/**"],
   },
