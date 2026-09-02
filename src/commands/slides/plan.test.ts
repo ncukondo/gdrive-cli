@@ -405,17 +405,17 @@ describe("planSlideWrite: elements (0030 §3, 0051 §3)", () => {
     expect(planSlideWrite(twoColumns, columnsDocument, { prune: false }).requests).toEqual([]);
   });
 
-  it("refuses an edited text box, because nothing can honour the change", () => {
-    const changed = edited(2, {
-      elements: [{ id: "x3", kind: "shape", text: "A heading someone retyped" }],
-    });
-    expect(codeOf(() => plan(changed))).toBe("INVALID_ARGS");
-    const message = messageOf(() => plan(changed));
-    expect(message).toContain("x3");
-    expect(message).toContain("outside every layout");
-  });
-
-  it("refuses a displaced placeholder differently: the write is not implemented", () => {
+  /**
+   * Issue #28, and the case that produced it. `TITLE_AND_TWO_COLUMNS` gives a
+   * slide two `BODY` placeholders where the document has one `body`, so the
+   * second lands in `elements` and used to be unwritable — half an ordinary
+   * deck's text.
+   *
+   * Decision 0063 §1: the entry's own `id` is the address, and it was in the
+   * document all along, because `read` put it there. The requests must name
+   * **b2**, not the slide and not the first `BODY`.
+   */
+  it("rewrites a displaced placeholder against its own object id", () => {
     const changed = {
       ...columnsDocument,
       slides: columnsDocument.slides.map((slide) => ({
@@ -423,15 +423,114 @@ describe("planSlideWrite: elements (0030 §3, 0051 §3)", () => {
         elements: [{ id: "b2", kind: "shape" as const, placeholder: "BODY", text: "Rewritten" }],
       })),
     };
-    const run = () => planSlideWrite(twoColumns, changed, { prune: false });
+    const result = planSlideWrite(twoColumns, changed, { prune: false });
+
+    expect(result.requests).toEqual([
+      { deleteText: { objectId: "b2", textRange: { type: "ALL" } } },
+      { insertText: { objectId: "b2", insertionIndex: 0, text: "Rewritten" } },
+    ]);
+    expect(result.entries).toEqual([
+      { action: "update", id: "s1", title: "Two ways to read it", index: 0, fields: ["b2"] },
+    ]);
+  });
+
+  /**
+   * 0063 §2: the rule is what the API can carry, not what kind of shape it is.
+   * `insertText` does not distinguish a displaced placeholder from a
+   * hand-placed box, so neither does this — and a test for only the
+   * placeholder would let an implementation split them again.
+   */
+  it("rewrites a hand-placed text box the same way", () => {
+    const changed = edited(2, {
+      elements: [{ id: "x3", kind: "shape", text: "A heading someone retyped" }],
+    });
+    const result = plan(changed);
+
+    expect(result.requests).toEqual([
+      { deleteText: { objectId: "x3", textRange: { type: "ALL" } } },
+      { insertText: { objectId: "x3", insertionIndex: 0, text: "A heading someone retyped" } },
+    ]);
+  });
+
+  /** Clearing text sends the delete and no insert, as a placeholder's does. */
+  it("clears an element whose text the document emptied", () => {
+    const changed = edited(2, { elements: [{ id: "x3", kind: "shape", text: "" }] });
+    expect(plan(changed).requests).toEqual([
+      { deleteText: { objectId: "x3", textRange: { type: "ALL" } } },
+    ]);
+  });
+
+  /**
+   * An entry with no id cannot be addressed — `insertText` takes an objectId
+   * and there is nothing to give it. This is the one edit that is still
+   * refused for the old reason, and the message must not claim the API cannot
+   * do it.
+   */
+  it("refuses an edit to an entry the deck gave no id", () => {
+    const idless = {
+      ...columnsDocument,
+      slides: columnsDocument.slides.map((slide) => ({
+        ...slide,
+        elements: [{ kind: "shape" as const, text: "Retyped" }],
+      })),
+    };
+    const run = () => planSlideWrite(twoColumns, idless, { prune: false });
     expect(codeOf(run)).toBe("INVALID_ARGS");
-    const message = messageOf(run);
-    expect(message).toContain("b2");
-    expect(message).toContain("BODY");
-    expect(message).toContain("not implemented");
-    expect(message).toContain("issues/28");
-    // The API could rewrite it, so the message must not claim otherwise.
-    expect(message).not.toContain("outside every layout");
+    expect(messageOf(run)).toContain("no id");
+  });
+
+  /**
+   * 0063 §3. Delete-and-insert drops the bold inside a paragraph, so the plan
+   * has to say which entry lost it — and it is measured from the shape's own
+   * run count, not guessed from the text.
+   */
+  it("warns that rewriting a styled element loses its formatting", () => {
+    const styled: PresentationRaw = {
+      presentationId: "1PrEs",
+      title: "Deck",
+      layouts,
+      slides: [
+        {
+          objectId: "s1",
+          slideProperties: { layoutObjectId: "L_BLANK" },
+          pageElements: [
+            {
+              objectId: "x1",
+              shape: {
+                text: {
+                  textElements: [
+                    { textRun: { content: "Half " } },
+                    { textRun: { content: "bold\n" } },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const asRead = toSlideDocument(styled);
+    const changed = {
+      ...asRead,
+      slides: asRead.slides.map((slide) => ({
+        ...slide,
+        elements: [{ id: "x1", kind: "shape" as const, text: "Retyped" }],
+      })),
+    };
+    const result = planSlideWrite(styled, changed, { prune: false });
+
+    expect(result.entries[0]).toMatchObject({ fields: ["x1"], formatting_loss: ["x1"] });
+  });
+
+  /** A structural change is still refused: 0063 §2 narrows the rule, not away. */
+  it("refuses a changed kind, id or placeholder", () => {
+    for (const change of [
+      { id: "x9", kind: "shape" as const, text: "A heading someone placed by hand" },
+      { id: "x3", kind: "table" as const, text: "A heading someone placed by hand" },
+    ]) {
+      const changed = edited(2, { elements: [change] });
+      expect(codeOf(() => plan(changed))).toBe("INVALID_ARGS");
+    }
   });
 
   it("refuses an added element and a removed one on the same terms", () => {
@@ -467,11 +566,21 @@ describe("planSlideWrite: elements (0030 §3, 0051 §3)", () => {
     expect(message).not.toContain("the text of an element changed");
   });
 
-  it("still says the text changed when the counts match", () => {
+  /**
+   * A changed text is no longer a mismatch (0063 §1), so the message that used
+   * to describe one now describes what is left: a change to the fields nothing
+   * can write. The counts still match here, so the message cannot fall back to
+   * saying how many there are.
+   */
+  it("says what actually cannot be written when the counts match", () => {
     const changed = edited(2, {
-      elements: [{ id: "x3", kind: "shape" as const, text: "A heading someone retyped" }],
+      elements: [{ id: "x9", kind: "shape" as const, text: "A heading someone placed by hand" }],
     });
-    expect(messageOf(() => plan(changed))).toContain("the text of an element changed");
+    const message = messageOf(() => plan(changed));
+    expect(message).toContain("id, kind or placeholder changed");
+    expect(message).toContain("x9");
+    // The old message said the write was not implemented. It is now.
+    expect(message).not.toContain("not implemented");
   });
 
   it("names an entry with no id in words, since it cannot name it by id", () => {
@@ -481,7 +590,7 @@ describe("planSlideWrite: elements (0030 §3, 0051 §3)", () => {
         { kind: "shape" as const, text: "Hand-written, with no id" },
       ],
     });
-    expect(messageOf(() => plan(anonymous))).toContain("an entry with no id is a shape");
+    expect(messageOf(() => plan(anonymous))).toContain("an entry with no id");
   });
 
   it("leaves a new slide's elements out and says so, rather than failing the write", () => {

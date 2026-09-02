@@ -404,6 +404,19 @@ function runsOf(shape: ShapeRaw | undefined): number {
     .length;
 }
 
+/**
+ * How many text runs one page element's shape is made of, by object id.
+ *
+ * The same measurement `slideTextTargets` makes for a placeholder, for the
+ * elements beside it: `runs > 1` is what 0030 §2 warns about, and 0063 §3
+ * extends that warning to an element — a hand-placed box is likelier to be
+ * styled than a placeholder is, so it matters more here rather than less.
+ */
+export function elementRuns(slide: PageRaw, objectId: string): number {
+  const element = (slide.pageElements ?? []).find((page) => page.objectId === objectId);
+  return runsOf(element?.shape);
+}
+
 /** The notes shape's own text target, or nothing when the slide has no notes page. */
 function notesTarget(slideProperties: SlidePropertiesRaw | undefined): TextTarget | undefined {
   const page = slideProperties?.notesPage;

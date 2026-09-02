@@ -2,6 +2,7 @@ import { AppError } from "../../types/index.ts";
 import { refusedPlan } from "../../lib/prune-refusal.ts";
 import {
   layoutFieldPlaceholders,
+  elementRuns,
   slideTextTargets,
   toSlideDocument,
   type PageRaw,
@@ -245,25 +246,31 @@ function reorder(
   return { entries, requests };
 }
 
-// --- Elements (0030 §3, as 0051 §3 narrows it) -------------------------------
+// --- Elements (0030 §3, as 0063 §2 narrows it) -------------------------------
 
-function sameElement(a: SlideElement, b: SlideElement): boolean {
-  return a.id === b.id && a.kind === b.kind && a.placeholder === b.placeholder && a.text === b.text;
+/**
+ * Whether two entries differ in anything but their text.
+ *
+ * This is what `elements` is still read-only *about* (0063 §2). An entry's
+ * `text` is writable, because `insertText` addresses a shape by object id and
+ * the id is in the document; its `id`, `kind` and `placeholder` are not, and
+ * neither is the list's length. So a structural change is still refused, and
+ * only that.
+ */
+function sameElementStructure(a: SlideElement, b: SlideElement): boolean {
+  return a.id === b.id && a.kind === b.kind && a.placeholder === b.placeholder;
 }
 
 /**
- * Why an entry cannot be written, which is not the same answer for both sorts
- * of entry (0051 §3). A displaced placeholder is one the API would rewrite as
- * readily as the field above it; a shape outside every layout is one the
- * document does not describe well enough to write at all.
+ * Why a structural change cannot be honoured. The old version of this had a
+ * second branch for a displaced placeholder, saying the write was not
+ * implemented; 0063 §1 implemented it, so the only entry left that cannot be
+ * addressed at all is one the deck gave no id.
  */
 function whyUnwritable(element: SlideElement): string {
-  // A hand-authored entry can arrive without an id, and "with no id is a shape
-  // outside every layout" is not a sentence.
-  const id = element.id === undefined ? "an entry with no id" : `${element.id}`;
-  return element.placeholder === undefined
-    ? `${id} is a shape outside every layout, which this document does not model well enough to write`
-    : `${id} is a displaced ${element.placeholder} placeholder, and writing one is not implemented yet (https://github.com/ncukondo/gdrive-cli/issues/28)`;
+  return element.id === undefined
+    ? "an entry with no id has nothing a request can address"
+    : `${element.id} would have to be created, removed or re-typed, and this document models an element's text and nothing else about it`;
 }
 
 /**
@@ -276,43 +283,62 @@ function whyUnwritable(element: SlideElement): string {
  * that did not.
  */
 function elementMismatch(wanted: number, actual: number): string {
-  if (wanted === actual) return "the text of an element changed";
+  if (wanted === actual) return "an element's id, kind or placeholder changed";
   const listed = wanted === 1 ? "1 element" : `${wanted} elements`;
   const has = actual === 1 ? "1" : String(actual);
   return `the document lists ${listed} where the slide has ${has}`;
 }
 
+/** An element whose text the document changed, and the id to send it to. */
+interface ElementEdit {
+  objectId: string;
+  from: string;
+  to: string;
+}
+
 /**
- * Refuses a document whose `elements` differ from the deck's (0030 §3).
+ * Refuses a *structural* change to `elements`, and collects the text edits
+ * (0030 §3 as narrowed by 0063 §2).
  *
  * An absent `elements` key is not a difference: the document is the desired
- * state for the fields it models, and this is not one of them, so a
- * hand-authored slide that simply does not mention the deck's text boxes is
- * accepted. A key that is *there* is compared entry for entry, which is what
- * makes an edit to one an error rather than a success that changed nothing.
+ * state for the fields it models, and a hand-authored slide that simply does
+ * not mention the deck's text boxes is accepted. A key that is *there* is
+ * compared entry for entry — but only its `id`, `kind` and `placeholder` are
+ * compared, because those are what no request can change. `text` is what the
+ * caller is here to edit.
  */
-function checkElements(slideId: string, document: SlideDocumentSlide, deck: SlideDocumentSlide) {
+function planElements(
+  slideId: string,
+  document: SlideDocumentSlide,
+  deck: SlideDocumentSlide,
+): ElementEdit[] {
   const wanted = document.elements;
-  if (wanted === undefined) return;
+  if (wanted === undefined) return [];
   const actual = deck.elements ?? [];
 
-  const what = elementMismatch(wanted.length, actual.length);
+  const refuse = (element: SlideElement): never => {
+    throw new AppError(
+      "INVALID_ARGS",
+      `Slide ${slideId}: ${elementMismatch(wanted.length, actual.length)}, and \`elements\` models only an element's text — ${whyUnwritable(element)}. Nothing was written; restore the slide's \`elements\` as \`slides read\` emitted them, changing only their \`text\`.`,
+    );
+  };
 
+  const edits: ElementEdit[] = [];
   for (const [index, element] of wanted.entries()) {
     const other = actual[index];
-    if (other !== undefined && sameElement(element, other)) continue;
-    throw new AppError(
-      "INVALID_ARGS",
-      `Slide ${slideId}: ${what}, but \`elements\` is read-only — ${whyUnwritable(element)}. Nothing was written; restore the slide's \`elements\` as \`slides read\` emitted them and edit the fields above them instead.`,
-    );
+    if (other === undefined || !sameElementStructure(element, other)) refuse(element);
+    if (element.id === undefined) {
+      // Structurally identical to a deck entry that also has no id: there is
+      // still nothing to address, so only an *unchanged* one is acceptable.
+      if (element.text !== other?.text) refuse(element);
+      continue;
+    }
+    if (element.text === other?.text) continue;
+    edits.push({ objectId: element.id, from: other?.text ?? "", to: element.text ?? "" });
   }
   const dropped = actual[wanted.length];
-  if (dropped !== undefined) {
-    throw new AppError(
-      "INVALID_ARGS",
-      `Slide ${slideId}: ${what}, but \`elements\` is read-only — ${whyUnwritable(dropped)}. Nothing was written; restore the slide's \`elements\` as \`slides read\` emitted them and edit the fields above them instead.`,
-    );
-  }
+  if (dropped !== undefined) refuse(dropped);
+  return edits;
 }
 
 // --- Layouts ----------------------------------------------------------------
@@ -517,7 +543,8 @@ export function planSlideWrite(
     const raw = rawSlides[match.at];
     if (deck === undefined || raw === undefined) continue;
 
-    checkElements(match.id, slide, deck);
+    // Refuses a structural change and hands back the text edits (0063 §1-§2).
+    const elementEdits = planElements(match.id, slide, deck);
 
     const fields: string[] = [];
     const loss: string[] = [];
@@ -565,6 +592,23 @@ export function planSlideWrite(
       }
       fields.push(field);
       if (target.runs > 1) loss.push(field);
+    }
+
+    // 0063 §1: the entry's own id is the address, so an element is the same
+    // pair of requests a placeholder gets. 0063 §3: the rewrite drops inline
+    // formatting here too, and a hand-placed box is likelier to be styled than
+    // a placeholder is, so the warning matters more rather than less.
+    for (const edit of elementEdits) {
+      if (edit.from !== "") {
+        slideRequests.push({ deleteText: { objectId: edit.objectId, textRange: { type: "ALL" } } });
+      }
+      if (edit.to !== "") {
+        slideRequests.push({
+          insertText: { objectId: edit.objectId, insertionIndex: 0, text: edit.to },
+        });
+      }
+      fields.push(edit.objectId);
+      if (elementRuns(raw, edit.objectId) > 1) loss.push(edit.objectId);
     }
 
     if (slideRequests.length === 0) continue;
